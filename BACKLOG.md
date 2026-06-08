@@ -80,7 +80,7 @@ Die daita-modeler-Services werden als neue Router in das bestehende daita-studio
 | MS | Typ | Inhalt | Voraussetzung | Status |
 |----|-----|--------|---------------|--------|
 | **P0** | Infra | Basis-Migration metadaita → daita-studio | – | ✅ Erledigt |
-| **B1** | Backend | Modeler-APIs: Meta, Import, Diagramme, FK, Areas | P0 | 📝 Offen |
+| **B1** | Backend | Modeler-APIs: Meta, Import, Diagramme, FK, Areas | P0 | ✅ Erledigt |
 | **B2** | Backend | Unified: Table-Create API (ETL + Zieltabelle in einem) | P0 | 📝 Offen |
 | **C1** | Component | `api.js` – zentraler API-Client | P0 | 📝 Offen |
 | **C2** | Component | `nav-header.js` – gemeinsamer Header | C1 | 📝 Offen |
@@ -102,7 +102,27 @@ Die daita-modeler-Services werden als neue Router in das bestehende daita-studio
 
 ---
 
-### B1 – Backend: Modeler-APIs integrieren
+### B1 – Backend: Modeler-APIs integrieren ✅
+
+**Umgesetzt am:** 2026-06-08
+
+- `backend/app/services/meta_service.py` – vollständig aus daita-modeler migriert
+- `backend/app/services/import_service.py` – vollständig aus daita-modeler migriert
+- `backend/app/api/modeler.py` – alle META-Endpunkte (prefix `/api/modeler`)
+- `backend/app/api/diagrams.py` – Layout speichern/laden (prefix `/api/diagrams`)
+- `backend/app/api/import_td.py` – DBC-Import (prefix `/api/import`)
+- `backend/app/config.py` – `DB_CONFIG`, `META_SCHEMA`, `META_TABLES` ergänzt
+- `backend/app/main.py` – alle 3 neuen Router registriert, Titel auf daita-studio
+
+**Getestet:**
+```bash
+GET /api/modeler/layers        → 6 Layer ✅
+GET /api/modeler/tables?layer_id=2 → 15 Tabellen ✅
+GET /api/modeler/fk            → 10 FKs ✅
+GET /api/diagrams              → [] ✅
+GET /api/import/candidates?db=MDP01_RAW_LAYER → 14 Kandidaten ✅
+GET /docs                      → 200 ✅
+```
 
 **Quelle:** `daita-modeler/backend/app/` (MetaService, ImportService, DiagramService)
 **Ziel:** Neue Router in `daita-studio/backend/app/api/`

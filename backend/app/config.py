@@ -132,3 +132,28 @@ class ConnectionManager:
 
 # Singleton
 connection_manager = ConnectionManager()
+
+# =============================================================================
+# Modeler-Konfiguration (META-Schema + Tabellennamen)
+# =============================================================================
+# Kompatibilitäts-Alias für daita-modeler-Services (erwarten DB_CONFIG)
+DB_CONFIG = {
+    "host":     TERADATA_CONFIG.get("host", ""),
+    "username": TERADATA_CONFIG.get("user", ""),
+    "password": TERADATA_CONFIG.get("password", ""),
+    "database": TERADATA_CONFIG.get("database", "dbc"),
+}
+
+META_SCHEMA = METADATA_CONFIG.get("schema", "MDP01_META")
+
+META_TABLES = {
+    "tables":     "META_TABLE",
+    "columns":    "META_COLUMN",
+    "fk":         "META_FOREIGN_KEY",
+    "index":      "META_INDEX",
+    "index_col":  "META_INDEX_COLUMN",
+    "area":       "META_AREA",
+    "area_cat":   "META_AREA_CATEGORY",
+    "database":   "META_DATABASE",
+    "layer":      "META_LAYER",
+}

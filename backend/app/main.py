@@ -30,12 +30,16 @@ from .api import metadata as metadata_router
 from .api import source_api as source_router
 from .api import jobs as jobs_router
 from .api import templates as templates_router
+# Modeler-Router (B1)
+from .api import modeler as modeler_router
+from .api import diagrams as diagrams_router
+from .api import import_td as import_router
 
 # FastAPI App
 app = FastAPI(
-    title="metadaita API",
-    description="Column Lineage Analysis with LLM Enhancement + ETL Orchestrator + Metadata Management",
-    version="1.1.0"
+    title="daita-studio API",
+    description="Modeler • ETL Orchestrator • Metadata Platform für Teradata DWH",
+    version="0.2.0"
 )
 
 # CORS Middleware
@@ -53,6 +57,10 @@ app.include_router(metadata_router.router)
 app.include_router(source_router.router, prefix="/api")
 app.include_router(jobs_router.router)  # Job Management (AF-001 bis AF-005)
 app.include_router(templates_router.router)  # Templates (AF-006)
+# Modeler-Router (B1)
+app.include_router(modeler_router.router)
+app.include_router(diagrams_router.router)
+app.include_router(import_router.router)
 
 # Services
 lineage_service = LineageService()
@@ -63,7 +71,7 @@ async def health_check():
     """Health Check Endpoint"""
     return HealthResponse(
         status="healthy",
-        version="1.0.0",
+        version="0.2.0",
         available_connections=len(connection_manager.get_all())
     )
 

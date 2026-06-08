@@ -120,21 +120,19 @@ class ETLService:
     # Job Operations
     # =========================================================================
     
-    def get_all_jobs(self, active_only: bool = False) -> List[ETLJobWithDetails]:
+    def get_all_jobs(self, active_only: bool = False, layer_id: int = None) -> List[ETLJobWithDetails]:
         """
         Gibt alle ETL Jobs zurück mit Details.
-        
+
         Args:
             active_only: Nur aktive Jobs (is_active='Y')
-        
-        Returns:
-            Liste von ETLJobWithDetails
+            layer_id: Filtert auf Jobs wo source_layer_id = layer_id ODER target_layer_id = layer_id
         """
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         query = """
-        SELECT 
+        SELECT
             j.etl_job_id,
             j.job_name,
             j.job_type,
@@ -147,7 +145,7 @@ class ETLService:
             tt.table_name as target_table_name,
             COALESCE(sd.layer_id, j.source_layer_id) as source_layer_id,
             COALESCE(td.layer_id, j.target_layer_id) as target_layer_id,
-            (SELECT COUNT(*) FROM MDP01_META.META_ETL_JOB_STEP s 
+            (SELECT COUNT(*) FROM MDP01_META.META_ETL_JOB_STEP s
              WHERE s.etl_job_id = j.etl_job_id AND s.is_active = 'Y') as step_count,
             lr.status as last_run_status,
             lr.start_time as last_run_time
@@ -166,13 +164,21 @@ class ETLService:
             WHERE rn = 1
         ) lr ON j.etl_job_id = lr.etl_job_id
         """
-        
+
+        conditions = []
+        params = []
         if active_only:
-            query += " WHERE j.is_active = 'Y'"
-        
+            conditions.append("j.is_active = 'Y'")
+        if layer_id is not None:
+            conditions.append("(COALESCE(sd.layer_id, j.source_layer_id) = ? OR COALESCE(td.layer_id, j.target_layer_id) = ?)")
+            params.extend([layer_id, layer_id])
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
         query += " ORDER BY j.etl_job_id"
-        
-        cursor.execute(query)
+
+        cursor.execute(query, params)
         
         jobs = []
         for row in cursor.fetchall():

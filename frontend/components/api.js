@@ -163,7 +163,7 @@
     // ----------------------------------------------------------------
     api.jobs = {
         /** Tabellen eines Layers mit Load-Status */
-        layerTables:    (layerId)           => get(`/jobs/layers/${layerId}/tables`),
+        layerTables:    (layerId)           => get(`/layers/${layerId}/tables`),
         /** Jobs zwischen zwei Layern */
         between:        (srcId, tgtId)      => get(`/jobs/layers/${srcId}/to/${tgtId}/jobs`),
 

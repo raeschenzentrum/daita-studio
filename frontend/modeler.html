@@ -53,6 +53,20 @@
             background: var(--bg-color, #f5f5f5); color: var(--text-primary, #333);
         }
         #table-list { flex: 1; overflow-y: auto; font-size: 0.83em; }
+        /* ── Layer-Filter-Chips ───────────────────────────────────── */
+        .layer-chips {
+            display: flex; flex-wrap: wrap; gap: 4px;
+            padding: 6px 8px; border-bottom: 1px solid var(--border-color, #eee);
+            background: var(--bg-color, #f9f9f9);
+        }
+        .layer-chip {
+            padding: 2px 8px; border-radius: 10px; font-size: 0.72em;
+            font-weight: 600; cursor: pointer; border: 1px solid #ddd;
+            background: #fff; color: #888; transition: all 0.12s;
+            white-space: nowrap;
+        }
+        .layer-chip:hover { border-color: #667eea; color: #667eea; }
+        .layer-chip.active { background: #667eea; color: #fff; border-color: #667eea; }
         .table-group-header {
             padding: 5px 10px 3px; font-size: 0.75em; font-weight: 700;
             color: var(--text-secondary, #888); text-transform: uppercase;
@@ -373,6 +387,7 @@
       <div class="panel-search-row">
         <input type="text" id="table-search" placeholder="Tabelle suchen…" autocomplete="off">
       </div>
+      <div class="layer-chips" id="layer-chips"></div>
       <div id="table-list"><div class="placeholder-text">Lade Tabellen…</div></div>
     </div>
 
@@ -556,6 +571,7 @@ const API = (window.METADAITA_CONFIG?.backend_url || '').replace(/\/$/, '');
 let _allTables = [];
 let _allFKs    = [];
 let _tableEditor = null;  // TableEditor-Instanz
+let _activeLayerId = null;  // null = Alle Layer
 
 // ── Sidebar Tab-Switching ─────────────────────────────────────────────
 function initSidebarTabs() {
@@ -583,7 +599,8 @@ async function loadTableList() {
       container.innerHTML = '<div class="placeholder-text">Keine Tabellen gefunden</div>';
       return;
     }
-    renderTableList(_allTables);
+    renderLayerChips();
+    renderTableList(filteredTables());
     // FKs vorladen
     window.api.modeler.fk.list().then(data => {
       if (Array.isArray(data) && !data[0]?.error) {
@@ -593,6 +610,49 @@ async function loadTableList() {
   } catch (err) {
     container.innerHTML = `<div class="placeholder-text" style="color:#e74c3c">Fehler: ${escHtml(err.message)}</div>`;
   }
+}
+
+function filteredTables() {
+  const q = (document.getElementById('table-search')?.value ?? '').trim().toUpperCase();
+  return _allTables.filter(t => {
+    if (_activeLayerId !== null && t.layer_id !== _activeLayerId) return false;
+    if (q && !t.table_name?.toUpperCase().includes(q) && !t.table_desc?.toUpperCase().includes(q)) return false;
+    return true;
+  });
+}
+
+const LAYER_NAMES = { '-1':'SRC', 0:'–', 1:'RAW', 2:'DISC', 3:'REUS', 4:'CONS', 20:'META' };
+
+function renderLayerChips() {
+  const el = document.getElementById('layer-chips');
+  if (!el) return;
+  // Einzigartige Layer-IDs aus den Tabellen
+  const ids = [...new Set(_allTables.map(t => t.layer_id))].sort((a,b) => a-b);
+  el.innerHTML = '';
+  // "Alle" Chip
+  const allChip = document.createElement('span');
+  allChip.className = 'layer-chip' + (_activeLayerId === null ? ' active' : '');
+  allChip.textContent = 'Alle';
+  allChip.addEventListener('click', () => { _activeLayerId = null; updateChips(); renderTableList(filteredTables()); });
+  el.appendChild(allChip);
+  // Pro Layer ein Chip
+  ids.forEach(lid => {
+    const label = LAYER_NAMES[lid] ?? `L${lid}`;
+    const count = _allTables.filter(t => t.layer_id === lid).length;
+    const chip = document.createElement('span');
+    chip.className = 'layer-chip' + (_activeLayerId === lid ? ' active' : '');
+    chip.textContent = `${label} (${count})`;
+    chip.dataset.layerId = lid;
+    chip.addEventListener('click', () => { _activeLayerId = lid; updateChips(); renderTableList(filteredTables()); });
+    el.appendChild(chip);
+  });
+}
+
+function updateChips() {
+  document.querySelectorAll('.layer-chip').forEach(c => {
+    const lid = c.dataset.layerId !== undefined ? Number(c.dataset.layerId) : null;
+    c.classList.toggle('active', lid === _activeLayerId);
+  });
 }
 
 function renderTableList(tables) {
@@ -630,11 +690,7 @@ function renderTableList(tables) {
 function initTableSearch() {
   const input = document.getElementById('table-search');
   input.addEventListener('input', () => {
-    const q = input.value.trim().toUpperCase();
-    if (!q) { renderTableList(_allTables); return; }
-    renderTableList(_allTables.filter(t =>
-      t.table_name?.toUpperCase().includes(q) || t.table_desc?.toUpperCase().includes(q)
-    ));
+    renderTableList(filteredTables());
   });
 }
 

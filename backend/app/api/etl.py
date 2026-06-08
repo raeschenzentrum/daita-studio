@@ -49,16 +49,18 @@ router = APIRouter(
 @router.get("/jobs", response_model=List[ETLJobWithDetails])
 async def get_jobs(
     active_only: bool = False,
+    layer_id: Optional[int] = None,
     etl_service: ETLService = Depends(get_etl_service)
 ):
     """
     Gibt alle ETL Jobs zurück mit Details.
-    
+
     Query Parameters:
     - active_only: Nur aktive Jobs (is_active='Y')
+    - layer_id: Nur Jobs die source_layer_id oder target_layer_id diesem Layer haben
     """
     try:
-        return etl_service.get_all_jobs(active_only=active_only)
+        return etl_service.get_all_jobs(active_only=active_only, layer_id=layer_id)
     except Exception as e:
         logger.error(f"Error fetching jobs: {e}")
         raise HTTPException(status_code=500, detail=str(e))

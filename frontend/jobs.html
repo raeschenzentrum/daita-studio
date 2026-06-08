@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>daita-studio – Jobs</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="components/api.js"></script>
+    <script src="components/nav-header.js"></script>
+    <script src="components/job-list.js"></script>
+    <script src="components/job-detail.js"></script>
+    <script src="components/column-selector.js"></script>
+    <script src="components/etl-wizard.js"></script>
+    <style>
+        /* ── Layout ───────────────────────────────────────────────── */
+        body   { margin: 0; background: var(--bg-color, #f0f2f5); }
+        .jobs-page { display: flex; flex-direction: column; min-height: 100vh; }
+        .jobs-main  { flex: 1; display: flex; flex-direction: column; padding: 16px; gap: 14px;
+                      max-width: 1600px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+
+        /* ── Tabs ─────────────────────────────────────────────────── */
+        .page-tabs {
+            display: flex; gap: 4px;
+            background: var(--card-bg, #fff);
+            border-radius: 10px; padding: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        }
+        .page-tab {
+            padding: 7px 20px; border-radius: 7px; border: none; cursor: pointer;
+            font-size: 0.87em; font-weight: 600; background: transparent;
+            color: var(--text-secondary, #888); transition: all 0.15s;
+        }
+        .page-tab:hover  { background: #f0f2ff; color: #667eea; }
+        .page-tab.active { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+
+        /* ── Tab-Panes ────────────────────────────────────────────── */
+        .tab-pane { display: none; }
+        .tab-pane.active { display: flex; flex: 1; gap: 14px; min-height: 0; }
+
+        /* ── Split-Layout (Liste | Detail) ────────────────────────── */
+        .split-left {
+            width: 340px; flex-shrink: 0;
+            background: var(--card-bg, #fff);
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            display: flex; flex-direction: column;
+            overflow: hidden; min-height: 500px;
+        }
+        .split-left-header {
+            padding: 10px 14px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff; font-weight: 700; font-size: 0.88em;
+            display: flex; align-items: center; justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .btn-add {
+            padding: 4px 10px; border: 1px solid rgba(255,255,255,0.6);
+            border-radius: 5px; background: transparent; color: #fff;
+            cursor: pointer; font-size: 0.8em;
+        }
+        .btn-add:hover { background: rgba(255,255,255,0.2); }
+        .split-body { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+        .split-right {
+            flex: 1; min-width: 0;
+            background: var(--card-bg, #fff);
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            overflow: hidden; display: flex; flex-direction: column;
+        }
+        .split-right-empty {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            flex-direction: column; gap: 10px; color: #bbb;
+        }
+        .split-right-empty-icon { font-size: 3em; }
+
+        /* ── Templates Tab ────────────────────────────────────────── */
+        .tpl-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 14px; padding: 16px;
+        }
+        .tpl-card {
+            background: var(--card-bg, #fff);
+            border: 1px solid var(--border-color, #e0e0e0);
+            border-radius: 10px; padding: 16px;
+            display: flex; flex-direction: column; gap: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+        }
+        .tpl-card-header { display: flex; align-items: center; justify-content: space-between; }
+        .tpl-card-name { font-weight: 700; font-size: 0.92em; }
+        .tpl-badge {
+            font-size: 0.7em; padding: 2px 7px; border-radius: 4px;
+            font-weight: 600;
+        }
+        .tpl-badge.scd2 { background: #6c5ce7; color: #fff; }
+        .tpl-badge.scd1 { background: #0984e3; color: #fff; }
+        .tpl-badge.full { background: #00b894; color: #fff; }
+        .tpl-card-steps { font-size: 0.78em; color: var(--text-secondary, #888); }
+        .tpl-card-actions { display: flex; gap: 6px; margin-top: 4px; }
+        .tpl-btn-use {
+            flex: 1; padding: 5px 10px;
+            background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;
+            border: none; border-radius: 5px; cursor: pointer; font-size: 0.8em;
+        }
+        .tpl-btn-use:hover { opacity: 0.9; }
+        .tpl-btn-del {
+            padding: 5px 10px; border: 1px solid #e74c3c; color: #e74c3c;
+            border-radius: 5px; background: transparent; cursor: pointer; font-size: 0.8em;
+        }
+        .tpl-btn-del:hover { background: #e74c3c; color: #fff; }
+        .tpl-loading, .tpl-empty {
+            padding: 40px; text-align: center;
+            color: var(--text-secondary, #888); font-size: 0.9em;
+        }
+        .tpl-error {
+            padding: 12px 16px; background: #fff5f5;
+            border: 1px solid #f5c6cb; border-radius: 6px;
+            color: #c0392b; font-size: 0.85em; margin: 16px;
+        }
+
+        /* ── History Tab ──────────────────────────────────────────── */
+        .history-toolbar {
+            display: flex; gap: 8px; padding: 10px 14px;
+            background: var(--bg-color, #f8f9fa);
+            border-bottom: 1px solid var(--border-color, #e0e0e0);
+            flex-wrap: wrap;
+        }
+        .history-toolbar select, .history-toolbar input {
+            padding: 5px 8px; border: 1px solid var(--border-color, #ddd);
+            border-radius: 6px; font-size: 0.85em;
+            background: var(--card-bg, #fff); color: var(--text-primary, #333);
+        }
+        .history-table-wrap { flex: 1; overflow: auto; }
+        .history-table {
+            width: 100%; border-collapse: collapse; font-size: 0.83em;
+        }
+        .history-table th, .history-table td {
+            padding: 7px 12px; border-bottom: 1px solid var(--border-color, #eee);
+            text-align: left; white-space: nowrap;
+        }
+        .history-table th {
+            background: var(--bg-color, #f5f5f5); font-weight: 700;
+            position: sticky; top: 0; z-index: 1;
+        }
+        .history-table tr:hover td { background: #f4f0ff; }
+        .run-dot {
+            width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+            vertical-align: middle; margin-right: 5px;
+        }
+        .run-dot.ok      { background: #27ae60; }
+        .run-dot.error   { background: #e74c3c; }
+        .run-dot.running { background: #f39c12; }
+        .run-dot.never   { background: #bbb; }
+        .history-empty {
+            padding: 40px; text-align: center;
+            color: var(--text-secondary, #888); font-size: 0.9em;
+        }
+
+        /* ── Error Banner ─────────────────────────────────────────── */
+        .page-error {
+            padding: 10px 14px; background: #fff5f5;
+            border: 1px solid #f5c6cb; border-radius: 8px;
+            color: #c0392b; font-size: 0.87em; display: none;
+        }
+    </style>
+</head>
+<body>
+<div class="jobs-page">
+
+    <studio-nav active="jobs"></studio-nav>
+
+    <main class="jobs-main">
+
+        <!-- Fehler-Banner -->
+        <div class="page-error" id="page-error"></div>
+
+        <!-- Tab-Leiste -->
+        <div class="page-tabs">
+            <button class="page-tab active" data-tab="tab-jobs">⚙ Jobs</button>
+            <button class="page-tab"        data-tab="tab-templates">📋 Templates</button>
+            <button class="page-tab"        data-tab="tab-history">🕒 History</button>
+        </div>
+
+        <!-- ── Tab: Jobs ─────────────────────────────────────────── -->
+        <div class="tab-pane active" id="tab-jobs">
+            <!-- Liste links -->
+            <div class="split-left">
+                <div class="split-left-header">
+                    <span>ETL-Jobs</span>
+                    <button class="btn-add" id="btn-new-job">＋ Neuer Job</button>
+                </div>
+                <div class="split-body" id="job-list-container"></div>
+            </div>
+            <!-- Detail rechts -->
+            <div class="split-right" id="job-detail-container">
+                <div class="split-right-empty">
+                    <div class="split-right-empty-icon">⚙</div>
+                    <div>Job aus der Liste auswählen</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Tab: Templates ────────────────────────────────────── -->
+        <div class="tab-pane" id="tab-templates">
+            <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+                <div id="tpl-content">
+                    <div class="tpl-loading">⏳ Lade Templates…</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Tab: History ──────────────────────────────────────── -->
+        <div class="tab-pane" id="tab-history">
+            <div style="flex:1;background:var(--card-bg,#fff);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.07);display:flex;flex-direction:column;overflow:hidden">
+                <div class="history-toolbar">
+                    <select id="hist-status">
+                        <option value="">Alle Status</option>
+                        <option value="ok">✅ OK</option>
+                        <option value="error">❌ Fehler</option>
+                        <option value="running">⏳ Läuft</option>
+                    </select>
+                    <select id="hist-limit">
+                        <option value="50">50 Einträge</option>
+                        <option value="100">100 Einträge</option>
+                        <option value="200">200 Einträge</option>
+                    </select>
+                    <button class="page-tab" id="btn-hist-refresh" style="padding:5px 12px">↺ Neu laden</button>
+                </div>
+                <div class="history-table-wrap">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Job</th>
+                                <th>Source → Target</th>
+                                <th>Start</th>
+                                <th>Dauer</th>
+                                <th>Zeilen</th>
+                                <th>Run-ID</th>
+                            </tr>
+                        </thead>
+                        <tbody id="hist-tbody">
+                            <tr><td colspan="7" class="history-empty">⏳ Lade History…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────
+let _jobDetail = null;
+let _selectedJobId = null;
+let _jobList   = null;
+
+// ── Fehler ────────────────────────────────────────────────────────
+document.addEventListener('studio:api-error', e => showError(`API-Fehler ${e.detail.status}: ${e.detail.message}`));
+function showError(msg) {
+    const el = document.getElementById('page-error');
+    el.textContent = msg; el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 8000);
+}
+
+// ── Tab-Switching ─────────────────────────────────────────────────
+document.querySelectorAll('.page-tab[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.page-tab[data-tab]').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const pane = document.getElementById(btn.dataset.tab);
+        if (pane) pane.classList.add('active');
+        // Lazy-Load
+        if (btn.dataset.tab === 'tab-templates') loadTemplates();
+        if (btn.dataset.tab === 'tab-history')   loadHistory();
+    });
+});
+
+// ── Jobs Tab ──────────────────────────────────────────────────────
+function initJobsTab() {
+    const listContainer   = document.getElementById('job-list-container');
+    const detailContainer = document.getElementById('job-detail-container');
+
+    _jobList = new JobList(listContainer, {
+        onSelect: (jobId) => {
+            _selectedJobId = jobId;
+            detailContainer.innerHTML = '';
+            _jobDetail = new JobDetail(detailContainer);
+            _jobDetail.load(jobId);
+        },
+    });
+    _jobList.load();
+
+    document.getElementById('btn-new-job').addEventListener('click', () => {
+        ETLWizard.openModal({});
+    });
+
+    // Nach Wizard-Erfolg → Liste neu laden + neuen Job selektieren
+    document.addEventListener('studio:job-created', e => {
+        _jobList.load();
+        if (e.detail?.job_id) {
+            setTimeout(() => {
+                _jobList.setSelected(e.detail.job_id);
+                detailContainer.innerHTML = '';
+                _jobDetail = new JobDetail(detailContainer);
+                _jobDetail.load(e.detail.job_id);
+            }, 600);
+        }
+    });
+
+    // Nach Job-Löschung → Detail leeren, Liste neu laden
+    document.addEventListener('studio:job-deleted', () => {
+        _selectedJobId = null;
+        detailContainer.innerHTML = `
+            <div class="split-right-empty">
+                <div class="split-right-empty-icon">⚙</div>
+                <div>Job aus der Liste auswählen</div>
+            </div>`;
+        _jobList.load();
+    });
+}
+
+// ── Templates Tab ─────────────────────────────────────────────────
+let _tplLoaded = false;
+async function loadTemplates() {
+    if (_tplLoaded) return;
+    _tplLoaded = true;
+    const container = document.getElementById('tpl-content');
+    container.innerHTML = '<div class="tpl-loading">⏳ Lade Templates…</div>';
+    try {
+        const templates = await window.api.templates.listJobs();
+        if (!templates.length) {
+            container.innerHTML = '<div class="tpl-empty">Keine Templates vorhanden. Jobs können als Template gespeichert werden.</div>';
+            return;
+        }
+        renderTemplates(templates, container);
+    } catch (err) {
+        container.innerHTML = `<div class="tpl-error">Fehler: ${escHtml(err.message)}</div>`;
+    }
+}
+
+function renderTemplates(templates, container) {
+    container.innerHTML = '';
+    const grid = document.createElement('div');
+    grid.className = 'tpl-grid';
+
+    templates.forEach(tpl => {
+        const ht  = (tpl.historization_type || 'FULL').toUpperCase();
+        const card = document.createElement('div');
+        card.className = 'tpl-card';
+        card.innerHTML = `
+            <div class="tpl-card-header">
+                <span class="tpl-card-name">${escHtml(tpl.template_name)}</span>
+                <span class="tpl-badge ${ht.toLowerCase()}">${ht}</span>
+            </div>
+            <div class="tpl-card-steps">
+                ${tpl.step_count != null ? `${tpl.step_count} Steps` : ''}
+                ${tpl.description ? ' · ' + escHtml(tpl.description) : ''}
+            </div>
+            <div class="tpl-card-actions">
+                <button class="tpl-btn-use" data-id="${tpl.template_id}">▶ Verwenden</button>
+                <button class="tpl-btn-del" data-id="${tpl.template_id}">🗑</button>
+            </div>`;
+        card.querySelector('.tpl-btn-use').addEventListener('click', () => {
+            ETLWizard.openModal({ templateId: tpl.template_id, templateName: tpl.template_name });
+        });
+        card.querySelector('.tpl-btn-del').addEventListener('click', async () => {
+            if (!confirm(`Template "${tpl.template_name}" löschen?`)) return;
+            try {
+                await window.api.templates.deleteJob(tpl.template_id);
+                _tplLoaded = false;
+                loadTemplates();
+            } catch (err) { showError('Fehler beim Löschen: ' + err.message); }
+        });
+        grid.appendChild(card);
+    });
+    container.appendChild(grid);
+}
+
+// ── History Tab ───────────────────────────────────────────────────
+let _histLoaded = false;
+async function loadHistory() {
+    const tbody  = document.getElementById('hist-tbody');
+    const status = document.getElementById('hist-status').value;
+    const limit  = parseInt(document.getElementById('hist-limit').value) || 50;
+    tbody.innerHTML = '<tr><td colspan="7" class="history-empty">⏳ Lade History…</td></tr>';
+    try {
+        const params = { limit };
+        if (status) params.status = status;
+        const runs = await window.api.etl.runs.list(params);
+        const list = Array.isArray(runs) ? runs : (runs?.items ?? []);
+        if (!list.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="history-empty">Keine Ausführungen gefunden.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.map(run => {
+            const s = (run.status || '').toLowerCase();
+            const dc = s === 'running' ? 'running' : (s === 'ok' || s === 'success' || s === 'completed') ? 'ok' : s === 'error' || s === 'failed' ? 'error' : 'never';
+            const dur = run.duration_seconds != null ? `${Math.round(run.duration_seconds)}s` : '—';
+            const rows = run.rows_processed != null ? run.rows_processed.toLocaleString() : '—';
+            return `<tr>
+                <td><span class="run-dot ${dc}"></span>${escHtml(run.status || '—')}</td>
+                <td>${escHtml(run.job_name || '—')}</td>
+                <td>${escHtml(run.source_table_name || '—')} → ${escHtml(run.target_table_name || '—')}</td>
+                <td>${formatTs(run.started_at)}</td>
+                <td>${dur}</td>
+                <td>${rows}</td>
+                <td style="font-size:0.78em;color:#aaa">${run.run_id ?? '—'}</td>
+            </tr>`;
+        }).join('');
+        _histLoaded = true;
+    } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="history-empty" style="color:#c0392b">Fehler: ${escHtml(err.message)}</td></tr>`;
+    }
+}
+
+document.getElementById('btn-hist-refresh').addEventListener('click', () => {
+    _histLoaded = false;
+    loadHistory();
+});
+document.getElementById('hist-status').addEventListener('change', () => {
+    _histLoaded = false;
+    loadHistory();
+});
+document.getElementById('hist-limit').addEventListener('change', () => {
+    _histLoaded = false;
+    loadHistory();
+});
+
+// ── Hilfsfunktionen ───────────────────────────────────────────────
+function escHtml(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function formatTs(ts) {
+    if (!ts) return '—';
+    try {
+        const d = new Date(ts);
+        const p = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    } catch { return ts; }
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+initJobsTab();
+
+})();
+</script>
+</body>
+</html>

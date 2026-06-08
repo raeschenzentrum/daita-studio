@@ -90,7 +90,7 @@ Die daita-modeler-Services werden als neue Router in das bestehende daita-studio
 | **C6** | Component | `etl-wizard.js` – ETL + Zieltabelle anlegen (1 Wizard) | B2 + C3 + C5 | ✅ Erledigt |
 | **C7** | Component | `job-list.js` – Job-Liste mit Filter/Suche | C1 + C4 | ✅ Erledigt |
 | **M1** | Modul | `flow.html` – Layer-Übersicht + ETL-Status + Wizard | C2 + C4 + C6 | ✅ Erledigt |
-| **M2** | Modul | `modeler.html` – ERD-Canvas + Properties (table-editor) | B1 + C2 + C3 | 📝 Offen |
+| **M2** | Modul | `modeler.html` – ERD-Canvas + Properties (table-editor) | B1 + C2 + C3 | ✅ Erledigt |
 | **M3** | Modul | `jobs.html` – Job-Verwaltung + Templates + History | C2 + C6 + C7 | 📝 Offen |
 | **M4** | Modul | `index.html` – Startseite mit 6 Kacheln | C2 + M1..M3 | 📝 Offen |
 | **M5** | Modul | `lineage.html` – Column Lineage | C2 | 📝 Offen (P2) |

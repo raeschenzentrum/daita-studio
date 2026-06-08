@@ -87,7 +87,7 @@ Die daita-modeler-Services werden als neue Router in das bestehende daita-studio
 | **C3** | Component | `table-editor.js` – Spalten/Index/FK-Editor | B1 + C1 | ✅ Erledigt |
 | **C4** | Component | `job-detail.js` – Job-Detail + Steps + Run-Button | C1 | ✅ Erledigt |
 | **C5** | Component | `column-selector.js` – Spalten-Auswahl PK/Hash/Load | C1 | ✅ Erledigt |
-| **C6** | Component | `etl-wizard.js` – ETL + Zieltabelle anlegen (1 Wizard) | B2 + C3 + C5 | 📝 Offen |
+| **C6** | Component | `etl-wizard.js` – ETL + Zieltabelle anlegen (1 Wizard) | B2 + C3 + C5 | ✅ Erledigt |
 | **C7** | Component | `job-list.js` – Job-Liste mit Filter/Suche | C1 + C4 | 📝 Offen |
 | **M1** | Modul | `flow.html` – Layer-Übersicht + ETL-Status + Wizard | C2 + C4 + C6 | 📝 Offen |
 | **M2** | Modul | `modeler.html` – ERD-Canvas + Properties (table-editor) | B1 + C2 + C3 | 📝 Offen |

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>metadaita - Column Lineage Analyzer</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .top-nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .top-nav .brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .top-nav .brand h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .top-nav .nav-links {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .top-nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.95em;
+        }
+        .top-nav a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .top-nav a.active {
+            background: rgba(255,255,255,0.25);
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="brand">
+            <a href="index.html" style="color: white; text-decoration: none;">
+                <h1>🔍 metadaita</h1>
+            </a>
+        </div>
+        <div class="nav-links">
+            <a href="data-flow.html">🌊 Flow</a>
+            <a href="lineage.html" class="active">🔗 Lineage</a>
+            <a href="etl-dashboard.html">🚀 ETL</a>
+            <a href="pipeline.html">🔀 Pipeline</a>
+            <a href="source-systems.html">🗄️ Sources</a>
+            <a href="metadata-explorer.html">📊 Metadata</a>
+        </div>
+    </nav>
+
+    <div class="container">
+
+        <div class="main-content">
+            <!-- Mode Selection -->
+            <section class="card">
+                <h2>Analyse Modus</h2>
+                <div class="mode-selection">
+                    <label class="radio-label">
+                        <input type="radio" name="mode" value="lineage" id="modeLineage" checked>
+                        <span>📊 Lineage Analyse</span>
+                        <small>Spalten-Herkunft und Transformationen analysieren</small>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="mode" value="conversion" id="modeConversion">
+                        <span>🔄 SQL Konvertierung</span>
+                        <small>SQL in anderen Dialekt konvertieren (z.B. Teradata)</small>
+                    </label>
+                </div>
+            </section>
+
+            <!-- SQL Input Section -->
+            <section class="card">
+                <h2>SQL Statement</h2>
+                <div class="form-group">
+                    <label for="sqlInput">SQL Code:</label>
+                    <textarea id="sqlInput" rows="15" placeholder="SELECT ... FROM ... eingeben"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="dialectSelect">SQL Dialect (Quelle):</label>
+                        <select id="dialectSelect">
+                            <option value="tsql">T-SQL (MS SQL Server)</option>
+                            <option value="postgres">PostgreSQL</option>
+                            <option value="mysql">MySQL</option>
+                            <option value="oracle">Oracle</option>
+                            <option value="teradata">Teradata</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="targetDialectGroup" style="display: none;">
+                        <label for="targetDialectSelect">Ziel-Dialect:</label>
+                        <select id="targetDialectSelect">
+                            <!-- Dynamisch gefüllt aus API Config -->
+                        </select>
+                    </div>
+                    <div class="form-group" id="llmGroup">
+                        <label for="llmSelect">LLM Backend:</label>
+                        <select id="llmSelect">
+                            <option value="">Ohne LLM</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="llmReviewGroup" style="display: none;">
+                        <label for="llmReviewSelect">LLM Review (bis zu 2):</label>
+                        <select id="llmReviewSelect" multiple size="3">
+                            <!-- Dynamisch gefüllt -->
+                        </select>
+                        <small>Strg/Cmd + Klick für mehrere LLMs</small>
+                    </div>
+                </div>
+                <div class="button-group">
+                    <button id="analyzeBtn" class="btn btn-primary">🚀 Analyse starten</button>
+                    <button id="convertBtn" class="btn btn-primary" style="display: none;">🔄 SQL konvertieren</button>
+                    <button id="manageConnectionsBtn" class="btn btn-secondary">⚙️ Connections verwalten</button>
+                </div>
+            </section>
+
+            <!-- Loading Indicator -->
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p id="loadingText">Analysiere SQL und generiere Lineage...</p>
+            </div>
+
+            <!-- Lineage Results Section -->
+            <section id="results" class="card" style="display: none;">
+                <h2>Lineage Analyse Ergebnis</h2>
+                <div id="stats" class="stats"></div>
+                <div class="button-group">
+                    <button id="viewMermaidBtn" class="btn btn-secondary">📊 Diagramm anzeigen</button>
+                    <button id="downloadHtmlBtn" class="btn btn-secondary">💾 HTML Report öffnen</button>
+                </div>
+                <div id="columnsTable"></div>
+            </section>
+
+            <!-- Conversion Results Section -->
+            <section id="conversionResults" class="card" style="display: none;">
+                <h2>SQL Konvertierung Ergebnis</h2>
+                <div id="conversionStats" class="stats"></div>
+                
+                <div class="code-section">
+                    <h3>Konvertiertes SQL (Teradata)</h3>
+                    <pre id="convertedSql"><code></code></pre>
+                    <button id="copyConvertedBtn" class="btn btn-secondary">📋 Kopieren</button>
+                </div>
+
+                <div id="llmReviewsSection" style="display: none;">
+                    <h3>LLM Reviews & Empfehlungen</h3>
+                    <div id="llmReviews"></div>
+                </div>
+            </section>
+
+            <!-- Mermaid Diagram Modal -->
+            <div id="mermaidModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close">&times;</span>
+                    <h2>Column Lineage Diagramm</h2>
+                    <div id="mermaidContainer" class="mermaid-container"></div>
+                </div>
+            </div>
+
+            <!-- Connection Manager Modal -->
+            <div id="connectionModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" id="closeConnModal">&times;</span>
+                    <h2>LLM Connections</h2>
+                    <div id="connectionsList"></div>
+                    <hr>
+                    <h3>Neue Connection</h3>
+                    <form id="newConnectionForm">
+                        <div class="form-group">
+                            <label>Connection ID:</label>
+                            <input type="text" id="newConnId" required placeholder="z.B. ollama-custom">
+                        </div>
+                        <div class="form-group">
+                            <label>Name:</label>
+                            <input type="text" id="newConnName" required placeholder="z.B. Ollama Custom">
+                        </div>
+                        <div class="form-group">
+                            <label>Backend Typ:</label>
+                            <select id="newConnType" required>
+                                <option value="ollama">Ollama</option>
+                                <option value="llm-farm">LLM-Farm</option>
+                                <option value="openai">OpenAI</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>URL:</label>
+                            <input type="text" id="newConnUrl" required placeholder="http://localhost:11434">
+                        </div>
+                        <div class="form-group">
+                            <label>Model:</label>
+                            <input type="text" id="newConnModel" required placeholder="llama3.2:3b">
+                        </div>
+                        <div class="form-group">
+                            <label>API Key (optional):</label>
+                            <input type="text" id="newConnApiKey" placeholder="Optional">
+                        </div>
+                        <div class="form-group">
+                            <label>Timeout (Sekunden):</label>
+                            <input type="number" id="newConnTimeout" value="90" min="10" max="300">
+                        </div>
+                        <button type="submit" class="btn btn-primary">➕ Connection hinzufügen</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html>

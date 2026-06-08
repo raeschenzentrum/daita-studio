@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETL Orchestrator Dashboard - metadaita</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .top-nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .top-nav .brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .top-nav .brand h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .top-nav .nav-links {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .top-nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.95em;
+        }
+        .top-nav a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .top-nav a.active {
+            background: rgba(255,255,255,0.25);
+            font-weight: 600;
+        }
+        
+        /* Dashboard-spezifische Styles */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+        }
+        
+        .stat-card.success {
+            border-left-color: #4CAF50;
+        }
+        
+        .stat-card.warning {
+            border-left-color: #FF9800;
+        }
+        
+        .stat-card.error {
+            border-left-color: #f44336;
+        }
+        
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+        
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .jobs-table {
+            width: 100%;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow-x: auto;
+        }
+        
+        .jobs-table table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 1100px;
+        }
+        
+        .jobs-table th {
+            background: #667eea;
+            color: white;
+            padding: 12px 10px;
+            text-align: left;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        
+        .jobs-table td {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .jobs-table tr:hover {
+            background: #f5f5f5;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .status-badge.active {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        
+        .status-badge.inactive {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+        
+        .status-badge.success {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        
+        .status-badge.failed {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+        
+        .status-badge.running {
+            background: #EDE7F6;
+            color: #5E35B1;
+        }
+        
+        .status-badge.paused {
+            background: #FFF3E0;
+            color: #E65100;
+        }
+        
+        .status-badge.cancelled {
+            background: #FAFAFA;
+            color: #616161;
+        }
+        
+        .status-badge.skipped {
+            background: #FFF8E1;
+            color: #F57F17;
+        }
+        
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s;
+        }
+        
+        .btn:hover {
+            background: #5568d3;
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 0.8em;
+        }
+        
+        .btn-warning {
+            background: #FF9800;
+        }
+        
+        .btn-warning:hover {
+            background: #F57C00;
+        }
+        
+        .btn-danger {
+            background: #F44336;
+        }
+        
+        .btn-danger:hover {
+            background: #D32F2F;
+        }
+        
+        .btn-success {
+            background: #4CAF50;
+        }
+        
+        .btn-success:hover {
+            background: #388E3C;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .section-title {
+            font-size: 1.5em;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .error-message {
+            background: #FFEBEE;
+            color: #C62828;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+        }
+        
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+        
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: #000;
+        }
+        
+        .step-timeline {
+            margin-top: 20px;
+        }
+        
+        .step-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ddd;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        
+        .step-item.success {
+            border-left-color: #4CAF50;
+        }
+        
+        .step-item.failed {
+            border-left-color: #f44336;
+        }
+        
+        .step-item.skipped {
+            border-left-color: #FFC107;
+        }
+        
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .step-metrics {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .refresh-indicator {
+            display: inline-block;
+            margin-left: 10px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        
+        /* Execution Progress Styles */
+        .execution-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .execution-header h3 {
+            margin: 0 0 10px 0;
+        }
+        
+        .execution-status {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 1.1em;
+        }
+        
+        .execution-status .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .execution-timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+        
+        .execution-timeline::before {
+            content: '';
+            position: absolute;
+            left: 10px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: #ddd;
+        }
+        
+        .execution-step {
+            position: relative;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            border-left: 4px solid #ddd;
+        }
+        
+        .execution-step::before {
+            content: '';
+            position: absolute;
+            left: -26px;
+            top: 20px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #ddd;
+            border: 2px solid white;
+        }
+        
+        .execution-step.pending {
+            border-left-color: #9E9E9E;
+        }
+        
+        .execution-step.pending::before {
+            background: #9E9E9E;
+        }
+        
+        .execution-step.running {
+            border-left-color: #667eea;
+            background: #EDE7F6;
+        }
+        
+        .execution-step.running::before {
+            background: #667eea;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+        }
+        
+        .execution-step.success {
+            border-left-color: #4CAF50;
+        }
+        
+        .execution-step.success::before {
+            background: #4CAF50;
+        }
+        
+        .execution-step.failed {
+            border-left-color: #f44336;
+        }
+        
+        .execution-step.failed::before {
+            background: #f44336;
+        }
+        
+        .execution-step.skipped {
+            border-left-color: #FF9800;
+            opacity: 0.7;
+        }
+        
+        .execution-step.skipped::before {
+            background: #FF9800;
+        }
+        
+        .execution-step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .execution-step-name {
+            font-weight: 600;
+            font-size: 1.05em;
+        }
+        
+        .execution-step-metrics {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 8px;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .metric-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .metric-item.success {
+            color: #4CAF50;
+        }
+        
+        .execution-summary {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .execution-summary h4 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        
+        .summary-item {
+            text-align: center;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 6px;
+        }
+        
+        .summary-item .value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .summary-item .label {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="brand">
+            <a href="index.html" style="color: white; text-decoration: none;">
+                <h1>🔍 metadaita</h1>
+            </a>
+        </div>
+        <div class="nav-links">
+            <a href="data-flow.html">🌊 Flow</a>
+            <a href="lineage.html">🔗 Lineage</a>
+            <a href="etl-dashboard.html" class="active">🚀 ETL</a>
+            <a href="pipeline.html">🔀 Pipeline</a>
+            <a href="source-systems.html">🗄️ Sources</a>
+            <a href="metadata-explorer.html">📊 Metadata</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        
+        <!-- Dashboard Stats -->
+        <div class="section">
+            <h2 class="section-title">Overview <span class="refresh-indicator" id="lastUpdate"></span></h2>
+            <div class="dashboard-grid" id="statsGrid">
+                <div class="loading">Loading statistics...</div>
+            </div>
+        </div>
+        
+        <!-- Active Jobs -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">ETL Jobs</h2>
+                <div>
+                    <label>
+                        <input type="checkbox" id="activeOnlyFilter" checked>
+                        Show active only
+                    </label>
+                    <button class="btn btn-sm" onclick="refreshJobs()">🔄 Refresh</button>
+                </div>
+            </div>
+            <div class="jobs-table" id="jobsTable">
+                <div class="loading">Loading jobs...</div>
+            </div>
+        </div>
+        
+        <!-- Recent Job Runs -->
+        <div class="section">
+            <div class="section-header">
+                <h2 class="section-title">Recent Job Runs</h2>
+                <button class="btn btn-sm" onclick="refreshRuns()">🔄 Refresh</button>
+            </div>
+            <div class="jobs-table" id="runsTable">
+                <div class="loading">Loading runs...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Job Run Details Modal -->
+    <div id="runDetailsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Job Run Details</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="modalBody">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Job Execution Modal -->
+    <div id="executionModal" class="modal">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2 id="executionModalTitle">🚀 Job Execution</h2>
+                <span class="close" onclick="closeExecutionModal()">&times;</span>
+            </div>
+            <div id="executionModalBody">
+                <div class="loading">Starting...</div>
+            </div>
+            <div class="modal-footer" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; display: flex; justify-content: space-between;">
+                <div id="executionProgress" style="color: #666;"></div>
+                <div>
+                    <button class="btn" id="btnCloseExecution" onclick="closeExecutionModal()" style="display: none;">Schließen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="config.js"></script>
+    <script src="etl-dashboard.js?v=2.3"></script>
+</body>
+</html>

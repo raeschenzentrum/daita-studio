@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>metadaita - Data Governance Platform</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .hero {
+            text-align: center;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px;
+            margin-bottom: 40px;
+        }
+        .hero h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+        }
+        .hero p {
+            font-size: 1.2em;
+            opacity: 0.95;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+        .dashboard-card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+            border-color: #667eea;
+        }
+        .dashboard-card h2 {
+            color: #333;
+            margin-top: 0;
+            font-size: 1.8em;
+            margin-bottom: 15px;
+        }
+        .dashboard-card .icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        .dashboard-card p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .dashboard-card .features {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+        }
+        .dashboard-card .features li {
+            padding: 8px 0;
+            color: #555;
+            font-size: 0.95em;
+        }
+        .dashboard-card .features li:before {
+            content: "✓ ";
+            color: #667eea;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        .dashboard-card .btn {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 6px;
+            text-decoration: none;
+            transition: background 0.3s;
+            font-weight: 600;
+        }
+        .dashboard-card .btn:hover {
+            background: #5568d3;
+        }
+        .lineage-card { border-top: 4px solid #667eea; }
+        .etl-card { border-top: 4px solid #f57c00; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>🔍 metadaita</h1>
+            <p>Comprehensive Data Governance & ETL Management Platform</p>
+            <p style="font-size: 0.9em; margin-top: 10px;">Column Lineage Analysis • ETL Orchestration • AI-Enhanced Documentation</p>
+            <a href="data-flow.html" style="display: inline-block; margin-top: 20px; background: rgba(255,255,255,0.2); color: white; padding: 15px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: background 0.3s;">
+                🌊 Data Flow Overview öffnen →
+            </a>
+        </div>
+
+        <div class="dashboard-grid">
+            <!-- Lineage Analysis -->
+            <div class="dashboard-card lineage-card" onclick="location.href='lineage.html'">
+                <div class="icon">📊</div>
+                <h2>Lineage Analysis</h2>
+                <p>Analysiere SQL Queries und visualisiere Column Lineage mit automatischer Herkunftsverfolgung und Transformationserkennung.</p>
+                <ul class="features">
+                    <li>SQL Parsing für multiple Dialekte (T-SQL, PostgreSQL, MySQL)</li>
+                    <li>Automatische Column Lineage Extraktion</li>
+                    <li>Mermaid Diagramm Visualisierung</li>
+                    <li>AI-generierte fachliche Beschreibungen</li>
+                    <li>HTML Report Generation</li>
+                    <li>SQL Dialect Conversion</li>
+                </ul>
+                <a href="lineage.html" class="btn">Zur Lineage Analyse →</a>
+            </div>
+
+            <!-- ETL Orchestrator -->
+            <div class="dashboard-card etl-card" onclick="location.href='etl-dashboard.html'">
+                <div class="icon">🚀</div>
+                <h2>ETL Orchestrator</h2>
+                <p>Metadata-Driven ETL Framework für Teradata mit Job Monitoring, Step-by-Step Execution und Performance Tracking.</p>
+                <ul class="features">
+                    <li>Metadata-Driven Job Configuration</li>
+                    <li>Real-time Job Monitoring</li>
+                    <li>Step-by-Step Execution Tracking</li>
+                    <li>SCD Type 2 Template Support</li>
+                    <li>Error Handling & Recovery</li>
+                    <li>Performance Statistics</li>
+                </ul>
+                <a href="etl-dashboard.html" class="btn">Zum ETL Dashboard →</a>
+            </div>
+        </div>
+
+        <footer style="text-align: center; margin-top: 60px; padding: 20px; color: #999; border-top: 1px solid #eee;">
+            <p><strong>metadaita</strong> - Data Governance Platform v1.0 | DWH MVP Team | 2026</p>
+            <p style="font-size: 0.85em; margin-top: 10px;">
+                <a href="architecture.html" target="_blank" style="color: #667eea; text-decoration: none;">🏗️ System Architecture</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# SQL Dialect Conversion Configuration
+# Configure which target dialects are available for SQL conversion
+
+# Allowed target dialects for conversion
+# Available dialects: teradata, postgres, mysql, oracle, tsql, snowflake, bigquery, redshift, spark
+# Set to restrict available options in UI (e.g., only ["teradata"] for Teradata-only conversion)
+allowed_target_dialects:
+  - teradata
+
+# Default target dialect (must be in allowed_target_dialects list)
+default_target_dialect: teradata
+
+# Enable LLM review of converted SQL
+llm_review_enabled: true
+
+# LLM review prompt template
+llm_review_prompt: |
+  You are a {target_dialect} SQL expert. Review the following converted SQL code and provide:
+  1. Syntax correctness assessment
+  2. Best practices recommendations
+  3. Performance optimization tips
+  4. Potential issues or warnings
+  5. Teradata-specific optimizations (if applicable)
+  
+  Source Dialect: {source_dialect}
+  Target Dialect: {target_dialect}
+  
+  Converted SQL:
+  ```sql
+  {converted_sql}
+  ```
+  
+  Provide a concise expert review (max 500 words).
+
+# Maximum tokens for LLM review
+llm_review_max_tokens: 1000
+
+# Timeout for LLM review (seconds)
+llm_review_timeout: 60

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Architecture - metadaita</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        header h1 {
+            color: #667eea;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .back-button {
+            display: inline-block;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background-color: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+
+        .back-button:hover {
+            background-color: #5568d3;
+        }
+
+        .diagram-container {
+            width: 100%;
+            height: calc(100vh - 200px);
+            min-height: 600px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            overflow: auto;
+            background: white;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .info-box {
+            margin: 20px 0;
+            padding: 15px;
+            background: #ede7f6;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+        }
+
+        .info-box h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .info-box ul {
+            margin-left: 20px;
+            line-height: 1.8;
+        }
+
+        .info-box li {
+            margin-bottom: 5px;
+        }
+
+        .info-box strong {
+            color: #5e35b1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="back-button">← Zurück zur Hauptseite</a>
+        
+        <header>
+            <h1>🏗️ Data Architecture & Layer Overview</h1>
+            <p>Data Maturity Model mit PERSON-Tabelle Lineage</p>
+        </header>
+
+        <div class="info-box">
+            <h3>🔗 Dargestellte PERSON Tabellen-Lineage:</h3>
+            <ul>
+                <li><strong>RAW Layer:</strong> TAAA_PERSON - 1:1 Kopie vom Source-System</li>
+                <li><strong>DISCOVERABLE Layer:</strong> TAAA_PERSON_HISTORY - Historisierung mit SCD Type 2</li>
+                <li><strong>REUSABLE Layer:</strong> PART_PERSON - Konsolidierte Business Entity</li>
+                <li><strong>CONSUMABLE Layer:</strong> DIM_PERSON - Dimension für Star Schema</li>
+            </ul>
+            <p style="margin-top: 10px;">
+                <a href="architecture.drawio" download class="back-button" style="font-size: 0.9em;">📥 Diagramm herunterladen</a>
+                <a href="https://app.diagrams.net/" target="_blank" class="back-button" style="font-size: 0.9em; margin-left: 10px; background-color: #f57c00;">🖊️ In Draw.io öffnen</a>
+            </p>
+        </div>
+
+        <div class="diagram-container">
+            <iframe 
+                src="https://viewer.diagrams.net/?tags=%7B%7D&highlight=0000ff&edit=_blank&layers=1&nav=1&title=architecture.drawio#Uhttps%3A%2F%2Fraw.githubusercontent.com%2Fyour-repo%2Farchitecture.drawio"
+                id="diagramFrame"
+                frameborder="0"
+                allowfullscreen>
+            </iframe>
+        </div>
+
+        <script>
+            // Lade die Draw.io-Datei lokal
+            window.addEventListener('DOMContentLoaded', function() {
+                fetch('architecture.drawio')
+                    .then(response => response.text())
+                    .then(data => {
+                        const encoded = encodeURIComponent(data);
+                        const viewerUrl = `https://viewer.diagrams.net/?tags=%7B%7D&highlight=0000ff&layers=1&nav=1&title=architecture.drawio#R${encoded}`;
+                        document.getElementById('diagramFrame').src = viewerUrl;
+                    })
+                    .catch(error => {
+                        console.error('Fehler beim Laden des Diagramms:', error);
+                        document.querySelector('.diagram-container').innerHTML = `
+                            <div style="padding: 40px; text-align: center; color: #f44336;">
+                                <h3>⚠️ Diagramm konnte nicht geladen werden</h3>
+                                <p>Bitte öffnen Sie <a href="architecture.drawio" download style="color: #1976d2; text-decoration: underline;">architecture.drawio</a> mit Draw.io</p>
+                            </div>
+                        `;
+                    });
+            });
+        </script>
+
+        <div class="info-box" style="margin-top: 20px;">
+            <h3>ℹ️ Hinweise:</h3>
+            <ul>
+                <li>Das Diagramm zeigt die verschiedenen Data Layer der Lakehouse-Architektur</li>
+                <li>Die PERSON-Tabelle durchläuft alle Layer vom Raw bis zum Consumable Layer</li>
+                <li>Jeder Layer hat eine spezifische Rolle im Data Maturity Model</li>
+                <li>Die ETL-Prozesse transformieren die Daten zwischen den Layern</li>
+                <li>Um das Diagramm zu bearbeiten, öffnen Sie es direkt mit Draw.io</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

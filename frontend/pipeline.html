@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pipeline Management - metadaita</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .top-nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .top-nav .brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .top-nav .brand h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .top-nav .nav-links {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .top-nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.95em;
+        }
+        .top-nav a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .top-nav a.active {
+            background: rgba(255,255,255,0.25);
+            font-weight: 600;
+        }
+
+        /* Pipeline-spezifische Styles */
+        .pipeline-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        
+        .pipeline-header h2 {
+            margin: 0;
+            color: #333;
+            font-size: 1.8em;
+        }
+        
+        .pipeline-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .pipeline-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+            overflow: hidden;
+        }
+        
+        .pipeline-card-header {
+            background: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .pipeline-card-header h3 {
+            margin: 0;
+            font-size: 1.1em;
+            color: #333;
+        }
+        
+        .pipeline-card-body {
+            padding: 20px;
+        }
+        
+        .pipeline-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .pipeline-status.active {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        
+        .pipeline-status.inactive {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+        
+        .pipeline-status.running {
+            background: #EDE7F6;
+            color: #5E35B1;
+        }
+        
+        .pipeline-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .pipeline-info-item {
+            font-size: 0.9em;
+        }
+        
+        .pipeline-info-item label {
+            display: block;
+            color: #666;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+        
+        .pipeline-info-item .value {
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .pipeline-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .btn:hover {
+            background: #5568d3;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.85em;
+        }
+        
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #667eea;
+            color: #667eea;
+        }
+        
+        .btn-outline:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #4CAF50;
+        }
+        
+        .btn-success:hover {
+            background: #388E3C;
+        }
+        
+        .btn-warning {
+            background: #FF9800;
+        }
+        
+        .btn-warning:hover {
+            background: #F57C00;
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+        
+        .empty-state .icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        /* Info Card */
+        .info-card {
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 30px;
+        }
+        
+        .info-card h3 {
+            margin: 0 0 10px 0;
+            color: #1565c0;
+        }
+        
+        .info-card p {
+            margin: 0;
+            color: #333;
+        }
+    </style>
+    <script src="config.js"></script>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="brand">
+            <a href="index.html" style="color: white; text-decoration: none;">
+                <h1>🔍 metadaita</h1>
+            </a>
+        </div>
+        <div class="nav-links">
+            <a href="data-flow.html">🌊 Flow</a>
+            <a href="lineage.html">🔗 Lineage</a>
+            <a href="etl-dashboard.html">🚀 ETL</a>
+            <a href="pipeline.html" class="active">🔀 Pipeline</a>
+            <a href="source-systems.html">🗄️ Sources</a>
+            <a href="metadata-explorer.html">📊 Metadata</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="pipeline-header">
+            <h2>🔀 Pipeline Management</h2>
+            <button class="btn" onclick="refreshPipelines()">🔄 Aktualisieren</button>
+        </div>
+        
+        <div class="info-card">
+            <h3>Pipeline Orchestrierung</h3>
+            <p>Hier werden ETL-Pipelines verwaltet, die aus mehreren abhängigen Jobs bestehen. 
+               Definieren Sie Abhängigkeiten, überwachen Sie den Pipeline-Status und verwalten Sie 
+               die Ausführungsreihenfolge Ihrer Datenpipelines.</p>
+        </div>
+        
+        <div id="pipelineContent">
+            <div class="empty-state">
+                <div class="icon">🔀</div>
+                <h3>Keine Pipelines konfiguriert</h3>
+                <p>Erstellen Sie Ihre erste Pipeline, um mehrere ETL-Jobs zu orchestrieren.</p>
+                <button class="btn" style="margin-top: 20px;">➕ Neue Pipeline erstellen</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = (window.METADAITA_CONFIG?.backend_url || `http://${window.location.hostname}:8010`) + '/api';
+        
+        function refreshPipelines() {
+            console.log('Refreshing pipelines...');
+            // TODO: Implement pipeline refresh
+        }
+        
+        // Page initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Pipeline Management loaded');
+        });
+    </script>
+</body>
+</html>

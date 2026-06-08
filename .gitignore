@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+
+# Logs
+log/*.log
+log/tpt/
+
+# Generated artefacts
+ddl/generated/
+tpt/generated/
+sql/generated/
+
+# Config mit Credentials (niemals committen!)
+cfg/database.yml
+cfg/connections.json
+
+# Temporäre Dateien
+tmp/
+*.tmp
+
+# Diagramme (lokal, optional im Repo)
+# diagrams/*.json
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo

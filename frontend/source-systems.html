@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Source Systems - metadaita</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="components/source-wizard.css">
+    <style>
+        .top-nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .top-nav .brand {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .top-nav .brand h1 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        .top-nav .nav-links {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .top-nav a {
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: background 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.95em;
+        }
+        .top-nav a:hover {
+            background: rgba(255,255,255,0.2);
+        }
+        .top-nav a.active {
+            background: rgba(255,255,255,0.25);
+            font-weight: 600;
+        }
+
+        /* Layout - Vertical */
+        .main-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 0 30px 30px;
+        }
+        
+        /* Source Systems as horizontal cards */
+        .source-systems-bar {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+        
+        .source-systems-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: flex-start;
+        }
+        
+        .source-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            padding: 20px 25px;
+            min-width: 180px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: center;
+        }
+        
+        .source-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px rgba(102, 126, 234, 0.3);
+            border-color: #667eea;
+        }
+        
+        .source-card.selected {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .source-card.selected .source-type-badge,
+        .source-card.selected .source-host {
+            color: rgba(255,255,255,0.8);
+        }
+        
+        .source-card .source-code {
+            font-weight: 700;
+            font-size: 1.3em;
+            margin-bottom: 5px;
+        }
+        
+        .source-card .source-type-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            background: rgba(102, 126, 234, 0.15);
+            color: #667eea;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+        
+        .source-card.selected .source-type-badge {
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .source-card .source-host {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 8px;
+        }
+        
+        /* Detail Section below */
+        .source-detail-section {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 20px;
+            display: none;
+            animation: slideDown 0.3s ease;
+        }
+        
+        .source-detail-section.visible {
+            display: block;
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Legacy - hidden */
+        .sidebar {
+            display: none;
+        }
+        
+        .main-content {
+            display: none;
+        }
+
+        /* Source System List */
+        .source-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .source-item {
+            padding: 15px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .source-item:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+        }
+        
+        .source-item.selected {
+            border-color: #667eea;
+            background: #f5f7ff;
+        }
+        
+        .source-item .source-code {
+            font-weight: 600;
+            font-size: 1.1em;
+            color: #333;
+        }
+        
+        .source-item .source-type {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            background: #e3f2fd;
+            color: #1565c0;
+            margin-left: 8px;
+        }
+        
+        .source-item .source-name {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 4px;
+        }
+        
+        .source-item .source-host {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 600;
+        }
+        
+        .status-badge.active {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+        
+        .status-badge.inactive {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+
+        /* Table Browser */
+        .table-browser {
+            margin-top: 20px;
+        }
+        
+        .table-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+        }
+        
+        .table-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .table-item:hover {
+            background: #f5f5f5;
+        }
+        
+        .table-item:last-child {
+            border-bottom: none;
+        }
+        
+        .table-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+        
+        .table-item .table-name {
+            flex: 1;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        
+        .table-item .table-type {
+            font-size: 0.8em;
+            color: #888;
+        }
+        
+        .table-item.has-job {
+            background: #f0fff0;
+        }
+        
+        .table-item.has-job .job-indicator {
+            color: #4CAF50;
+            font-size: 0.85em;
+        }
+
+        /* Column Preview */
+        .column-preview {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        
+        .column-preview h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .column-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 8px;
+            font-size: 0.9em;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        
+        .column-header {
+            font-weight: 600;
+            padding: 8px;
+            background: #667eea;
+            color: white;
+            border-radius: 4px;
+        }
+        
+        .column-cell {
+            padding: 6px 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .column-cell.source {
+            background: #f5f5f5;
+        }
+        
+        .column-cell.target {
+            background: #fff;
+        }
+        
+        .column-cell input {
+            width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 4px 6px;
+            font-family: inherit;
+            font-size: inherit;
+        }
+        
+        .column-cell input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+        }
+
+        /* Actions */
+        .action-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.95em;
+            transition: background 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn:hover {
+            background: #5568d3;
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .btn-success {
+            background: #4CAF50;
+        }
+        
+        .btn-success:hover {
+            background: #388E3C;
+        }
+        
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.85em;
+        }
+        
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #667eea;
+            color: #667eea;
+        }
+        
+        .btn-outline:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        /* Form Elements */
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.95em;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+        }
+
+        /* Job Creation Panel */
+        .job-creation-panel {
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .job-creation-panel h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Loading & Empty States */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: #666;
+        }
+        
+        .loading .spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #888;
+        }
+        
+        .empty-state .icon {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+
+        /* Toast Notifications */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            animation: slideIn 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .toast.success {
+            background: #4CAF50;
+        }
+        
+        .toast.error {
+            background: #f44336;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Section Headers */
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .section-header h2, .section-header h3 {
+            margin: 0;
+            color: #333;
+        }
+        
+        .search-input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            width: 200px;
+        }
+
+        /* Info Cards */
+        .info-card {
+            background: #e3f2fd;
+            border-left: 4px solid #1976d2;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .info-card.warning {
+            background: #fff3e0;
+            border-left-color: #ff9800;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <div class="brand">
+            <a href="index.html" style="color: white; text-decoration: none;">
+                <h1>🔍 metadaita</h1>
+            </a>
+        </div>
+        <div class="nav-links">
+            <a href="data-flow.html">🌊 Flow</a>
+            <a href="lineage.html">🔗 Lineage</a>
+            <a href="etl-dashboard.html">🚀 ETL</a>
+            <a href="pipeline.html">🔀 Pipeline</a>
+            <a href="source-systems.html" class="active">🗄️ Sources</a>
+            <a href="metadata-explorer.html">📊 Metadata</a>
+        </div>
+    </nav>
+
+    <div class="main-layout">
+        <!-- Wizard Start Section -->
+        <section class="source-systems-bar">
+            <div class="section-header">
+                <h3>🧙 TPT Job Wizard</h3>
+            </div>
+            <div style="padding: 20px; text-align: center;">
+                <p style="margin-bottom: 20px; color: #666;">
+                    Der Wizard führt Sie durch alle Schritte: Source System → Tabellen → Spalten-Mapping → Job-Steps → Erstellen
+                </p>
+                <button class="btn btn-success" style="font-size: 1.2em; padding: 15px 30px;" onclick="startWizard()">
+                    🧙 TPT Wizard starten
+                </button>
+            </div>
+        </section>
+
+        <!-- Source Systems Overview (Info only) -->
+        <section class="source-systems-bar">
+            <div class="section-header">
+                <h3>Registrierte Source Systems</h3>
+                <button class="btn btn-sm btn-outline" onclick="loadSourceSystems()">🔄</button>
+            </div>
+            
+            <div id="sourceSystemsRow" class="source-systems-row">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Lade Source Systems...
+                </div>
+            </div>
+        </section>
+        
+        <!-- Wizard Container (Fullscreen) -->
+        <div id="wizardContainer" class="wizard-fullscreen" style="display: none;"></div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="components/source-wizard.js"></script>
+    <script src="source-systems.js"></script>
+    <script>
+        let wizard = null;
+        
+        function startWizard() {
+            // Show wizard fullscreen
+            document.getElementById('wizardContainer').style.display = 'block';
+            
+            wizard = new SourceWizard({
+                container: '#wizardContainer',
+                mode: 'fullscreen',
+                onJobCreated: (result) => {
+                    showToast(`Job "${result.job_name}" erfolgreich erstellt mit ${result.steps_created} Steps`, 'success');
+                    closeWizard();
+                },
+                onClose: () => {
+                    closeWizard();
+                }
+            });
+            wizard.init();
+        }
+        
+        function closeWizard() {
+            document.getElementById('wizardContainer').style.display = 'none';
+            document.getElementById('wizardContainer').innerHTML = '';
+            wizard = null;
+        }
+    </script>
+    
+    <style>
+        .wizard-fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            z-index: 2000;
+            overflow-y: auto;
+        }
+    </style>
+</body>
+</html>

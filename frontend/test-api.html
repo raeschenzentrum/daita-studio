@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Backend API Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .success { background: #e8f5e9; }
+        .error { background: #ffebee; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Backend API Test</h1>
+    <button onclick="runTests()">Run All Tests</button>
+    <div id="results"></div>
+
+    <script>
+        async function runTests() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p>Running tests...</p>';
+            
+            const tests = [
+                {
+                    name: 'Health Check',
+                    url: 'http://localhost:8001/'
+                },
+                {
+                    name: 'Lineage Connections',
+                    url: 'http://localhost:8001/api/connections'
+                },
+                {
+                    name: 'ETL Dashboard Stats',
+                    url: 'http://localhost:8001/api/etl/dashboard/stats'
+                },
+                {
+                    name: 'ETL Jobs',
+                    url: 'http://localhost:8001/api/etl/jobs'
+                },
+                {
+                    name: 'ETL Runs',
+                    url: 'http://localhost:8001/api/etl/runs?limit=5'
+                }
+            ];
+            
+            let html = '';
+            
+            for (const test of tests) {
+                try {
+                    const start = Date.now();
+                    const response = await fetch(test.url);
+                    const duration = Date.now() - start;
+                    const data = await response.json();
+                    
+                    html += `
+                        <div class="test success">
+                            <h3>✅ ${test.name}</h3>
+                            <p><strong>URL:</strong> ${test.url}</p>
+                            <p><strong>Status:</strong> ${response.status} ${response.statusText}</p>
+                            <p><strong>Duration:</strong> ${duration}ms</p>
+                            <details>
+                                <summary>Response Data</summary>
+                                <pre>${JSON.stringify(data, null, 2)}</pre>
+                            </details>
+                        </div>
+                    `;
+                } catch (error) {
+                    html += `
+                        <div class="test error">
+                            <h3>❌ ${test.name}</h3>
+                            <p><strong>URL:</strong> ${test.url}</p>
+                            <p><strong>Error:</strong> ${error.message}</p>
+                            <pre>${error.stack}</pre>
+                        </div>
+                    `;
+                }
+            }
+            
+            results.innerHTML = html;
+        }
+        
+        // Auto-run on load
+        window.addEventListener('load', runTests);
+    </script>
+</body>
+</html>

@@ -1,0 +1,208 @@
+# ============================================================================
+# Parameter-Generierungsregeln für Job-Steps
+# ============================================================================
+# Diese Config definiert wie Step-Parameter aus User-Input generiert werden.
+# Template-Parameter-Werte werden IGNORIERT - nur die Struktur zählt.
+# ============================================================================
+
+# ==========================================================================
+# Layer-Konfiguration
+# ==========================================================================
+# Jeder Layer hat eigene Regeln für Datenbanken, Präfixe, Suffixe
+layers:
+  raw:
+    database: "MDP01_RAW_LAYER"
+    # RAW = 1:1 Kopie, keine Historisierung
+    
+  discoverable:
+    database: "MDP01_DISCOVERABLE_LAYER"
+    history_suffix: "_HISTORY"        # Suffix für historisierte Tabellen
+    key_prefix: "KEY_"                # Prefix für Key-Tabellen (Surrogate Keys)
+    
+  reusable:
+    database: "MDP01_REUSABLE_LAYER"
+    history_suffix: "_HISTORY"
+    
+  consumable:
+    database: "MDP01_CONSUMABLE_LAYER"
+    # Finale Tabellen, typischerweise ohne _HISTORY Suffix
+
+# ==========================================================================
+# Staging-Tabellen (temporär, Layer-übergreifend)
+# ==========================================================================
+staging:
+  prefix: "temp_"
+  suffix: "_staging"
+
+# ==========================================================================
+# Composite Key Konfiguration
+# ==========================================================================
+# Wenn ein Natural Key aus mehreren Spalten besteht, werden sie zu einem
+# einzigen NATURAL_KEY_VALUE-String konkateniert.
+# Der Separator muss so gewählt sein, dass er NICHT in den PK-Werten vorkommt.
+composite_key:
+  separator: "~|~"      # Trennzeichen zwischen PK-Teilen (kollisionssicher)
+  max_col_length: 100   # Max. Länge pro PK-Spalte im zusammengesetzten Key-String
+
+# ==========================================================================
+# Core-Name Extraktion
+# ==========================================================================
+# Wie wird der "Core Name" aus dem Source-Tabellennamen extrahiert?
+# z.B. "zas_einkommen" → "einkommen", "TAAA_IDENTITAET" → "IDENTITAET"
+core_name_extraction:
+  # Prefixe die entfernt werden (Reihenfolge wichtig - längste zuerst)
+  remove_prefixes:
+    - "TAAA_"
+    - "TAAS_"
+    - "TAA_"
+    - "zas_"
+    - "ZAS_"
+
+# ==========================================================================
+# Parameter-Generierung pro Parameter-Typ
+# ==========================================================================
+# Definiert wie jeder Parameter aus User-Input generiert wird.
+# Variablen: {source_table}, {target_table}, {core_name}, {pk_columns}, {hash_columns}
+parameter_generation:
+  # Key-Database: aus databases.key_database Config
+  KEY_DATABASE:
+    source: "config:databases.key_database"
+    description: "Database für Key-Tabellen (Surrogate Keys)"
+  
+  # Key-Tabelle: prefix + core_name (uppercase)
+  KEY_TABLE:
+    pattern: "{key_table_prefix}{core_name_upper}"
+    description: "Name der Key-Tabelle für Natural Keys"
+  
+  # Natural Key Column: erste PK-Spalte
+  NATURAL_KEY_COL:
+    source: "first_pk_column"
+    description: "Primäre Natural Key Spalte"
+  
+  # Business Key: alle PK-Spalten kommasepariert
+  BUSINESS_KEY:
+    source: "pk_columns_csv"
+    description: "Alle Business Key Spalten"
+  
+  # Staging-Tabelle: prefix + source + suffix
+  STAGING_TABLE:
+    pattern: "{staging_prefix}{source_table}{staging_suffix}"
+    description: "Temporäre Staging-Tabelle"
+  
+  # Temp-Tabelle für neue Records (SCD2)
+  NEW_RECORDS_TABLE:
+    pattern: "{staging_prefix}{source_table}_new"
+    description: "Temporäre Tabelle für neue Records"
+  
+  # Temp-Tabelle für geänderte Records (SCD2)
+  CHANGED_RECORDS_TABLE:
+    pattern: "{staging_prefix}{source_table}_changed"
+    description: "Temporäre Tabelle für geänderte Records"
+  
+  # Source/Target werden direkt übernommen
+  SOURCE_TABLE:
+    source: "source_table"
+    description: "Quell-Tabelle"
+  
+  TARGET_TABLE:
+    source: "target_table"
+    description: "Ziel-Tabelle"
+  
+  # Hash-Spalten für SCD2
+  HASH_COLUMNS:
+    source: "hash_columns_csv"
+    description: "Spalten für Change-Detection Hash"
+  
+  # Select-Spalten (alle zu ladenden)
+  SELECT_COLUMNS:
+    source: "select_columns_csv"
+    description: "Alle zu selektierenden Spalten"
+  
+  # Insert-Spalten für Target-Tabelle
+  INSERT_COLUMNS:
+    source: "select_columns"
+    description: "Spalten für INSERT in Target-Tabelle (= select_columns)"
+  
+  # Source-Database (aus Layer-Config)
+  SOURCE_DATABASE:
+    source: "config:layers.raw.database"
+    description: "Quell-Database (typisch RAW Layer)"
+
+# ==========================================================================
+# SCD2 Technische Spalten
+# ==========================================================================
+# Namen, Datentypen und Defaults der technischen Spalten bei SCD2-Historisierung.
+# pattern: Platzhalter {core_name} wird durch Tabellen-Kernname ersetzt
+# fallback: Wird verwendet wenn core_name leer ist
+# type: Teradata-Datentyp
+# nullable: true/false (default: true)
+# default: SQL DEFAULT-Klausel (ohne DEFAULT Keyword)
+scd2_technical_columns:
+  # Surrogate Key (erste Spalte, tabellenspezifischer Name)
+  surrogate_key:
+    pattern: "{core_name}_SK"
+    fallback: "SURROGATE_KEY"
+    type: "BIGINT"
+    nullable: false
+  
+  # SCD2 Versionierung
+  valid_from:
+    name: "VALID_FROM"
+    type: "TIMESTAMP(6)"
+    nullable: false
+    default: "CURRENT_TIMESTAMP(6)"
+  
+  valid_to:
+    name: "VALID_TO"
+    type: "TIMESTAMP(6)"
+    nullable: true
+  
+  is_current:
+    name: "IS_CURRENT"
+    type: "CHAR(1) CHARACTER SET UNICODE"
+    nullable: true
+    default: "'Y'"
+  
+  # Change Detection Hash
+  record_hash:
+    name: "RECORD_HASH"
+    type: "BYTE(20)"
+    nullable: true
+  
+  # Audit Spalten
+  created_timestamp:
+    name: "CREATED_TIMESTAMP"
+    type: "TIMESTAMP(6)"
+    nullable: false
+    default: "CURRENT_TIMESTAMP(6)"
+  
+  last_updated_timestamp:
+    name: "LAST_UPDATED_TIMESTAMP"
+    type: "TIMESTAMP(6)"
+    nullable: true
+  
+  created_by:
+    name: "CREATED_BY"
+    type: "VARCHAR(128) CHARACTER SET UNICODE"
+    nullable: true
+    default: "USER"
+  
+  last_updated_by:
+    name: "LAST_UPDATED_BY"
+    type: "VARCHAR(128) CHARACTER SET UNICODE"
+    nullable: true
+
+# ==========================================================================
+# DDL-Optionen für Target-Tabellen
+# ==========================================================================
+target_table_ddl:
+  # Teradata SET vs MULTISET
+  table_type: "SET"
+  
+  # Primary Index Definition (Platzhalter werden ersetzt)
+  # {sk_column}: Surrogate Key Spaltenname (z.B. AUFENTHALT_SK)
+  # {valid_from}: VALID_FROM Spaltenname
+  primary_index:
+    columns:
+      - "{sk_column}"
+      - "{valid_from}"

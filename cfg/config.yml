@@ -1,0 +1,45 @@
+# ============================================================================
+# daita-studio Configuration
+# ============================================================================
+# DB-Credentials und -Settings → siehe database.yml
+# ============================================================================
+
+# Installation Root (alle relativen Pfade beziehen sich hierauf)
+# Leer lassen → wird automatisch aus Datei-Lage ermittelt
+# install_root: '/mnt/user/devel/daita-lakehouse/daita-studio'
+
+# ==========================================================================
+# Server-Ports
+# ==========================================================================
+server:
+  backend_port: 8015
+  frontend_port: 9015
+
+# ==========================================================================
+# Pfade für generierte Artefakte
+# ==========================================================================
+paths:
+  # DDL-Dateien (CREATE/DROP TABLE)
+  ddl_output: 'ddl/generated'
+
+  # TPT Scripts
+  tpt_output: 'tpt/generated'
+  tpt_log: 'log/tpt'
+
+  # SQL Templates (Input)
+  sql_templates: 'ddl/sql_templates'
+
+  # SQL generiert
+  sql_output: 'sql/generated'
+
+  # Logs
+  log: 'log'
+
+  # Diagramm-Layouts (ERD)
+  diagrams: 'diagrams'
+
+# ==========================================================================
+# Logging
+# ==========================================================================
+logging:
+  level: 'INFO'

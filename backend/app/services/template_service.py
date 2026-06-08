@@ -487,6 +487,7 @@ class TemplateService:
             #    - Wenn nur target_table_name → im TARGET-LAYER suchen oder neu anlegen
             target_table_id = request.target_table_id
             target_layer_id = expected_target_layer_id
+            target_created = False  # B2: Flag ob Zieltabelle neu angelegt wurde
             
             if not target_table_id and request.target_table_name:
                 # Erst versuchen, Tabelle im TARGET-LAYER zu finden (NICHT im Source-Layer!)
@@ -527,6 +528,7 @@ class TemplateService:
                     
                     target_table_id = next_table_id
                     target_layer_id = next_layer_id
+                    target_created = True  # B2: Neu angelegt
                     logger.info(f"Neue Target-Tabelle erstellt: {request.target_table_name} (ID={next_table_id})")
             
             if not target_table_id:
@@ -789,18 +791,29 @@ class TemplateService:
             if key_table_name and key_database:
                 self._ensure_key_table_exists(cursor, conn, key_database, key_table_name)
             
-            # Ziel-Tabelle automatisch erstellen wenn nicht vorhanden (AF-009)
+            # Ziel-Tabelle physisch in Teradata anlegen wenn nicht vorhanden (AF-009)
             if new_target and key_database:
                 self._ensure_target_table_exists(
-                    cursor, conn, 
-                    key_database, 
+                    cursor, conn,
+                    key_database,
                     new_target,
                     request.source_table_id,
                     pk_columns if isinstance(pk_columns, list) else [],
                     core_name=core_name
                 )
-            
-            return job_id
+
+            # B2: META_COLUMN für neue Zieltabelle anlegen (Spalten + SCD2-Technische-Spalten)
+            if target_created and target_table_id:
+                sel_cols = select_columns if isinstance(select_columns, list) else ([select_columns] if select_columns else [])
+                self._populate_target_columns_in_meta(
+                    cursor, conn,
+                    target_table_id=target_table_id,
+                    source_table_id=request.source_table_id,
+                    select_columns=sel_cols,
+                    core_name=core_name
+                )
+
+            return {"job_id": job_id, "target_table_id": target_table_id, "target_created": target_created}
             
         finally:
             cursor.close()
@@ -946,6 +959,119 @@ class TemplateService:
             logger.error(f"Fehler beim Erstellen der Key-Tabelle {fqn}: {e}")
             # Kein raise - Job wurde bereits erstellt, Key-Tabelle kann später manuell erstellt werden
     
+    def _populate_target_columns_in_meta(
+        self,
+        cursor,
+        conn,
+        target_table_id: int,
+        source_table_id: int,
+        select_columns: List[str],
+        core_name: str = ''
+    ) -> int:
+        """
+        B2: Erstellt META_COLUMN-Einträge für eine neu angelegte Zieltabelle.
+
+        Reihenfolge:
+          1. SCD2-Technische-Spalten (SK, VALID_FROM, VALID_TO, IS_CURRENT, RECORD_HASH, Audit)
+          2. Source-Spalten (aus select_columns, Typ/Länge aus META_COLUMN der Source)
+
+        Überspringt falls für diese table_id bereits Einträge vorhanden.
+        """
+        col_tbl = "MDP01_META.META_COLUMN"
+
+        # Prüfen ob bereits Spalten vorhanden
+        cursor.execute(f"SELECT COUNT(*) FROM {col_tbl} WHERE TABLE_ID = ?", [target_table_id])
+        existing_count = cursor.fetchone()[0]
+        if existing_count > 0:
+            logger.debug(f"META_COLUMN für table_id={target_table_id} bereits vorhanden ({existing_count}), übersprungen")
+            return existing_count
+
+        # Nächste freie COLUMN_ID
+        cursor.execute(f"SELECT COALESCE(MAX(COLUMN_ID), 0) + 1 FROM {col_tbl}")
+        next_col_id = int(cursor.fetchone()[0])
+
+        scd2_config = self.param_rules.get('scd2_technical_columns', {})
+        col_position = 1
+        inserted = 0
+
+        # --- 1. SCD2-Technische-Spalten ---
+        scd2_order = [
+            'surrogate_key', 'valid_from', 'valid_to', 'is_current',
+            'record_hash', 'created_timestamp', 'last_updated_timestamp',
+            'created_by', 'last_updated_by',
+        ]
+        for key in scd2_order:
+            cfg = scd2_config.get(key)
+            if not cfg:
+                continue
+
+            if key == 'surrogate_key':
+                pattern  = cfg.get('pattern', '{core_name}_SK')
+                fallback = cfg.get('fallback', 'SURROGATE_KEY')
+                col_name = pattern.replace('{core_name}', core_name.upper()) if core_name else fallback
+            else:
+                col_name = cfg.get('name', key.upper())
+
+            col_type    = cfg.get('type', 'VARCHAR(255)')
+            nullable    = 'N' if not cfg.get('nullable', True) else 'Y'
+            is_pk       = 'Y' if key == 'surrogate_key' else 'N'
+            is_scd      = 'N' if key == 'surrogate_key' else 'Y'
+            is_audit    = 'Y' if key in ('created_timestamp', 'last_updated_timestamp', 'created_by', 'last_updated_by') else 'N'
+
+            cursor.execute(f"""
+                INSERT INTO {col_tbl}
+                    (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
+                     COLUMN_TYPE, NULLABLE, IS_TECHNICAL_KEY, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
+                     ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                        CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
+            """, [next_col_id, target_table_id, col_name, col_position,
+                  col_type, nullable, is_pk, is_scd, is_audit])
+            next_col_id  += 1
+            col_position += 1
+            inserted     += 1
+
+        # --- 2. Source-Spalten (Typ/Länge aus META_COLUMN der Source) ---
+        cursor.execute("""
+            SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_LENGTH,
+                   DECIMAL_TOTAL_DIGITS, DECIMAL_FRACTIONAL_DIGITS,
+                   NULLABLE, IS_BUSINESS_KEY, CHARSET
+            FROM MDP01_META.META_COLUMN
+            WHERE TABLE_ID = ?
+            ORDER BY COLUMN_POSITION
+        """, [source_table_id])
+        source_col_map = {r[0].upper(): r for r in cursor.fetchall()}
+
+        for col_name in select_columns:
+            col_upper = col_name.upper()
+            src = source_col_map.get(col_upper)
+            if src:
+                _, col_type, col_length, dec_total, dec_frac, nullable, is_bk, charset = src
+            else:
+                col_type, col_length, dec_total, dec_frac, nullable, is_bk, charset = \
+                    'VARCHAR(255)', None, None, None, 'Y', 'N', None
+
+            cursor.execute(f"""
+                INSERT INTO {col_tbl}
+                    (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
+                     COLUMN_TYPE, COLUMN_LENGTH,
+                     DECIMAL_TOTAL_DIGITS, DECIMAL_FRACTIONAL_DIGITS,
+                     NULLABLE, IS_BUSINESS_KEY, IS_TECHNICAL_KEY, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
+                     CHARSET,
+                     ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'N', 'N', 'N', ?,
+                        CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
+            """, [next_col_id, target_table_id, col_upper, col_position,
+                  col_type, col_length, dec_total, dec_frac,
+                  nullable or 'Y', is_bk or 'N', charset])
+            next_col_id  += 1
+            col_position += 1
+            inserted     += 1
+
+        conn.commit()
+        logger.info(f"META_COLUMN für neue Zieltabelle table_id={target_table_id}: {inserted} Spalten angelegt")
+        return inserted
+
     def _ensure_target_table_exists(
         self, 
         cursor, 

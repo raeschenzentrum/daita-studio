@@ -129,8 +129,13 @@ async def create_job_from_template(template_id: int, request: CreateJobFromTempl
     request.template_id = template_id
     
     try:
-        job_id = _service.create_job_from_template(request)
-        return {"job_id": job_id, "message": f"Job aus Template {template_id} erstellt"}
+        result = _service.create_job_from_template(request)
+        return {
+            "job_id":         result["job_id"],
+            "target_table_id": result["target_table_id"],
+            "target_created": result["target_created"],
+            "message": f"Job aus Template {template_id} erstellt"
+        }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>daita-studio – Design Demo</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="components/api.js"></script>
+    <script src="components/nav-header.js"></script>
+    <script src="components/table-editor.js"></script>
+    <style>
+        body { margin: 0; background: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+        .demo-page { display: flex; flex-direction: column; min-height: 100vh; }
+
+        .demo-content { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+
+        /* ---- Karten ---- */
+        .demo-card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .demo-card-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff;
+            padding: 10px 16px;
+            font-size: 0.85em;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .demo-card-body { padding: 16px; }
+
+        /* ---- full-width ---- */
+        .full-width { grid-column: 1 / -1; }
+
+        /* ---- Module-Kacheln (für index.html Preview) ---- */
+        .module-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+        .module-tile {
+            border-radius: 10px;
+            padding: 22px 18px;
+            color: #fff;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s;
+            text-decoration: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .module-tile:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(0,0,0,0.15); }
+        .module-tile .tile-icon { font-size: 2.2em; }
+        .module-tile .tile-name { font-weight: 700; font-size: 1.1em; }
+        .module-tile .tile-desc { font-size: 0.82em; opacity: 0.88; }
+        .tile-flow    { background: linear-gradient(135deg, #667eea, #764ba2); }
+        .tile-modeler { background: linear-gradient(135deg, #11998e, #38ef7d); color: #fff; }
+        .tile-jobs    { background: linear-gradient(135deg, #f7971e, #ffd200); color: #333; }
+        .tile-lineage { background: linear-gradient(135deg, #8e2de2, #4a00e0); }
+        .tile-sources { background: linear-gradient(135deg, #0f2027, #203a43, #2c5364); }
+        .tile-settings{ background: linear-gradient(135deg, #bdc3c7, #2c3e50); }
+
+        /* ---- Statuskarten ---- */
+        .stat-row { display: flex; gap: 12px; }
+        .stat-box {
+            flex: 1;
+            border-radius: 8px;
+            padding: 14px 16px;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .stat-box .stat-val { font-size: 2em; font-weight: 700; }
+        .stat-box .stat-lbl { font-size: 0.8em; opacity: 0.88; }
+        .stat-blue   { background: linear-gradient(135deg, #667eea, #764ba2); }
+        .stat-green  { background: linear-gradient(135deg, #11998e, #38ef7d); color: #333; }
+        .stat-orange { background: linear-gradient(135deg, #f7971e, #ffd200); color: #333; }
+        .stat-purple { background: linear-gradient(135deg, #8e2de2, #4a00e0); }
+
+        /* ---- Job-Liste Vorschau ---- */
+        .job-list { display: flex; flex-direction: column; gap: 8px; }
+        .job-item {
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: background 0.15s;
+            cursor: pointer;
+        }
+        .job-item:hover { background: #f8f8ff; }
+        .job-status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+        .dot-ok    { background: #4caf50; }
+        .dot-warn  { background: #ff9800; }
+        .dot-err   { background: #f44336; }
+        .dot-idle  { background: #bbb; }
+        .job-name  { font-weight: 600; font-size: 0.92em; flex: 1; }
+        .job-meta  { font-size: 0.78em; color: #888; }
+        .job-badge {
+            font-size: 0.73em; padding: 2px 8px; border-radius: 10px; font-weight: 600;
+        }
+        .badge-scd2  { background: #e8f5e9; color: #2e7d32; }
+        .badge-full  { background: #e3f2fd; color: #1565c0; }
+        .badge-scd1  { background: #fff8e1; color: #f57f17; }
+
+        /* ---- Layer-Flow Vorschau ---- */
+        .flow-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 4px; }
+        .flow-layer {
+            border-radius: 8px;
+            padding: 10px 14px;
+            min-width: 110px;
+            text-align: center;
+            color: #fff;
+            font-size: 0.85em;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+        .flow-arrow { color: #aaa; font-size: 1.4em; flex-shrink: 0; }
+        .layer-src   { background: #607d8b; }
+        .layer-raw   { background: #5c6bc0; }
+        .layer-disc  { background: #7b1fa2; }
+        .layer-reus  { background: #00838f; }
+        .layer-cons  { background: #2e7d32; }
+        .layer-meta  { background: #e65100; }
+
+        .flow-tables { display: flex; flex-direction: column; gap: 4px; }
+        .flow-table-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 10px; border-radius: 6px; border: 1px solid #e8e8e8; font-size: 0.82em;
+        }
+        .flow-table-item .ft-status { width: 8px; height: 8px; border-radius: 50%; }
+
+        /* ---- Table-Editor eingebettet ---- */
+        #te-demo-container {
+            height: 480px;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* ---- Toolbar-Vorschau ---- */
+        .toolbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 0; }
+        .tb-btn {
+            padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer;
+            font-size: 0.85em; font-weight: 500; display: flex; align-items: center; gap: 5px;
+        }
+        .tb-primary   { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+        .tb-secondary { background: #f0f0f0; color: #333; border: 1px solid #ddd; }
+        .tb-danger    { background: #fff0f0; color: #c62828; border: 1px solid #ffcdd2; }
+        .tb-success   { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+
+        /* ---- Badge / Tag Übersicht ---- */
+        .badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+        .tag {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 3px 10px; border-radius: 12px; font-size: 0.8em; font-weight: 600;
+        }
+        .tag-blue   { background: #e8eaf6; color: #3949ab; }
+        .tag-green  { background: #e8f5e9; color: #2e7d32; }
+        .tag-orange { background: #fff8e1; color: #f57f17; }
+        .tag-red    { background: #ffebee; color: #c62828; }
+        .tag-purple { background: #f3e5f5; color: #7b1fa2; }
+        .tag-grey   { background: #f5f5f5; color: #616161; }
+
+        /* ---- Farb-Palette ---- */
+        .palette { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+        .palette-swatch {
+            width: 50px; height: 50px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.65em; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+
+        /* ---- Responsive ---- */
+        @media (max-width: 900px) {
+            .demo-content { grid-template-columns: 1fr; }
+            .full-width { grid-column: 1; }
+            .module-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="demo-page">
+
+    <!-- C2: Nav-Header -->
+    <studio-nav active="flow"></studio-nav>
+
+    <div class="demo-content">
+
+        <!-- ====== STARTSEITE VORSCHAU (index.html) ====== -->
+        <div class="demo-card full-width">
+            <div class="demo-card-header">⬡ index.html – Startseite (M4 Vorschau)</div>
+            <div class="demo-card-body">
+                <div class="module-grid">
+                    <a class="module-tile tile-flow" href="#">
+                        <div class="tile-icon">⟳</div>
+                        <div class="tile-name">Flow</div>
+                        <div class="tile-desc">Layer-Übersicht, ETL-Status, Job-Wizard</div>
+                    </a>
+                    <a class="module-tile tile-modeler" href="#">
+                        <div class="tile-icon">⬡</div>
+                        <div class="tile-name">Modeler</div>
+                        <div class="tile-desc">ERD-Canvas, Tabellen & Spalten editieren</div>
+                    </a>
+                    <a class="module-tile tile-jobs" href="#">
+                        <div class="tile-icon">⚙</div>
+                        <div class="tile-name">Jobs</div>
+                        <div class="tile-desc">ETL-Jobs verwalten, Templates, History</div>
+                    </a>
+                    <a class="module-tile tile-lineage" href="#">
+                        <div class="tile-icon">↗</div>
+                        <div class="tile-name">Lineage</div>
+                        <div class="tile-desc">Column-Level Datenfluss (P2)</div>
+                    </a>
+                    <a class="module-tile tile-sources" href="#">
+                        <div class="tile-icon">⇄</div>
+                        <div class="tile-name">Sources</div>
+                        <div class="tile-desc">Source-Systeme & Verbindungen (P2)</div>
+                    </a>
+                    <a class="module-tile tile-settings" href="#">
+                        <div class="tile-icon">⚙</div>
+                        <div class="tile-name">Settings</div>
+                        <div class="tile-desc">Konfiguration & Parameter</div>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== STATS-KARTEN ====== -->
+        <div class="demo-card">
+            <div class="demo-card-header">📊 Dashboard Stats</div>
+            <div class="demo-card-body">
+                <div class="stat-row">
+                    <div class="stat-box stat-blue">
+                        <div class="stat-val">24</div>
+                        <div class="stat-lbl">Aktive Jobs</div>
+                    </div>
+                    <div class="stat-box stat-green">
+                        <div class="stat-val">312</div>
+                        <div class="stat-lbl">Tabellen</div>
+                    </div>
+                    <div class="stat-box stat-orange">
+                        <div class="stat-val">7</div>
+                        <div class="stat-lbl">Fehler heute</div>
+                    </div>
+                    <div class="stat-box stat-purple">
+                        <div class="stat-val">6</div>
+                        <div class="stat-lbl">Layer</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== LAYER-FLOW VORSCHAU ====== -->
+        <div class="demo-card">
+            <div class="demo-card-header">⟳ flow.html – Layer-Übersicht (M1 Vorschau)</div>
+            <div class="demo-card-body">
+                <div class="flow-row">
+                    <div class="flow-layer layer-src">SOURCE</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-layer layer-raw">RAW</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-layer layer-disc">DISC</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-layer layer-reus">REUS</div>
+                    <div class="flow-arrow">→</div>
+                    <div class="flow-layer layer-cons">CONS</div>
+                </div>
+                <div class="flow-tables">
+                    <div class="flow-table-item">
+                        <div class="ft-status dot-ok"></div>
+                        <span style="font-weight:600">DIM_PARTNER</span>
+                        <span style="color:#888;font-size:0.9em">DISC → REUS</span>
+                        <span class="tag tag-green" style="margin-left:auto">✅ OK</span>
+                    </div>
+                    <div class="flow-table-item">
+                        <div class="ft-status dot-warn"></div>
+                        <span style="font-weight:600">FCT_UMSATZ</span>
+                        <span style="color:#888;font-size:0.9em">DISC → REUS</span>
+                        <span class="tag tag-orange" style="margin-left:auto">⚠ DDL_PENDING</span>
+                    </div>
+                    <div class="flow-table-item">
+                        <div class="ft-status dot-err"></div>
+                        <span style="font-weight:600">DIM_PRODUKT</span>
+                        <span style="color:#888;font-size:0.9em">RAW → DISC</span>
+                        <span class="tag tag-red" style="margin-left:auto">❌ Fehler</span>
+                    </div>
+                    <div class="flow-table-item">
+                        <div class="ft-status dot-idle"></div>
+                        <span style="font-weight:600">DIM_KONTO</span>
+                        <span style="color:#888;font-size:0.9em">RAW → DISC</span>
+                        <span class="tag tag-grey" style="margin-left:auto">○ Inaktiv</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== JOB-LISTE VORSCHAU (C7) ====== -->
+        <div class="demo-card">
+            <div class="demo-card-header">⚙ job-list.js – Job-Liste (C7 Vorschau)</div>
+            <div class="demo-card-body">
+                <div style="display:flex;gap:8px;margin-bottom:12px">
+                    <input type="text" placeholder="🔍 Suche…" style="flex:1;padding:6px 10px;border:1px solid #ddd;border-radius:6px;font-size:0.88em">
+                    <select style="padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:0.88em">
+                        <option>Alle Layer</option>
+                        <option>RAW → DISC</option>
+                        <option>DISC → REUS</option>
+                    </select>
+                </div>
+                <div class="job-list">
+                    <div class="job-item">
+                        <div class="job-status-dot dot-ok"></div>
+                        <div class="job-name">RAW_TO_DISC_DIM_PARTNER</div>
+                        <div class="job-meta">letzte Run: 14:32</div>
+                        <span class="job-badge badge-scd2">SCD2</span>
+                    </div>
+                    <div class="job-item">
+                        <div class="job-status-dot dot-warn"></div>
+                        <div class="job-name">RAW_TO_DISC_FCT_UMSATZ</div>
+                        <div class="job-meta">letzte Run: 12:01</div>
+                        <span class="job-badge badge-full">FULL</span>
+                    </div>
+                    <div class="job-item">
+                        <div class="job-status-dot dot-err"></div>
+                        <div class="job-name">DISC_TO_REUS_DIM_PRODUKT</div>
+                        <div class="job-meta">Fehler vor 2h</div>
+                        <span class="job-badge badge-scd1">SCD1</span>
+                    </div>
+                    <div class="job-item">
+                        <div class="job-status-dot dot-idle"></div>
+                        <div class="job-name">RAW_TO_DISC_DIM_KONTO</div>
+                        <div class="job-meta">noch nie gelaufen</div>
+                        <span class="job-badge badge-scd2">SCD2</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== TABLE EDITOR (C3) ====== -->
+        <div class="demo-card full-width">
+            <div class="demo-card-header">⬤ table-editor.js – Spalten/Index/FK-Editor (C3)</div>
+            <div class="demo-card-body">
+                <p style="font-size:0.83em;color:#888;margin-bottom:10px">
+                    Simulierte Tabelle (ohne Backend-Verbindung). Mit echten Daten: <code>editor.load({ table_id:42, ... })</code>
+                </p>
+                <div id="te-demo-container"></div>
+            </div>
+        </div>
+
+        <!-- ====== BUTTONS & TOOLBAR ====== -->
+        <div class="demo-card">
+            <div class="demo-card-header">🎨 Buttons & Toolbar</div>
+            <div class="demo-card-body">
+                <div class="toolbar">
+                    <button class="tb-btn tb-primary">▶ Job ausführen</button>
+                    <button class="tb-btn tb-primary">＋ Neuer Job</button>
+                    <button class="tb-btn tb-secondary">💾 Speichern</button>
+                    <button class="tb-btn tb-secondary">📋 Template</button>
+                    <button class="tb-btn tb-success">✅ DDL ausführen</button>
+                    <button class="tb-btn tb-danger">🗑 Löschen</button>
+                </div>
+                <div style="margin-top:16px">
+                    <div style="font-size:0.82em;font-weight:700;color:#666;margin-bottom:8px">STATUS BADGES</div>
+                    <div class="badge-row">
+                        <span class="tag tag-green">✅ OK</span>
+                        <span class="tag tag-orange">⚠ DDL_PENDING</span>
+                        <span class="tag tag-red">❌ Fehler</span>
+                        <span class="tag tag-blue">⟳ Läuft</span>
+                        <span class="tag tag-purple">SCD2</span>
+                        <span class="tag tag-grey">○ Inaktiv</span>
+                        <span class="tag tag-green">SCD1</span>
+                        <span class="tag tag-blue">FULL</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== FARB-PALETTE ====== -->
+        <div class="demo-card">
+            <div class="demo-card-header">🎨 Design Tokens / Farb-Palette</div>
+            <div class="demo-card-body">
+                <div style="font-size:0.82em;font-weight:700;color:#666;margin-bottom:6px">PRIMÄRFARBEN</div>
+                <div class="palette">
+                    <div class="palette-swatch" style="background:#667eea">Primary</div>
+                    <div class="palette-swatch" style="background:#764ba2">Secondary</div>
+                    <div class="palette-swatch" style="background:#4caf50">Success</div>
+                    <div class="palette-swatch" style="background:#ff9800">Warning</div>
+                    <div class="palette-swatch" style="background:#f44336">Danger</div>
+                    <div class="palette-swatch" style="background:#9575cd">Info</div>
+                </div>
+                <div style="font-size:0.82em;font-weight:700;color:#666;margin:12px 0 6px">LAYER-FARBEN</div>
+                <div class="palette">
+                    <div class="palette-swatch" style="background:#607d8b">SRC</div>
+                    <div class="palette-swatch" style="background:#5c6bc0">RAW</div>
+                    <div class="palette-swatch" style="background:#7b1fa2">DISC</div>
+                    <div class="palette-swatch" style="background:#00838f">REUS</div>
+                    <div class="palette-swatch" style="background:#2e7d32">CONS</div>
+                    <div class="palette-swatch" style="background:#e65100">META</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ====== JOB DETAIL VORSCHAU (C4) ====== -->
+        <div class="demo-card full-width">
+            <div class="demo-card-header">⚙ job-detail.js – Job-Detail + Steps + Run-Button (C4 Vorschau)</div>
+            <div class="demo-card-body">
+                <div style="display:grid;grid-template-columns:1fr 2fr;gap:20px">
+                    <!-- Meta -->
+                    <div>
+                        <div style="font-size:0.82em;font-weight:700;color:#666;margin-bottom:8px">JOB-INFO</div>
+                        <table style="width:100%;border-collapse:collapse;font-size:0.85em">
+                            <tr><td style="padding:4px 0;color:#888">Name</td><td style="padding:4px 0;font-weight:600">RAW_TO_DISC_DIM_PARTNER</td></tr>
+                            <tr><td style="padding:4px 0;color:#888">Status</td><td><span class="tag tag-green">✅ Aktiv</span></td></tr>
+                            <tr><td style="padding:4px 0;color:#888">Typ</td><td><span class="tag tag-purple">SCD2</span></td></tr>
+                            <tr><td style="padding:4px 0;color:#888">Source</td><td>MDP01_RAW_LAYER.RAW_PARTNER</td></tr>
+                            <tr><td style="padding:4px 0;color:#888">Target</td><td>MDP01_DISC_LAYER.DISC_PARTNER</td></tr>
+                            <tr><td style="padding:4px 0;color:#888">Letzte Run</td><td>2026-06-08 14:32</td></tr>
+                        </table>
+                        <div style="margin-top:14px;display:flex;gap:8px">
+                            <button class="tb-btn tb-primary" style="flex:1">▶ Run</button>
+                            <button class="tb-btn tb-secondary">✏</button>
+                            <button class="tb-btn tb-danger">🗑</button>
+                        </div>
+                    </div>
+                    <!-- Steps -->
+                    <div>
+                        <div style="font-size:0.82em;font-weight:700;color:#666;margin-bottom:8px">JOB-STEPS</div>
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                            <div style="border:1px solid #e8e8e8;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+                                <span style="background:#e8eaf6;color:#3949ab;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8em;flex-shrink:0">1</span>
+                                <div style="flex:1">
+                                    <div style="font-weight:600;font-size:0.88em">EXTRACT</div>
+                                    <div style="font-size:0.78em;color:#888">SELECT * FROM RAW_PARTNER WHERE …</div>
+                                </div>
+                                <span class="tag tag-green">✅</span>
+                            </div>
+                            <div style="border:1px solid #e8e8e8;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+                                <span style="background:#e8eaf6;color:#3949ab;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8em;flex-shrink:0">2</span>
+                                <div style="flex:1">
+                                    <div style="font-weight:600;font-size:0.88em">TRANSFORM_SCD2</div>
+                                    <div style="font-size:0.78em;color:#888">Hash-Vergleich, VALID_FROM/TO setzen</div>
+                                </div>
+                                <span class="tag tag-green">✅</span>
+                            </div>
+                            <div style="border:1px solid #e8e8e8;border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px">
+                                <span style="background:#e8eaf6;color:#3949ab;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.8em;flex-shrink:0">3</span>
+                                <div style="flex:1">
+                                    <div style="font-weight:600;font-size:0.88em">LOAD_TPT</div>
+                                    <div style="font-size:0.78em;color:#888">TPT Export → Teradata Insert/Update</div>
+                                </div>
+                                <span class="tag tag-orange">⚠ Ausstehend</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /demo-content -->
+</div>
+
+<script>
+// ---- Table-Editor Demo (simulierte Daten, kein Backend nötig) ----
+document.addEventListener('DOMContentLoaded', () => {
+
+    // Fake-Table für Demo
+    const fakeTable = {
+        table_id:   1,
+        table_name: 'DISC_PARTNER',
+        db_name:    'MDP01_DISC_LAYER',
+    };
+
+    const container = document.getElementById('te-demo-container');
+    const editor    = new TableEditor(container);
+
+    // api.modeler.tables.get überschreiben um Demo-Daten zu liefern
+    const origGet = window.api.modeler.tables.get;
+    window.api.modeler.tables.get = (id) => Promise.resolve({
+        table_id: id,
+        table_name: 'DISC_PARTNER',
+        table_desc: 'Dimensionstabelle Partner (SCD2)',
+        is_historized: 'Y',
+        historization_type: 'SCD2',
+        valid_from_column: 'VALID_FROM',
+        valid_to_column: 'VALID_TO',
+        is_current_column: 'IS_CURRENT',
+    });
+    window.api.modeler.tables.columnsFull = (id) => Promise.resolve([
+        { column_id:1, column_name:'PARTNER_SK',  data_type:'BIGINT',        data_length:null, decimal_scale:null, nullable:'N', pk_flag:'Y', bk_flag:'N', audit_flag:'N' },
+        { column_id:2, column_name:'PARTNER_NR',  data_type:'VARCHAR',       data_length:20,   decimal_scale:null, nullable:'N', pk_flag:'N', bk_flag:'Y', audit_flag:'N' },
+        { column_id:3, column_name:'NAME',         data_type:'VARCHAR',       data_length:200,  decimal_scale:null, nullable:'Y', pk_flag:'N', bk_flag:'N', audit_flag:'N' },
+        { column_id:4, column_name:'VALID_FROM',   data_type:'TIMESTAMP(6)',  data_length:null, decimal_scale:null, nullable:'N', pk_flag:'N', bk_flag:'N', audit_flag:'N' },
+        { column_id:5, column_name:'VALID_TO',     data_type:'TIMESTAMP(6)',  data_length:null, decimal_scale:null, nullable:'Y', pk_flag:'N', bk_flag:'N', audit_flag:'N' },
+        { column_id:6, column_name:'IS_CURRENT',   data_type:'CHAR',          data_length:1,    decimal_scale:null, nullable:'N', pk_flag:'N', bk_flag:'N', audit_flag:'N' },
+        { column_id:7, column_name:'RECORD_HASH',  data_type:'VARCHAR',       data_length:64,   decimal_scale:null, nullable:'Y', pk_flag:'N', bk_flag:'N', audit_flag:'N' },
+        { column_id:8, column_name:'CREATED_AT',   data_type:'TIMESTAMP(6)',  data_length:null, decimal_scale:null, nullable:'N', pk_flag:'N', bk_flag:'N', audit_flag:'Y' },
+    ]);
+    window.api.modeler.tables.indexes = (id) => Promise.resolve([
+        {
+            index_type: 'UNIQUE PRIMARY INDEX',
+            is_unique: 'Y',
+            columns: [{ column_id: 1, column_position: 1 }]
+        },
+        {
+            index_type: 'SECONDARY INDEX',
+            is_unique: 'N',
+            columns: [{ column_id: 2, column_position: 1 }]
+        }
+    ]);
+
+    editor.load(fakeTable);
+});
+</script>
+
+</body>
+</html>

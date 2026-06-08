@@ -3,144 +3,331 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>metadaita - Data Governance Platform</title>
+    <title>daita-studio</title>
     <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="components/api.js"></script>
+    <script src="components/nav-header.js"></script>
     <style>
+        body { margin: 0; background: var(--bg-color, #f0f2f5); }
+        .home-page { display: flex; flex-direction: column; min-height: 100vh; }
+
+        /* ── Hero ────────────────────────────────────────────────── */
         .hero {
-            text-align: center;
-            padding: 60px 20px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 12px;
-            margin-bottom: 40px;
+            color: #fff; padding: 36px 32px 28px;
+            display: flex; align-items: center; gap: 20px;
         }
-        .hero h1 {
-            font-size: 3em;
-            margin-bottom: 20px;
+        .hero-icon { font-size: 2.8em; line-height: 1; }
+        .hero-text h1 { margin: 0 0 6px; font-size: 1.8em; font-weight: 800; letter-spacing: -0.5px; }
+        .hero-text p  { margin: 0; font-size: 0.95em; opacity: 0.85; }
+
+        /* ── Main Content ────────────────────────────────────────── */
+        .home-main {
+            flex: 1; padding: 24px;
+            max-width: 1400px; margin: 0 auto; width: 100%; box-sizing: border-box;
         }
-        .hero p {
-            font-size: 1.2em;
-            opacity: 0.95;
+
+        /* ── Stat-Row ────────────────────────────────────────────── */
+        .stat-row {
+            display: flex; gap: 14px; margin-bottom: 28px; flex-wrap: wrap;
         }
-        .dashboard-grid {
+        .stat-card {
+            background: var(--card-bg, #fff);
+            border-radius: 10px; padding: 16px 22px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+            display: flex; align-items: center; gap: 14px;
+            min-width: 150px; flex: 1;
+        }
+        .stat-icon { font-size: 1.8em; line-height: 1; }
+        .stat-body { min-width: 0; }
+        .stat-value { font-size: 1.6em; font-weight: 800; color: #667eea; line-height: 1; }
+        .stat-label { font-size: 0.75em; color: var(--text-secondary, #888); margin-top: 2px; }
+        .stat-loading { font-size: 1.2em; color: #ccc; }
+
+        /* ── Module-Grid ─────────────────────────────────────────── */
+        .module-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 30px;
-            margin-top: 40px;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 18px;
         }
-        .dashboard-card {
-            background: white;
+        .module-card {
+            background: var(--card-bg, #fff);
             border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transition: transform 0.3s, box-shadow 0.3s;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            overflow: hidden;
             cursor: pointer;
+            text-decoration: none;
+            display: flex; flex-direction: column;
+            transition: transform 0.15s, box-shadow 0.15s;
             border: 2px solid transparent;
         }
-        .dashboard-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 12px rgba(0,0,0,0.15);
-            border-color: #667eea;
+        .module-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(102,126,234,0.2);
+            border-color: #667eea33;
         }
-        .dashboard-card h2 {
-            color: #333;
-            margin-top: 0;
-            font-size: 1.8em;
-            margin-bottom: 15px;
+        .module-card-header {
+            padding: 20px 20px 14px;
+            display: flex; align-items: center; gap: 14px;
         }
-        .dashboard-card .icon {
-            font-size: 3em;
-            margin-bottom: 15px;
+        .module-card-icon {
+            width: 48px; height: 48px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.6em; flex-shrink: 0;
         }
-        .dashboard-card p {
-            color: #666;
-            line-height: 1.6;
-            margin-bottom: 20px;
+        .module-card-title { font-weight: 800; font-size: 1.05em; color: var(--text-primary, #333); }
+        .module-card-subtitle { font-size: 0.78em; color: var(--text-secondary, #888); margin-top: 2px; }
+
+        .module-card-body { padding: 0 20px 16px; flex: 1; }
+        .module-card-desc { font-size: 0.83em; color: var(--text-secondary, #777); line-height: 1.5; margin-bottom: 12px; }
+
+        .module-stats { display: flex; gap: 12px; flex-wrap: wrap; }
+        .module-stat {
+            display: flex; align-items: center; gap: 5px;
+            font-size: 0.78em; color: var(--text-secondary, #888);
         }
-        .dashboard-card .features {
-            list-style: none;
-            padding: 0;
-            margin: 20px 0;
+        .module-stat-num { font-weight: 700; color: var(--text-primary, #444); font-size: 1em; }
+        .module-stat-loading { color: #ccc; font-size: 0.9em; }
+
+        .module-card-footer {
+            padding: 10px 20px;
+            border-top: 1px solid var(--border-color, #eee);
+            font-size: 0.78em; color: #aaa;
+            display: flex; align-items: center; justify-content: space-between;
         }
-        .dashboard-card .features li {
-            padding: 8px 0;
-            color: #555;
-            font-size: 0.95em;
+        .module-card-arrow { color: #667eea; font-weight: 700; }
+
+        /* ── P2 Badge ────────────────────────────────────────────── */
+        .badge-p2 {
+            font-size: 0.7em; padding: 2px 7px; border-radius: 4px;
+            background: #f0f0f0; color: #999; font-weight: 600;
         }
-        .dashboard-card .features li:before {
-            content: "✓ ";
-            color: #667eea;
-            font-weight: bold;
-            margin-right: 8px;
+
+        /* ── Color-Schemas per Modul ─────────────────────────────── */
+        .icon-flow     { background: linear-gradient(135deg, #667eea22, #764ba222); color: #667eea; }
+        .icon-modeler  { background: linear-gradient(135deg, #00b89422, #0098a622); color: #00b894; }
+        .icon-jobs     { background: linear-gradient(135deg, #e17055221, #d6336c22); color: #d6336c; }
+        .icon-lineage  { background: linear-gradient(135deg, #f39c1222, #e17055221); color: #f39c12; }
+        .icon-sources  { background: linear-gradient(135deg, #74b9ff22, #0984e322); color: #0984e3; }
+        .icon-meta     { background: linear-gradient(135deg, #a29bfe22, #6c5ce722); color: #6c5ce7; }
+
+        /* ── Quick-Actions ───────────────────────────────────────── */
+        .section-title {
+            font-size: 0.82em; font-weight: 700; color: var(--text-secondary, #999);
+            text-transform: uppercase; letter-spacing: 0.08em;
+            margin: 24px 0 12px;
         }
-        .dashboard-card .btn {
-            display: inline-block;
-            background: #667eea;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 6px;
-            text-decoration: none;
-            transition: background 0.3s;
-            font-weight: 600;
-        }
-        .dashboard-card .btn:hover {
-            background: #5568d3;
-        }
-        .lineage-card { border-top: 4px solid #667eea; }
-        .etl-card { border-top: 4px solid #f57c00; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="hero">
-            <h1>🔍 metadaita</h1>
-            <p>Comprehensive Data Governance & ETL Management Platform</p>
-            <p style="font-size: 0.9em; margin-top: 10px;">Column Lineage Analysis • ETL Orchestration • AI-Enhanced Documentation</p>
-            <a href="data-flow.html" style="display: inline-block; margin-top: 20px; background: rgba(255,255,255,0.2); color: white; padding: 15px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; transition: background 0.3s;">
-                🌊 Data Flow Overview öffnen →
-            </a>
+<div class="home-page">
+
+    <studio-nav active="home"></studio-nav>
+
+    <!-- Hero -->
+    <div class="hero">
+        <div class="hero-icon">⬡</div>
+        <div class="hero-text">
+            <h1>daita-studio</h1>
+            <p>ETL Orchestrierung · Datenmodellierung · Metadata Management · Lineage</p>
         </div>
-
-        <div class="dashboard-grid">
-            <!-- Lineage Analysis -->
-            <div class="dashboard-card lineage-card" onclick="location.href='lineage.html'">
-                <div class="icon">📊</div>
-                <h2>Lineage Analysis</h2>
-                <p>Analysiere SQL Queries und visualisiere Column Lineage mit automatischer Herkunftsverfolgung und Transformationserkennung.</p>
-                <ul class="features">
-                    <li>SQL Parsing für multiple Dialekte (T-SQL, PostgreSQL, MySQL)</li>
-                    <li>Automatische Column Lineage Extraktion</li>
-                    <li>Mermaid Diagramm Visualisierung</li>
-                    <li>AI-generierte fachliche Beschreibungen</li>
-                    <li>HTML Report Generation</li>
-                    <li>SQL Dialect Conversion</li>
-                </ul>
-                <a href="lineage.html" class="btn">Zur Lineage Analyse →</a>
-            </div>
-
-            <!-- ETL Orchestrator -->
-            <div class="dashboard-card etl-card" onclick="location.href='etl-dashboard.html'">
-                <div class="icon">🚀</div>
-                <h2>ETL Orchestrator</h2>
-                <p>Metadata-Driven ETL Framework für Teradata mit Job Monitoring, Step-by-Step Execution und Performance Tracking.</p>
-                <ul class="features">
-                    <li>Metadata-Driven Job Configuration</li>
-                    <li>Real-time Job Monitoring</li>
-                    <li>Step-by-Step Execution Tracking</li>
-                    <li>SCD Type 2 Template Support</li>
-                    <li>Error Handling & Recovery</li>
-                    <li>Performance Statistics</li>
-                </ul>
-                <a href="etl-dashboard.html" class="btn">Zum ETL Dashboard →</a>
-            </div>
-        </div>
-
-        <footer style="text-align: center; margin-top: 60px; padding: 20px; color: #999; border-top: 1px solid #eee;">
-            <p><strong>metadaita</strong> - Data Governance Platform v1.0 | DWH MVP Team | 2026</p>
-            <p style="font-size: 0.85em; margin-top: 10px;">
-                <a href="architecture.html" target="_blank" style="color: #667eea; text-decoration: none;">🏗️ System Architecture</a>
-            </p>
-        </footer>
     </div>
+
+    <main class="home-main">
+
+        <!-- Stat-Row -->
+        <div class="stat-row" id="stat-row">
+            <div class="stat-card"><span class="stat-icon">▤</span><div class="stat-body"><div class="stat-value" id="stat-tables"><span class="stat-loading">…</span></div><div class="stat-label">Tabellen</div></div></div>
+            <div class="stat-card"><span class="stat-icon">⚙</span><div class="stat-body"><div class="stat-value" id="stat-jobs"><span class="stat-loading">…</span></div><div class="stat-label">ETL-Jobs</div></div></div>
+            <div class="stat-card"><span class="stat-icon">📋</span><div class="stat-body"><div class="stat-value" id="stat-templates"><span class="stat-loading">…</span></div><div class="stat-label">Templates</div></div></div>
+            <div class="stat-card"><span class="stat-icon">🔗</span><div class="stat-body"><div class="stat-value" id="stat-fk"><span class="stat-loading">…</span></div><div class="stat-label">FK-Beziehungen</div></div></div>
+            <div class="stat-card"><span class="stat-icon">✅</span><div class="stat-body"><div class="stat-value" id="stat-runs-ok"><span class="stat-loading">…</span></div><div class="stat-label">Runs OK (heute)</div></div></div>
+            <div class="stat-card"><span class="stat-icon">❌</span><div class="stat-body"><div class="stat-value" id="stat-runs-err"><span class="stat-loading">…</span></div><div class="stat-label">Runs Fehler (heute)</div></div></div>
+        </div>
+
+        <!-- Module -->
+        <div class="section-title">Module</div>
+        <div class="module-grid">
+
+            <!-- Flow -->
+            <a class="module-card" href="flow.html">
+                <div class="module-card-header">
+                    <div class="module-card-icon icon-flow">⟳</div>
+                    <div>
+                        <div class="module-card-title">Flow</div>
+                        <div class="module-card-subtitle">ETL-Pipeline Übersicht</div>
+                    </div>
+                </div>
+                <div class="module-card-body">
+                    <div class="module-card-desc">Überblick über alle Layer und ETL-Jobs. Status-Monitoring, neue Jobs erstellen, Detail-Ansicht.</div>
+                    <div class="module-stats">
+                        <div class="module-stat"><span class="module-stat-num" id="ms-layers">…</span> Layer</div>
+                        <div class="module-stat"><span class="module-stat-num" id="ms-jobs">…</span> Jobs</div>
+                    </div>
+                </div>
+                <div class="module-card-footer"><span>Layer-Übersicht, ETL starten</span><span class="module-card-arrow">→</span></div>
+            </a>
+
+            <!-- Modeler -->
+            <a class="module-card" href="modeler.html">
+                <div class="module-card-header">
+                    <div class="module-card-icon icon-modeler">⬡</div>
+                    <div>
+                        <div class="module-card-title">Modeler</div>
+                        <div class="module-card-subtitle">ERD & Datenmodell</div>
+                    </div>
+                </div>
+                <div class="module-card-body">
+                    <div class="module-card-desc">Visueller ERD-Editor. Tabellen und Spalten verwalten, FK-Beziehungen zeichnen, DBC↔META Abgleich.</div>
+                    <div class="module-stats">
+                        <div class="module-stat"><span class="module-stat-num" id="ms-tables">…</span> Tabellen</div>
+                        <div class="module-stat"><span class="module-stat-num" id="ms-fk">…</span> FKs</div>
+                    </div>
+                </div>
+                <div class="module-card-footer"><span>ERD, Spalten, DBC-Abgleich</span><span class="module-card-arrow">→</span></div>
+            </a>
+
+            <!-- Jobs -->
+            <a class="module-card" href="jobs.html">
+                <div class="module-card-header">
+                    <div class="module-card-icon icon-jobs">⚙</div>
+                    <div>
+                        <div class="module-card-title">Jobs</div>
+                        <div class="module-card-subtitle">ETL-Verwaltung</div>
+                    </div>
+                </div>
+                <div class="module-card-body">
+                    <div class="module-card-desc">Job-Liste, Steps, Ausführen mit Live-Status. Templates verwalten. Run-History mit Filter.</div>
+                    <div class="module-stats">
+                        <div class="module-stat"><span class="module-stat-num" id="ms-jobs2">…</span> Jobs</div>
+                        <div class="module-stat"><span class="module-stat-num" id="ms-tpl">…</span> Templates</div>
+                    </div>
+                </div>
+                <div class="module-card-footer"><span>Jobs, Templates, History</span><span class="module-card-arrow">→</span></div>
+            </a>
+
+            <!-- Metadata (→ Modeler) -->
+            <a class="module-card" href="modeler.html">
+                <div class="module-card-header">
+                    <div class="module-card-icon icon-meta">🔍</div>
+                    <div>
+                        <div class="module-card-title">Metadata</div>
+                        <div class="module-card-subtitle">Spalten, Indizes, Business-Attribute</div>
+                    </div>
+                </div>
+                <div class="module-card-body">
+                    <div class="module-card-desc">Business Names, PII-Flags, Charset, DBC-Abgleich, DDL-Generierung. Im Modeler verfügbar.</div>
+                    <div class="module-stats">
+                        <div class="module-stat"><span class="module-stat-num" id="ms-cols">…</span> Spalten total</div>
+                    </div>
+                </div>
+                <div class="module-card-footer"><span>→ Modeler Properties Panel</span><span class="module-card-arrow">→</span></div>
+            </a>
+
+            <!-- Lineage -->
+            <a class="module-card" href="lineage.html" style="opacity:0.7">
+                <div class="module-card-header">
+                    <div class="module-card-icon icon-lineage">↗</div>
+                    <div>
+                        <div class="module-card-title">Lineage <span class="badge-p2">P2</span></div>
+                        <div class="module-card-subtitle">Column Lineage</div>
+                    </div>
+                </div>
+                <div class="module-card-body">
+                    <div class="module-card-desc">Spaltenherkunft und Transformationsschritte über alle Layer verfolgen. (Geplant)</div>
+                    <div class="module-stats"><div class="module-stat module-stat-loading">In Planung</div></div>
+                </div>
+                <div class="module-card-footer"><span>Noch nicht verfügbar</span><span class="module-card-arrow" style="color:#ccc">→</span></div>
+            </a>
+
+            <!-- Sources -->
+            <a class="module-card" href="sources.html" style="opacity:0.7">
+                <div class="module-card-header">
+                    <div class="module-card-icon icon-sources">⇄</div>
+                    <div>
+                        <div class="module-card-title">Sources <span class="badge-p2">P2</span></div>
+                        <div class="module-card-subtitle">Source-Systeme</div>
+                    </div>
+                </div>
+                <div class="module-card-body">
+                    <div class="module-card-desc">Anbindung externer Quell-Systeme, Verbindungstests, Schema-Übersicht. (Geplant)</div>
+                    <div class="module-stats"><div class="module-stat module-stat-loading">In Planung</div></div>
+                </div>
+                <div class="module-card-footer"><span>Noch nicht verfügbar</span><span class="module-card-arrow" style="color:#ccc">→</span></div>
+            </a>
+
+        </div>
+    </main>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+async function loadStats() {
+    const set = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = val;
+    };
+
+    // Parallel laden
+    const [tables, jobs, templates, fks, runs] = await Promise.allSettled([
+        window.api.modeler.tables.list(),
+        window.api.etl.jobs.list(),
+        window.api.templates.listJobs(),
+        window.api.modeler.fk.list(),
+        window.api.etl.runs.list({ limit: 200 }),
+    ]);
+
+    // Tabellen
+    if (tables.status === 'fulfilled') {
+        const n = Array.isArray(tables.value) ? tables.value.length : 0;
+        set('stat-tables', n);
+        set('ms-tables', n);
+        // Spalten-Schätzung: n * avg (wir kennen total nicht direkt)
+        set('ms-cols', '~' + (n * 12));  // Schätzung
+    } else { set('stat-tables', '—'); set('ms-tables', '—'); set('ms-cols', '—'); }
+
+    // Jobs
+    if (jobs.status === 'fulfilled') {
+        const jlist = Array.isArray(jobs.value) ? jobs.value : (jobs.value?.items ?? []);
+        const n = jlist.length;
+        set('stat-jobs', n); set('ms-jobs', n); set('ms-jobs2', n);
+    } else { set('stat-jobs', '—'); set('ms-jobs', '—'); set('ms-jobs2', '—'); }
+
+    // Templates
+    if (templates.status === 'fulfilled') {
+        const n = Array.isArray(templates.value) ? templates.value.length : 0;
+        set('stat-templates', n); set('ms-tpl', n);
+    } else { set('stat-templates', '—'); set('ms-tpl', '—'); }
+
+    // FKs
+    if (fks.status === 'fulfilled') {
+        const n = Array.isArray(fks.value) ? fks.value.length : 0;
+        set('stat-fk', n); set('ms-fk', n);
+    } else { set('stat-fk', '—'); set('ms-fk', '—'); }
+
+    // Layer-Anzahl via ETL-API
+    try {
+        const layers = await window.api.etl.layers();
+        set('ms-layers', Array.isArray(layers) ? layers.length : '—');
+    } catch { set('ms-layers', '—'); }
+
+    // Run-Statistik heute
+    if (runs.status === 'fulfilled') {
+        const rlist = Array.isArray(runs.value) ? runs.value : (runs.value?.items ?? []);
+        const today = new Date().toISOString().slice(0, 10);
+        const todayRuns = rlist.filter(r => (r.started_at || '').startsWith(today));
+        const ok  = todayRuns.filter(r => { const s = (r.status||'').toLowerCase(); return s==='ok'||s==='success'||s==='completed'; }).length;
+        const err = todayRuns.filter(r => { const s = (r.status||'').toLowerCase(); return s==='error'||s==='failed'; }).length;
+        set('stat-runs-ok',  ok);
+        set('stat-runs-err', err);
+    } else { set('stat-runs-ok', '—'); set('stat-runs-err', '—'); }
+}
+
+loadStats();
+})();
+</script>
 </body>
 </html>

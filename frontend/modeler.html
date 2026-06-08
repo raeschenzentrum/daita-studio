@@ -1,0 +1,1166 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>daita-studio – Modeler</title>
+    <link rel="stylesheet" href="vendor/jointjs.min.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script>
+        // API-Basis für modeler-canvas.js
+        window._MODELER_API = (window.METADAITA_CONFIG?.backend_url || '').replace(/\/$/, '');
+    </script>
+    <style>
+        /* ── Reset & Layout ───────────────────────────────────────── */
+        * { box-sizing: border-box; }
+        body { margin: 0; overflow: hidden; }
+        #app-body {
+            display: flex; flex-direction: column;
+            height: calc(100vh - 52px);   /* Platz für nav-header */
+            overflow: hidden;
+        }
+        #app-main-row {
+            display: flex; flex: 1; min-height: 0; overflow: hidden;
+        }
+
+        /* ── Sidebar Links ────────────────────────────────────────── */
+        #sidebar-left {
+            width: 240px; flex-shrink: 0;
+            display: flex; flex-direction: column;
+            background: var(--card-bg, #fff);
+            border-right: 1px solid var(--border-color, #ddd);
+            overflow: hidden;
+        }
+        #sidebar-tabs {
+            display: flex; border-bottom: 1px solid var(--border-color, #ddd);
+            flex-shrink: 0;
+        }
+        .sidebar-tab {
+            flex: 1; padding: 8px 4px; font-size: 0.78em;
+            background: none; border: none; cursor: pointer;
+            color: var(--text-secondary, #666); border-bottom: 2px solid transparent;
+        }
+        .sidebar-tab.active { color: #667eea; border-bottom-color: #667eea; font-weight: 600; }
+        .sidebar-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+        .sidebar-panel.active { display: flex; }
+
+        /* ── Tabellen-Liste ───────────────────────────────────────── */
+        .panel-search-row { padding: 8px; border-bottom: 1px solid var(--border-color, #eee); }
+        .panel-search-row input {
+            width: 100%; padding: 5px 8px; font-size: 0.85em;
+            border: 1px solid var(--border-color, #ddd); border-radius: 5px;
+            background: var(--bg-color, #f5f5f5); color: var(--text-primary, #333);
+        }
+        #table-list { flex: 1; overflow-y: auto; font-size: 0.83em; }
+        .table-group-header {
+            padding: 5px 10px 3px; font-size: 0.75em; font-weight: 700;
+            color: var(--text-secondary, #888); text-transform: uppercase;
+            background: var(--bg-color, #f5f5f5); letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border-color, #eee);
+        }
+        .table-item {
+            padding: 5px 14px; cursor: pointer; user-select: none;
+            display: flex; align-items: center; gap: 6px;
+            border-bottom: 1px solid transparent; transition: background 0.1s;
+        }
+        .table-item:hover { background: #f4f0ff; }
+        .table-item.on-canvas { color: #667eea; font-weight: 600; }
+        .table-icon { font-size: 0.85em; opacity: 0.7; }
+        .table-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        /* ── Import-Panel ─────────────────────────────────────────── */
+        .panel-section-title {
+            padding: 8px 10px 4px; font-size: 0.78em; font-weight: 700;
+            color: var(--text-secondary, #888); text-transform: uppercase;
+        }
+        .panel-row { padding: 4px 10px; display: flex; align-items: center; gap: 6px; font-size: 0.82em; }
+        .panel-row label { min-width: 55px; }
+        .panel-row select { flex: 1; font-size: 0.85em; padding: 3px 5px;
+            border: 1px solid var(--border-color, #ddd); border-radius: 4px;
+            background: var(--bg-color, #f5f5f5); }
+        #btn-load-candidates { margin: 6px 10px; }
+        #import-candidates-list { flex: 1; overflow-y: auto; padding: 0 4px; font-size: 0.8em; }
+        #btn-import-selected { margin: 4px 10px; }
+        .import-candidate { display: flex; align-items: center; gap: 6px; padding: 3px 6px; cursor: pointer; }
+        .import-candidate:hover { background: #f4f0ff; }
+        .import-candidate--exists { opacity: 0.5; }
+        .import-meta-badge { font-size: 0.75em; color: #27ae60; }
+        .import-select-all { padding: 6px 8px; font-size: 0.82em; border-bottom: 1px solid var(--border-color, #eee); }
+        .import-section-sep { padding: 4px 8px; font-size: 0.75em; color: #aaa; text-align: center; }
+
+        /* ── Areas-Panel ──────────────────────────────────────────── */
+        #areas-list { flex: 1; overflow-y: auto; padding: 6px; }
+        .area-item { padding: 5px 8px; font-size: 0.83em; cursor: pointer; border-radius: 4px; }
+        .area-item:hover { background: #f4f0ff; }
+        #btn-new-area { margin: 6px 10px; }
+
+        /* ── Canvas ───────────────────────────────────────────────── */
+        #canvas-wrap {
+            flex: 1; display: flex; flex-direction: column;
+            position: relative; overflow: hidden; min-width: 0;
+            background: #1a1b2e;
+        }
+        #canvas-toolbar {
+            display: flex; align-items: center; gap: 6px; padding: 6px 10px;
+            background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.08);
+            flex-shrink: 0; z-index: 2;
+        }
+        #canvas-toolbar button {
+            padding: 4px 10px; border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 5px; background: transparent; color: #cdd6f4;
+            cursor: pointer; font-size: 0.82em;
+        }
+        #canvas-toolbar button:hover { background: rgba(255,255,255,0.12); }
+        #canvas-toolbar button.active { background: rgba(102,126,234,0.4); border-color: #667eea; }
+        .toolbar-sep { width: 1px; height: 20px; background: rgba(255,255,255,0.15); margin: 0 2px; }
+        #erd-canvas { flex: 1; display: block; }
+        #canvas-hint {
+            position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.6); color: #aaa; padding: 6px 14px;
+            border-radius: 20px; font-size: 0.8em; pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        #canvas-hint.hidden { opacity: 0; }
+        #erd-node-toolbar {
+            position: fixed; z-index: 100;
+            display: none; gap: 2px;
+            background: #252535; border: 1px solid #3a3a5a;
+            border-radius: 6px; padding: 3px;
+        }
+        .ent-btn {
+            padding: 4px 8px; border: 1px solid transparent;
+            border-radius: 4px; background: transparent; color: #cdd6f4;
+            cursor: pointer; font-size: 0.8em;
+        }
+        .ent-btn.active, .ent-btn:hover { background: rgba(102,126,234,0.3); border-color: #667eea; }
+
+        /* ── Sidebar Rechts (Properties) ──────────────────────────── */
+        #sidebar-right {
+            width: 320px; flex-shrink: 0;
+            display: flex; flex-direction: column;
+            background: var(--card-bg, #fff);
+            border-left: 1px solid var(--border-color, #ddd);
+            overflow: hidden;
+        }
+        #properties-header {
+            padding: 10px 14px; font-weight: 700; font-size: 0.87em;
+            background: linear-gradient(135deg, #667eea22, #764ba222);
+            border-bottom: 1px solid #e8e4fb; flex-shrink: 0;
+            color: #764ba2;
+        }
+        #properties-content { flex: 1; overflow-y: auto; }
+        .placeholder-text {
+            padding: 20px; text-align: center;
+            color: var(--text-secondary, #888); font-size: 0.85em;
+        }
+
+        /* ── Diagram-Toolbar (Header-Zeile) ───────────────────────── */
+        #diagram-toolbar {
+            display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+            background: var(--card-bg, #fff); border-bottom: 1px solid var(--border-color, #ddd);
+            flex-shrink: 0; font-size: 0.83em;
+        }
+        #diagram-name {
+            padding: 4px 8px; border: 1px solid var(--border-color, #ddd);
+            border-radius: 5px; background: var(--bg-color, #f5f5f5);
+            color: var(--text-primary, #333); font-size: 0.9em; width: 180px;
+        }
+        #diagram-toolbar button {
+            padding: 4px 10px; border: 1px solid var(--border-color, #ddd);
+            border-radius: 5px; background: transparent; cursor: pointer; font-size: 0.85em;
+        }
+        #btn-save-diagram { border-color: #667eea; color: #667eea; }
+        #btn-save-diagram:hover { background: #667eea; color: #fff; }
+        #btn-load-diagram:hover, #btn-export-svg:hover { background: var(--bg-color, #f5f5f5); }
+
+        /* ── Bottom Panel ─────────────────────────────────────────── */
+        #bottom-panel {
+            display: none; flex-direction: column;
+            height: 300px; min-height: 100px; max-height: 70vh;
+            background: var(--card-bg, #fff);
+            border-top: 1px solid var(--border-color, #ddd);
+            flex-shrink: 0;
+        }
+        #bp-resize-handle {
+            height: 4px; cursor: ns-resize;
+            background: linear-gradient(135deg, #667eea44, #764ba244);
+        }
+        #bp-resize-handle:hover { background: linear-gradient(135deg, #667eea, #764ba2); }
+        #bp-header {
+            display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+            border-bottom: 1px solid var(--border-color, #eee);
+            background: var(--bg-color, #f5f5f5); flex-shrink: 0;
+        }
+        #bp-title { font-weight: 700; font-size: 0.88em; }
+        #bp-db-badge {
+            font-size: 0.75em; background: #667eea22; color: #667eea;
+            padding: 1px 6px; border-radius: 4px;
+        }
+        .bp-tabs { display: flex; gap: 2px; margin-left: auto; }
+        .bp-tab {
+            padding: 3px 10px; border: 1px solid var(--border-color, #ddd);
+            border-radius: 4px; background: transparent; cursor: pointer; font-size: 0.78em;
+        }
+        .bp-tab.active { background: #667eea; color: #fff; border-color: #667eea; }
+        .bp-toggle-btn {
+            padding: 3px 8px; border: 1px solid var(--border-color, #ddd);
+            border-radius: 4px; background: transparent; cursor: pointer; font-size: 0.75em;
+        }
+        .bp-toggle-btn.active { background: #764ba222; border-color: #764ba2; }
+        #bp-close {
+            padding: 2px 8px; border: none; background: transparent; cursor: pointer;
+            font-size: 1.1em; color: #aaa;
+        }
+        #bp-close:hover { color: #555; }
+        #bp-body { flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+        .bp-tab-pane { display: none; flex: 1; overflow: hidden; }
+        #bp-tab-spalten { display: flex; flex: 1; overflow: hidden; }
+        #bp-dbc-side, #bp-meta-side {
+            flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0;
+        }
+        #bp-divider { width: 3px; background: var(--border-color, #ddd); cursor: col-resize; flex-shrink: 0; }
+        .bp-side-title {
+            padding: 5px 10px; font-size: 0.78em; font-weight: 700;
+            background: var(--bg-color, #f8f8f8); border-bottom: 1px solid var(--border-color, #eee);
+            display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+        }
+        .bp-save-btn {
+            padding: 2px 8px; border: 1px solid #667eea; border-radius: 4px;
+            background: transparent; color: #667eea; cursor: pointer; font-size: 0.8em;
+        }
+        .bp-save-btn:hover { background: #667eea; color: #fff; }
+        #bp-dbc-content, #bp-meta-content { flex: 1; overflow: auto; }
+        .bp-no-data { padding: 12px; color: #aaa; font-size: 0.83em; }
+
+        .bp-table { width: 100%; border-collapse: collapse; font-size: 0.75em; }
+        .bp-table th, .bp-table td {
+            border-bottom: 1px solid var(--border-color, #eee); padding: 3px 6px;
+            white-space: nowrap;
+        }
+        .bp-table th { background: var(--bg-color, #f5f5f5); font-weight: 600; position: sticky; top: 0; }
+        .bp-table tr:hover td { background: #f4f0ff; }
+        .bp-cb { text-align: center; width: 28px; }
+        .bp-flag-y { color: #27ae60; font-weight: 700; }
+        .bp-flag-n { color: #ccc; }
+        .bp-zusatz { display: none; }
+        .bp-table.show-zusatz .bp-zusatz { display: table-cell; }
+        .bp-edit { font-size: 0.85em; padding: 1px 4px; border: 1px solid transparent; border-radius: 2px; }
+        .bp-edit:focus { border-color: #667eea; outline: none; background: #fff; }
+        .bp-txt { width: 100%; min-width: 60px; }
+
+        /* DDL Tab */
+        #bp-tab-ddl { flex-direction: column; flex: 1; }
+        .bp-ddl-toolbar {
+            padding: 8px 10px; display: flex; align-items: center; gap: 8px;
+            border-bottom: 1px solid var(--border-color, #eee);
+        }
+        .bp-tool-btn {
+            padding: 4px 10px; border: 1px solid var(--border-color, #ddd);
+            border-radius: 4px; cursor: pointer; background: transparent; font-size: 0.82em;
+        }
+        .bp-tool-btn--run { border-color: #27ae60; color: #27ae60; }
+        .bp-tool-btn--run:hover { background: #27ae60; color: #fff; }
+        .bp-ddl-textarea {
+            flex: 1; padding: 10px; font-family: monospace; font-size: 0.83em;
+            border: none; resize: none; background: var(--bg-color, #f8f8f8);
+            color: var(--text-primary, #333);
+        }
+        .bp-status-msg { font-size: 0.82em; color: #888; }
+        .bp-status-msg.ok  { color: #27ae60; }
+        .bp-status-msg.err { color: #e74c3c; }
+
+        /* Wartung Tab */
+        #bp-tab-wartung { overflow: auto; padding: 12px; }
+        .bp-wartung-section { margin-bottom: 14px; }
+        .bp-wartung-title { font-weight: 700; font-size: 0.83em; margin-bottom: 8px; }
+        .bp-wartung-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+        .bp-danger-btn {
+            padding: 4px 10px; border: 1px solid #e74c3c; border-radius: 4px;
+            color: #e74c3c; background: transparent; cursor: pointer; font-size: 0.8em;
+        }
+        .bp-danger-btn:hover { background: #e74c3c; color: #fff; }
+        .bp-danger-btn--red { border-color: #c0392b; color: #c0392b; }
+        .bp-danger-btn--red:hover { background: #c0392b; color: #fff; }
+        .bp-danger-hint { font-size: 0.78em; color: #aaa; }
+        .bp-wartung-danger-zone { border: 1px solid #f5c6cb; border-radius: 6px; padding: 10px; background: #fff8f8; }
+
+        /* ── Modals ───────────────────────────────────────────────── */
+        .modal-overlay {
+            position: fixed; inset: 0; z-index: 1000;
+            background: rgba(0,0,0,0.5);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-box {
+            background: var(--card-bg, #fff); border-radius: 10px;
+            padding: 20px; min-width: 340px; max-width: 90vw;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.2);
+        }
+        .modal-title { font-weight: 700; font-size: 1em; margin-bottom: 14px; }
+        .modal-field { margin-bottom: 10px; }
+        .modal-field label { display: block; font-size: 0.83em; color: #666; margin-bottom: 3px; }
+        .modal-field input, .modal-field select {
+            width: 100%; padding: 6px 10px; border: 1px solid var(--border-color, #ddd);
+            border-radius: 5px; font-size: 0.9em; background: var(--bg-color, #f5f5f5);
+        }
+        .modal-field-hint { font-size: 0.8em; color: #888; margin-left: 4px; }
+        .modal-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+        .modal-file-list { max-height: 200px; overflow-y: auto; margin-bottom: 10px; }
+        .modal-file-item {
+            display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+            cursor: pointer; border-radius: 5px; font-size: 0.88em;
+        }
+        .modal-file-item:hover { background: #f4f0ff; }
+        .modal-file-item.selected { background: #ede9fb; color: #764ba2; }
+        .modal-file-empty { padding: 12px; text-align: center; color: #aaa; font-size: 0.85em; }
+        .modal-input-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .modal-input-row label { min-width: 50px; font-size: 0.83em; }
+        .modal-input-row input {
+            flex: 1; padding: 5px 8px; border: 1px solid var(--border-color, #ddd);
+            border-radius: 4px; font-size: 0.9em; background: var(--bg-color, #f5f5f5);
+        }
+
+        /* ── Kontextmenü ──────────────────────────────────────────── */
+        .ctx-menu {
+            position: fixed; z-index: 500; background: var(--card-bg, #fff);
+            border: 1px solid var(--border-color, #ddd); border-radius: 6px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15); min-width: 180px; overflow: hidden;
+        }
+        .ctx-item { padding: 8px 14px; cursor: pointer; font-size: 0.85em; }
+        .ctx-item:hover { background: #f4f0ff; }
+        .ctx-sep { height: 1px; background: var(--border-color, #eee); margin: 2px 0; }
+
+        /* ── Buttons (shared) ─────────────────────────────────────── */
+        .btn-primary {
+            padding: 6px 14px; background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85em;
+        }
+        .btn-primary:hover { opacity: 0.9; }
+        .btn-primary:disabled { opacity: 0.5; }
+        .btn-secondary {
+            padding: 6px 14px; border: 1px solid var(--border-color, #ddd);
+            background: transparent; border-radius: 6px; cursor: pointer; font-size: 0.85em;
+        }
+        .btn-secondary:hover { background: var(--bg-color, #f5f5f5); }
+    </style>
+</head>
+<body>
+
+<!-- Navigation -->
+<studio-nav active="modeler"></studio-nav>
+
+<div id="app-body">
+
+<!-- Diagram-Toolbar -->
+<div id="diagram-toolbar">
+    <input type="text" id="diagram-name" placeholder="Diagramm-Name…" autocomplete="off" spellcheck="false">
+    <button id="btn-save-diagram" title="Ctrl+S">💾 Speichern</button>
+    <button id="btn-load-diagram">📂 Laden</button>
+    <button id="btn-export-svg">⬇ SVG</button>
+</div>
+
+<div id="app-main-row">
+
+  <!-- Linke Sidebar: Tabellen + Import + Areas -->
+  <aside id="sidebar-left">
+    <div id="sidebar-tabs">
+      <button class="sidebar-tab active" data-panel="panel-tables">📋 Tabellen</button>
+      <button class="sidebar-tab"        data-panel="panel-import">⬆ Import</button>
+      <button class="sidebar-tab"        data-panel="panel-areas">🗂 Areas</button>
+    </div>
+
+    <div id="panel-tables" class="sidebar-panel active">
+      <div class="panel-search-row">
+        <input type="text" id="table-search" placeholder="Tabelle suchen…" autocomplete="off">
+      </div>
+      <div id="table-list"><div class="placeholder-text">Lade Tabellen…</div></div>
+    </div>
+
+    <div id="panel-import" class="sidebar-panel">
+      <div class="panel-section-title">Aus Teradata importieren</div>
+      <div class="panel-row">
+        <label>Datenbank:</label>
+        <select id="import-db-select"><option value="">– wählen –</option></select>
+      </div>
+      <button id="btn-load-candidates" class="btn-primary">Kandidaten laden</button>
+      <div id="import-candidates-list"></div>
+      <button id="btn-import-selected" class="btn-primary" style="display:none">Auswahl importieren</button>
+    </div>
+
+    <div id="panel-areas" class="sidebar-panel">
+      <div class="panel-section-title">Subject Areas</div>
+      <div id="areas-list"></div>
+      <button id="btn-new-area" class="btn-secondary">+ Neue Area</button>
+    </div>
+  </aside>
+
+  <!-- ERD Canvas -->
+  <main id="canvas-wrap">
+    <div id="canvas-toolbar">
+      <button id="btn-zoom-in"  title="+">＋</button>
+      <button id="btn-zoom-out" title="-">－</button>
+      <button id="btn-zoom-fit" title="Alles einpassen">⊞</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-fk-mode" title="FK-Beziehung zeichnen">🔗 FK</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-delete-sel" title="Auswahl entfernen [Del]">🗑</button>
+    </div>
+    <div id="erd-canvas"></div>
+    <div id="erd-node-toolbar">
+      <button data-view="columns" class="ent-btn active" title="Spalten">≡</button>
+      <button data-view="keys"    class="ent-btn"        title="Keys">🔑</button>
+      <button data-view="info"    class="ent-btn"        title="Info">ℹ</button>
+    </div>
+    <div id="canvas-hint">Tabelle aus der Sidebar auf den Canvas ziehen oder doppelklicken</div>
+  </main>
+
+  <!-- Rechtes Properties-Panel -->
+  <aside id="sidebar-right">
+    <div id="properties-header">Eigenschaften</div>
+    <div id="properties-content">
+      <div class="placeholder-text">Kein Objekt ausgewählt</div>
+    </div>
+  </aside>
+
+</div><!-- /#app-main-row -->
+
+<!-- Bottom Panel: DBC vs META Spaltenvergleich -->
+<div id="bottom-panel">
+  <div id="bp-resize-handle"></div>
+  <div id="bp-header">
+    <span id="bp-title">—</span>
+    <span id="bp-db-badge"></span>
+    <nav class="bp-tabs">
+      <button class="bp-tab active" data-tab="spalten">📋 Spalten</button>
+      <button class="bp-tab"        data-tab="ddl">🔧 DDL</button>
+      <button class="bp-tab"        data-tab="wartung">⚙ Wartung</button>
+    </nav>
+    <button id="bp-zusatz-toggle" class="bp-toggle-btn">⊞ Zusatz</button>
+    <button id="bp-close">✕</button>
+  </div>
+  <div id="bp-body">
+    <div id="bp-tab-spalten" class="bp-tab-pane" style="display:flex;flex:1;overflow:hidden">
+      <div id="bp-dbc-side">
+        <div class="bp-side-title">🗄 DBC (physisch)</div>
+        <div id="bp-dbc-content"><div class="placeholder-text">Lade…</div></div>
+      </div>
+      <div id="bp-divider"></div>
+      <div id="bp-meta-side">
+        <div class="bp-side-title">📋 META <button id="bp-meta-save" class="bp-save-btn">💾 Speichern</button></div>
+        <div id="bp-meta-content"><div class="placeholder-text">Lade…</div></div>
+      </div>
+    </div>
+    <div id="bp-tab-ddl" class="bp-tab-pane" style="display:none;flex-direction:column;flex:1">
+      <div class="bp-ddl-toolbar">
+        <button id="bp-ddl-gen"  class="bp-tool-btn">⚡ Generieren</button>
+        <button id="bp-ddl-exec" class="bp-tool-btn bp-tool-btn--run">▶ Ausführen</button>
+        <span id="bp-ddl-status" class="bp-status-msg"></span>
+      </div>
+      <textarea id="bp-ddl-text" class="bp-ddl-textarea" spellcheck="false"
+                placeholder="DDL generieren oder eingeben…"></textarea>
+    </div>
+    <div id="bp-tab-wartung" class="bp-tab-pane" style="display:none;flex-direction:column;flex:1;overflow:auto;padding:12px">
+      <div class="bp-wartung-section">
+        <div class="bp-wartung-title">📊 Statistiken</div>
+        <div class="bp-wartung-row">
+          <button id="bp-stats-load" class="bp-tool-btn">Laden</button>
+          <span id="bp-stats-result" class="bp-status-msg"></span>
+        </div>
+      </div>
+      <div class="bp-wartung-section bp-wartung-danger-zone">
+        <div class="bp-wartung-title">⚠ Gefahrenzone</div>
+        <div class="bp-wartung-row">
+          <button id="bp-maint-delete-meta" class="bp-danger-btn">🗑 Aus META löschen</button>
+          <span class="bp-danger-hint">Entfernt Tabelle + Spalten + Indizes + FKs aus META</span>
+        </div>
+        <div class="bp-wartung-row">
+          <button id="bp-maint-truncate" class="bp-danger-btn">✂ Tabelle leeren</button>
+          <span class="bp-danger-hint">DELETE ALL – alle Zeilen löschen, Struktur bleibt</span>
+        </div>
+        <div class="bp-wartung-row">
+          <button id="bp-maint-drop" class="bp-danger-btn bp-danger-btn--red">💣 DROP TABLE</button>
+          <span class="bp-danger-hint">Tabelle physisch in Teradata droppen (irreversibel!)</span>
+        </div>
+        <div id="bp-maint-result" class="bp-status-msg" style="margin-top:8px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /#app-body -->
+
+<!-- FK-Modal -->
+<div id="fk-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title" id="fk-modal-title">🔗 FK-Beziehung</div>
+    <div class="modal-field">
+      <label>Name:</label>
+      <input type="text" id="fk-modal-name" placeholder="FK-Name (auto)" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="modal-field">
+      <label>FK-Spalte <span class="modal-field-hint" id="fk-modal-child-hint">(Child)</span>:</label>
+      <select id="fk-modal-child-col"></select>
+    </div>
+    <div class="modal-field">
+      <label>PK-Spalte <span class="modal-field-hint" id="fk-modal-parent-hint">(Parent)</span>:</label>
+      <select id="fk-modal-parent-col"></select>
+    </div>
+    <div class="modal-buttons">
+      <button id="fk-modal-cancel" class="btn-secondary">Abbrechen</button>
+      <button id="fk-modal-ok"     class="btn-primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Diagramm-Picker -->
+<div id="diagram-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-title" id="diagram-modal-title">Diagramm</div>
+    <div id="diagram-file-list" class="modal-file-list"></div>
+    <div class="modal-input-row">
+      <label>Name:</label>
+      <input type="text" id="diagram-modal-name" placeholder="Diagramm-Name…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="modal-buttons">
+      <button id="diagram-modal-cancel" class="btn-secondary">Abbrechen</button>
+      <button id="diagram-modal-ok"     class="btn-primary">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kontextmenü -->
+<div id="ctx-menu" class="ctx-menu" style="display:none">
+  <div id="ctx-add-canvas" class="ctx-item">▤ Zum Diagramm hinzufügen</div>
+  <div class="ctx-sep"></div>
+  <div id="ctx-show-props" class="ctx-item">ℹ Eigenschaften anzeigen</div>
+</div>
+
+<!-- Scripts -->
+<script src="components/api.js"></script>
+<script src="components/nav-header.js"></script>
+<script src="components/table-editor.js"></script>
+<script src="vendor/jquery.min.js"></script>
+<script src="vendor/lodash.min.js"></script>
+<script src="vendor/backbone.min.js"></script>
+<script src="vendor/jointjs.min.js"></script>
+<script src="vendor/modeler-canvas.js"></script>
+
+<script>
+(function () {
+'use strict';
+
+// ── API Base ──────────────────────────────────────────────────────────
+const API = (window.METADAITA_CONFIG?.backend_url || '').replace(/\/$/, '');
+
+// ── State ─────────────────────────────────────────────────────────────
+let _allTables = [];
+let _allFKs    = [];
+let _tableEditor = null;  // TableEditor-Instanz
+
+// ── Sidebar Tab-Switching ─────────────────────────────────────────────
+function initSidebarTabs() {
+  const tabs   = document.querySelectorAll('.sidebar-tab');
+  const panels = document.querySelectorAll('.sidebar-panel');
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      panels.forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      const target = document.getElementById(tab.dataset.panel);
+      if (target) target.classList.add('active');
+    });
+  });
+}
+
+// ── Tabellenliste ─────────────────────────────────────────────────────
+async function loadTableList() {
+  const container = document.getElementById('table-list');
+  container.innerHTML = '<div class="placeholder-text">Lade…</div>';
+  try {
+    const tables = await window.api.modeler.tables.list();
+    _allTables = Array.isArray(tables) ? tables : [];
+    if (!_allTables.length) {
+      container.innerHTML = '<div class="placeholder-text">Keine Tabellen gefunden</div>';
+      return;
+    }
+    renderTableList(_allTables);
+    // FKs vorladen
+    window.api.modeler.fk.list().then(data => {
+      if (Array.isArray(data) && !data[0]?.error) {
+        _allFKs = data;
+      }
+    }).catch(() => {});
+  } catch (err) {
+    container.innerHTML = `<div class="placeholder-text" style="color:#e74c3c">Fehler: ${escHtml(err.message)}</div>`;
+  }
+}
+
+function renderTableList(tables) {
+  const container = document.getElementById('table-list');
+  if (!tables.length) { container.innerHTML = '<div class="placeholder-text">Keine Treffer</div>'; return; }
+  let lastDb = null;
+  const frag = document.createDocumentFragment();
+  tables.forEach(t => {
+    if (t.db_name !== lastDb) {
+      const grp = document.createElement('div');
+      grp.className = 'table-group-header';
+      grp.textContent = t.db_name || '–';
+      frag.appendChild(grp);
+      lastDb = t.db_name;
+    }
+    const item = document.createElement('div');
+    item.className = 'table-item';
+    item.dataset.tableId   = t.table_id;
+    item.dataset.tableName = t.table_name;
+    item.draggable = true;
+    item.title = t.table_desc || t.table_name;
+    item.innerHTML = `<span class="table-icon">▤</span><span class="table-name">${escHtml(t.table_name)}</span>`;
+    item.addEventListener('click', () => showTableProperties(t));
+    item.addEventListener('contextmenu', e => showContextMenu(e, t));
+    item.addEventListener('dragstart', e => {
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData('table_data', JSON.stringify(t));
+    });
+    frag.appendChild(item);
+  });
+  container.innerHTML = '';
+  container.appendChild(frag);
+}
+
+function initTableSearch() {
+  const input = document.getElementById('table-search');
+  input.addEventListener('input', () => {
+    const q = input.value.trim().toUpperCase();
+    if (!q) { renderTableList(_allTables); return; }
+    renderTableList(_allTables.filter(t =>
+      t.table_name?.toUpperCase().includes(q) || t.table_desc?.toUpperCase().includes(q)
+    ));
+  });
+}
+
+// ── Properties-Panel (TableEditor C3) ────────────────────────────────
+function showTableProperties(table) {
+  const content = document.getElementById('properties-content');
+  document.getElementById('properties-header').textContent =
+    `${table.table_name}  · ${table.db_name || ''}`;
+  content.innerHTML = '';
+  _tableEditor = new TableEditor(content);
+  _tableEditor.load(table.table_id);
+}
+
+// ── Kontextmenü ───────────────────────────────────────────────────────
+let _ctxTable = null;
+function showContextMenu(e, tableData) {
+  e.preventDefault(); e.stopPropagation();
+  _ctxTable = tableData;
+  const menu = document.getElementById('ctx-menu');
+  menu.style.display = 'block';
+  const mx = Math.min(e.clientX, window.innerWidth  - menu.offsetWidth  - 4);
+  const my = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 4);
+  menu.style.left = mx + 'px'; menu.style.top = my + 'px';
+}
+function hideContextMenu() {
+  document.getElementById('ctx-menu').style.display = 'none';
+  _ctxTable = null;
+}
+function initContextMenu() {
+  document.getElementById('ctx-add-canvas').addEventListener('click', async e => {
+    e.stopPropagation();
+    const t = _ctxTable; hideContextMenu();
+    if (t) { await ERD.addTable(t); ERD.refreshLinks(_allFKs); }
+  });
+  document.getElementById('ctx-show-props').addEventListener('click', e => {
+    e.stopPropagation();
+    const t = _ctxTable; hideContextMenu();
+    if (t) showTableProperties(t);
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('#ctx-menu')) hideContextMenu(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') hideContextMenu(); });
+}
+
+// ── Diagramm Save/Load ────────────────────────────────────────────────
+function openDiagramPicker(mode, existing) {
+  return new Promise(resolve => {
+    const overlay  = document.getElementById('diagram-modal');
+    const title    = document.getElementById('diagram-modal-title');
+    const fileList = document.getElementById('diagram-file-list');
+    const input    = document.getElementById('diagram-modal-name');
+    const btnOk    = document.getElementById('diagram-modal-ok');
+    const btnCancel= document.getElementById('diagram-modal-cancel');
+    title.textContent = mode === 'save' ? '💾 Diagramm speichern' : '📂 Diagramm laden';
+    fileList.innerHTML = '';
+    if (!existing.length) {
+      fileList.innerHTML = `<div class="modal-file-empty">${mode === 'load' ? 'Keine gespeicherten Diagramme' : 'Noch keine – neuen Namen eingeben'}</div>`;
+    } else {
+      existing.forEach(entry => {
+        const name = typeof entry === 'string' ? entry : entry.name;
+        const item = document.createElement('div');
+        item.className = 'modal-file-item'; item.dataset.name = name;
+        item.innerHTML = `<span>📄</span><span>${escHtml(name)}</span>`;
+        item.addEventListener('click', () => {
+          fileList.querySelectorAll('.modal-file-item').forEach(i => i.classList.remove('selected'));
+          item.classList.add('selected'); input.value = name;
+        });
+        item.addEventListener('dblclick', () => close(name));
+        fileList.appendChild(item);
+      });
+    }
+    const cur = document.getElementById('diagram-name').value.trim();
+    input.value = mode === 'save' ? cur : ''; overlay.style.display = 'flex'; input.focus(); input.select();
+    function close(result) {
+      overlay.style.display = 'none';
+      btnOk.removeEventListener('click', onOk);
+      btnCancel.removeEventListener('click', onCancel);
+      document.removeEventListener('keydown', onKey);
+      resolve(result || null);
+    }
+    function onOk()    { close(input.value.trim() || null); }
+    function onCancel(){ close(null); }
+    function onKey(e)  { if (e.key === 'Enter') { e.preventDefault(); onOk(); } if (e.key === 'Escape') { e.preventDefault(); onCancel(); } }
+    btnOk.addEventListener('click', onOk);
+    btnCancel.addEventListener('click', onCancel);
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', e => { if (e.target === overlay) onCancel(); }, { once: true });
+  });
+}
+
+function initDiagramButtons() {
+  document.getElementById('btn-save-diagram').addEventListener('click', async () => {
+    const layout = ERD.getLayout();
+    if (!layout.length) { alert('Canvas ist leer'); return; }
+    const existing = await window.api.diagrams.list().catch(() => []);
+    const name = await openDiagramPicker('save', existing);
+    if (!name) return;
+    const ok = await window.api.diagrams.save(name, { name, cells: layout, saved_at: new Date().toISOString() }).catch(() => false);
+    const btn = document.getElementById('btn-save-diagram');
+    if (ok !== false) { document.getElementById('diagram-name').value = name; btn.textContent = '✅ Gespeichert'; }
+    else btn.textContent = '❌ Fehler';
+    setTimeout(() => { btn.textContent = '💾 Speichern'; }, 2000);
+  });
+
+  document.getElementById('btn-load-diagram').addEventListener('click', async () => {
+    const existing = await window.api.diagrams.list().catch(() => []);
+    const name = await openDiagramPicker('load', existing);
+    if (!name) return;
+    const data = await window.api.diagrams.load(name).catch(() => null);
+    if (!data) { alert(`Diagramm "${name}" nicht gefunden`); return; }
+    const tableMap = {};
+    _allTables.forEach(t => { tableMap[t.table_id] = t; });
+    document.getElementById('diagram-name').value = data.name || name;
+    await ERD.loadLayout(data.cells || [], tableMap);
+    ERD.refreshLinks(_allFKs);
+  });
+
+  document.getElementById('btn-export-svg').addEventListener('click', () => {
+    const canvas = document.getElementById('erd-canvas');
+    const svg = canvas.querySelector('svg');
+    if (!svg) { alert('Canvas ist leer'); return; }
+    const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (document.getElementById('diagram-name').value || 'diagram') + '.svg';
+    a.click(); URL.revokeObjectURL(a.href);
+  });
+
+  // Ctrl+S
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      document.getElementById('btn-save-diagram').click();
+    }
+  });
+}
+
+// ── FK-Modus ──────────────────────────────────────────────────────────
+const _colCache = {};
+async function _fetchColumns(tableId) {
+  if (!_colCache[tableId]) {
+    _colCache[tableId] = await window.api.modeler.tables.columns(tableId).catch(() => []);
+  }
+  return _colCache[tableId];
+}
+function _fillColSelect(sel, cols, selectedId) {
+  sel.innerHTML = `<option value="0">— keine —</option>`;
+  cols.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.column_id;
+    opt.textContent = c.column_name + (c.pk_flag === 'Y' ? ' 🔑' : '');
+    if (selectedId && String(c.column_id) === String(selectedId)) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+async function openFKDialog(mode, childId, childName, parentId, parentName, existing = {}) {
+  const overlay   = document.getElementById('fk-modal');
+  const titleEl   = document.getElementById('fk-modal-title');
+  const nameInp   = document.getElementById('fk-modal-name');
+  const childSel  = document.getElementById('fk-modal-child-col');
+  const parentSel = document.getElementById('fk-modal-parent-col');
+  document.getElementById('fk-modal-child-hint').textContent  = childName  ? `(${childName})`  : '(Child)';
+  document.getElementById('fk-modal-parent-hint').textContent = parentName ? `(${parentName})` : '(Parent)';
+  titleEl.textContent = mode === 'edit' ? '🔗 FK bearbeiten' : '🔗 FK-Beziehung anlegen';
+  nameInp.value = '⏳ Spalten laden…'; nameInp.disabled = true;
+  childSel.innerHTML = parentSel.innerHTML = '<option>Laden…</option>';
+  overlay.style.display = 'flex';
+  const [childCols, parentCols] = await Promise.all([_fetchColumns(childId), _fetchColumns(parentId)]);
+  _fillColSelect(childSel, childCols, existing.from_column_id);
+  _fillColSelect(parentSel, parentCols, existing.to_column_id);
+  nameInp.value = existing.fk_name || `FK_${childName||childId}_${parentName||parentId}`.substring(0, 60);
+  nameInp.disabled = false; nameInp.focus(); nameInp.select();
+  return new Promise(resolve => {
+    function cleanup() {
+      overlay.style.display = 'none';
+      btnOk.removeEventListener('click', onOk);
+      btnCancel.removeEventListener('click', onCancel);
+      document.removeEventListener('keydown', onKey);
+    }
+    const btnOk    = document.getElementById('fk-modal-ok');
+    const btnCancel= document.getElementById('fk-modal-cancel');
+    function onOk() {
+      cleanup();
+      resolve({ fk_name: nameInp.value.trim() || null, child_column_id: parseInt(childSel.value)||null, parent_column_id: parseInt(parentSel.value)||null });
+    }
+    function onCancel() { cleanup(); resolve(null); }
+    function onKey(e) { if (e.key==='Escape') { e.preventDefault(); onCancel(); } if (e.key==='Enter') { e.preventDefault(); onOk(); } }
+    btnOk.addEventListener('click', onOk);
+    btnCancel.addEventListener('click', onCancel);
+    document.addEventListener('keydown', onKey);
+    overlay.addEventListener('click', e => { if (e.target===overlay) onCancel(); }, { once: true });
+  });
+}
+function initFKMode() {
+  document.getElementById('btn-fk-mode')?.addEventListener('click', () => ERD.toggleFKMode());
+  window.addEventListener('erd:fkConnect', async e => {
+    const { fromId, toId, fromName, toName } = e.detail;
+    const result = await openFKDialog('create', fromId, fromName, toId, toName);
+    if (!result) return;
+    try {
+      const saved = await window.api.modeler.fk.create({
+        fk_name: result.fk_name, child_table_id: fromId, parent_table_id: toId,
+        child_column_id: result.child_column_id, parent_column_id: result.parent_column_id,
+      });
+      _allFKs.push({ fk_id: saved.fk_id, fk_name: saved.fk_name, from_table_id: String(fromId), to_table_id: String(toId), from_column_id: result.child_column_id, to_column_id: result.parent_column_id });
+      ERD.refreshLinks(_allFKs);
+    } catch (err) { alert('FK konnte nicht gespeichert werden:\n' + err.message); }
+  });
+  window.addEventListener('erd:fkEdit', async e => {
+    const { fkId, fromId, toId } = e.detail;
+    const existing = _allFKs.find(f => String(f.fk_id) === String(fkId));
+    if (!existing) return;
+    const fromT = _allTables.find(t => String(t.table_id) === String(fromId));
+    const toT   = _allTables.find(t => String(t.table_id) === String(toId));
+    const result = await openFKDialog('edit', fromId, fromT?.table_name||fromId, toId, toT?.table_name||toId, existing);
+    if (!result) return;
+    try {
+      const updated = await window.api.modeler.fk.update(fkId, { fk_name: result.fk_name||existing.fk_name, child_column_id: result.child_column_id, parent_column_id: result.parent_column_id });
+      const idx = _allFKs.findIndex(f => String(f.fk_id) === String(fkId));
+      if (idx !== -1) { _allFKs[idx] = { ..._allFKs[idx], fk_name: updated.fk_name, from_column_id: result.child_column_id, to_column_id: result.parent_column_id }; }
+      ERD.refreshLinks(_allFKs);
+    } catch (err) { alert('FK konnte nicht aktualisiert werden:\n' + err.message); }
+  });
+}
+
+// ── Import-Panel ──────────────────────────────────────────────────────
+async function initImportPanel() {
+  const dbSel = document.getElementById('import-db-select');
+  try {
+    const dbs = await window.api.modeler.databases();
+    dbs.forEach(db => {
+      if (db.error) return;
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = db.db_name;
+      dbSel.appendChild(opt);
+    });
+  } catch { /* ignore */ }
+  // Layer-Dropdown
+  const layerSel = document.createElement('select');
+  layerSel.id = 'import-layer-select';
+  try {
+    const layers = await window.api.modeler.layers();
+    layers.forEach(l => {
+      if (l.error) return;
+      const opt = document.createElement('option');
+      opt.value = l.layer_id; opt.textContent = `${l.layer_short||l.layer_id} – ${l.layer_id}`;
+      layerSel.appendChild(opt);
+    });
+  } catch { /* ignore */ }
+  const btnLoad = document.getElementById('btn-load-candidates');
+  const layerRow = document.createElement('div');
+  layerRow.className = 'panel-row';
+  layerRow.innerHTML = '<label>Layer:</label>';
+  layerRow.appendChild(layerSel);
+  btnLoad.insertAdjacentElement('beforebegin', layerRow);
+
+  btnLoad.addEventListener('click', async () => {
+    const dbName = dbSel.value;
+    if (!dbName) { alert('Bitte zuerst eine Datenbank wählen'); return; }
+    const list = document.getElementById('import-candidates-list');
+    list.innerHTML = "<div class='placeholder-text'>Lade…</div>";
+    document.getElementById('btn-import-selected').style.display = 'none';
+    try {
+      const candidates = await window.api.importTd.candidates(dbName);
+      if (!candidates.length || candidates[0]?.error) {
+        list.innerHTML = `<div class='placeholder-text'>${candidates[0]?.error||'Keine Tabellen gefunden'}</div>`;
+        return;
+      }
+      const newOnes = candidates.filter(c => !c.in_meta);
+      const inMeta  = candidates.filter(c =>  c.in_meta);
+      list.innerHTML = '';
+      const frag = document.createDocumentFragment();
+      const allRow = document.createElement('div');
+      allRow.className = 'import-select-all';
+      allRow.innerHTML = `<label><input type="checkbox" id="import-check-all"> Alle auswählen (${newOnes.length} neu)</label>`;
+      frag.appendChild(allRow);
+      const makeRow = c => {
+        const row = document.createElement('label');
+        const kind = c.table_kind === 'V' ? '👁 ' : '▤ ';
+        if (c.in_meta) {
+          row.className = 'import-candidate import-candidate--exists';
+          row.innerHTML = `<input type="checkbox" class="import-check" disabled><span>${kind}${escHtml(c.table_name)}</span><span class="import-meta-badge">✓ META</span>`;
+        } else {
+          row.className = 'import-candidate';
+          row.innerHTML = `<input type="checkbox" class="import-check" value="${escHtml(c.table_name)}"><span>${kind}${escHtml(c.table_name)}</span>`;
+        }
+        frag.appendChild(row);
+      };
+      newOnes.forEach(makeRow);
+      if (inMeta.length) {
+        const sep = document.createElement('div');
+        sep.className = 'import-section-sep'; sep.textContent = `— ${inMeta.length} bereits in META —`;
+        frag.appendChild(sep); inMeta.forEach(makeRow);
+      }
+      list.appendChild(frag);
+      document.getElementById('btn-import-selected').style.display = newOnes.length ? '' : 'none';
+      document.getElementById('import-check-all').addEventListener('change', e => {
+        list.querySelectorAll('.import-check:not([disabled])').forEach(cb => { cb.checked = e.target.checked; });
+      });
+    } catch (err) { list.innerHTML = `<div class='placeholder-text' style='color:#e74c3c'>Fehler: ${escHtml(err.message)}</div>`; }
+  });
+
+  document.getElementById('btn-import-selected').addEventListener('click', async () => {
+    const dbName  = dbSel.value;
+    const layerId = parseInt(layerSel.value) || 1;
+    const checked = [...document.querySelectorAll('.import-check:checked')].map(cb => cb.value);
+    if (!checked.length) { alert('Keine Tabellen ausgewählt'); return; }
+    const btn = document.getElementById('btn-import-selected');
+    btn.disabled = true; btn.textContent = `Importiere 0 / ${checked.length}…`;
+    let ok = 0, errors = [];
+    for (const tableName of checked) {
+      try {
+        await window.api.importTd.importTable({ db_name: dbName, table_name: tableName, layer_id: layerId });
+        ok++;
+      } catch (e) { errors.push(`${tableName}: ${e.message}`); }
+      btn.textContent = `Importiere ${ok} / ${checked.length}…`;
+    }
+    btn.disabled = false; btn.textContent = 'Auswahl importieren';
+    const msg = errors.length
+      ? `✅ ${ok} importiert\n❌ ${errors.length} Fehler:\n${errors.join('\n')}`
+      : `✅ ${ok} Tabelle(n) erfolgreich importiert`;
+    alert(msg);
+    if (ok > 0) { await loadTableList(); }
+  });
+}
+
+// ── Bottom Panel ──────────────────────────────────────────────────────
+function initBottomPanel() {
+  const panel  = document.getElementById('bottom-panel');
+  const handle = document.getElementById('bp-resize-handle');
+  document.getElementById('bp-close').addEventListener('click', () => { panel.style.display = 'none'; });
+  let _startY = 0, _startH = 0;
+  handle.addEventListener('mousedown', e => {
+    _startY = e.clientY; _startH = panel.offsetHeight;
+    const onMove = ev => {
+      const dy = _startY - ev.clientY;
+      panel.style.height = Math.max(150, Math.min(window.innerHeight * 0.6, _startH + dy)) + 'px';
+    };
+    const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    e.preventDefault();
+  });
+  document.getElementById('bp-meta-save').addEventListener('click', _bpSaveMeta);
+  let _zusatz = false;
+  document.getElementById('bp-zusatz-toggle').addEventListener('click', () => {
+    _zusatz = !_zusatz;
+    document.getElementById('bp-zusatz-toggle').classList.toggle('active', _zusatz);
+    document.querySelectorAll('.bp-table').forEach(t => t.classList.toggle('show-zusatz', _zusatz));
+  });
+  document.querySelectorAll('.bp-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.bp-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.bp-tab-pane').forEach(p => { p.style.display = 'none'; });
+      const pane = document.getElementById('bp-tab-' + tab);
+      if (pane) { pane.style.display = 'flex'; pane.style.flexDirection = tab === 'spalten' ? 'row' : 'column'; }
+      document.getElementById('bp-zusatz-toggle').style.display = tab === 'spalten' ? '' : 'none';
+    });
+  });
+  document.getElementById('bp-ddl-gen').addEventListener('click', _bpDdlGenerate);
+  document.getElementById('bp-ddl-exec').addEventListener('click', _bpDdlExecute);
+  document.getElementById('bp-stats-load').addEventListener('click', _bpStatsLoad);
+  document.getElementById('bp-maint-delete-meta').addEventListener('click', () => _bpMaintAction('delete-meta'));
+  document.getElementById('bp-maint-truncate').addEventListener('click', () => _bpMaintAction('truncate'));
+  document.getElementById('bp-maint-drop').addEventListener('click', () => _bpMaintAction('drop'));
+}
+
+let _bpTableId = null;
+async function showBottomPanel(table) {
+  const panel = document.getElementById('bottom-panel');
+  panel.style.display = 'flex';
+  _bpTableId = table.table_id;
+  document.getElementById('bp-title').textContent    = table.table_name || '—';
+  document.getElementById('bp-db-badge').textContent = table.db_name || '';
+  document.getElementById('bp-dbc-content').innerHTML  = '<div class="placeholder-text">Lade…</div>';
+  document.getElementById('bp-meta-content').innerHTML = '<div class="placeholder-text">Lade…</div>';
+  try {
+    const data = await fetch(`${API}/api/modeler/tables/${_bpTableId}/column-panel`).then(r => r.json());
+    if (data.error) {
+      const msg = `<div class="bp-no-data">Fehler: ${escHtml(data.error)}</div>`;
+      document.getElementById('bp-dbc-content').innerHTML = msg;
+      document.getElementById('bp-meta-content').innerHTML = msg;
+      return;
+    }
+    _bpRenderDbc(data);
+    _bpRenderMeta(data);
+  } catch (e) {
+    document.getElementById('bp-dbc-content').innerHTML = `<div class="bp-no-data">Netzwerkfehler: ${escHtml(e.message)}</div>`;
+  }
+}
+
+function _bpFlag(val) {
+  return (val === 'Y' || val === 'Y ')
+    ? '<span class="bp-flag-y">✓</span>'
+    : '<span class="bp-flag-n">–</span>';
+}
+function _bpFmtType(type, len, prec, scale) {
+  if (!type) return '—';
+  const t = String(type).trim();
+  const TD = {I:'INTEGER',I1:'BYTEINT',I2:'SMALLINT',I8:'BIGINT',F:'FLOAT',D:'DECIMAL',N:'NUMBER',CV:'VARCHAR',CF:'CHAR',UC:'VARCHAR(UNICODE)',DA:'DATE',TS:'TIMESTAMP',TZ:'TIMESTAMP WITH TIME ZONE',AT:'TIME',BF:'BYTE',BV:'VARBYTE'};
+  const name = TD[t] || t;
+  if (t === 'D' || t === 'N') return prec ? `${name}(${prec},${scale||0})` : name;
+  if ((t === 'CV' || t === 'CF' || t === 'UC') && len) return `${name}(${len})`;
+  return name;
+}
+function _bpRenderDbc(data) {
+  const el = document.getElementById('bp-dbc-content');
+  if (!data.dbc_cols?.length) { el.innerHTML = `<div class="bp-no-data">${data.dbc_error ? 'DBC: '+escHtml(data.dbc_error) : 'Keine DBC-Daten (db_name/table_name fehlt)'}</div>`; return; }
+  el.innerHTML = `<table class="bp-table"><thead><tr><th class="bp-cb">PK</th><th class="bp-cb">FK</th><th class="bp-cb">BKey</th><th class="bp-cb">PI</th><th class="bp-cb">Hash</th><th class="bp-cb">Null</th><th class="bp-cb">CS</th><th>Attribut</th><th>Datentyp</th><th>Charset</th><th>Kommentar</th><th class="bp-zusatz">Business Name</th><th class="bp-zusatz">Masking</th><th class="bp-zusatz bp-cb">PII</th></tr></thead><tbody>${
+    data.dbc_cols.map(c => `<tr><td class="bp-cb">${_bpFlag(c._pk)}</td><td class="bp-cb">${_bpFlag(c._fk)}</td><td class="bp-cb">–</td><td class="bp-cb">${_bpFlag(c._pi)}</td><td class="bp-cb">–</td><td class="bp-cb">${c.nullable==='Y'?'<span class="bp-flag-y">✓</span>':'<span class="bp-flag-n">–</span>'}</td><td class="bp-cb">–</td><td>${escHtml(c.column_name||'')}</td><td>${_bpFmtType(c.column_type,c.column_length,c.decimal_precision,c.decimal_scale)}</td><td>${escHtml(c.charset||'–')}</td><td>–</td><td class="bp-zusatz">–</td><td class="bp-zusatz">–</td><td class="bp-zusatz bp-cb">–</td></tr>`).join('')
+  }</tbody></table>`;
+}
+function _bpRenderMeta(data) {
+  const el = document.getElementById('bp-meta-content');
+  if (!data.meta_cols?.length) { el.innerHTML = '<div class="bp-no-data">Keine META-Spalten</div>'; return; }
+  const cb = (cid,field,val) => `<input type="checkbox" class="bp-edit" data-cid="${cid}" data-field="${field}" ${val==='Y'?'checked':''}>`;
+  const txt = (cid,field,val,w) => `<input type="text" class="bp-edit bp-txt" data-cid="${cid}" data-field="${field}" value="${(val||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" style="width:${w||80}px">`;
+  const sel = (cid,field,val,opts) => `<select class="bp-edit" data-cid="${cid}" data-field="${field}">${opts.map(o=>`<option value="${o}" ${val===o?'selected':''}>${o||'–'}</option>`).join('')}</select>`;
+  el.innerHTML = `<table class="bp-table"><thead><tr><th class="bp-cb">PK</th><th class="bp-cb">FK</th><th class="bp-cb">BKey</th><th class="bp-cb">PI</th><th class="bp-cb">Hash</th><th class="bp-cb">Null</th><th class="bp-cb">CS</th><th>Attribut</th><th>Datentyp</th><th>Charset</th><th>Kommentar</th><th class="bp-zusatz">Business Name</th><th class="bp-zusatz">Masking</th><th class="bp-zusatz bp-cb">PII</th></tr></thead><tbody>${
+    data.meta_cols.map(c => { const cid=c.column_id; const nv=(c.nullable||'Y').trim()==='Y'?'Y':'N'; return `<tr><td class="bp-cb">${cb(cid,'is_pk',(c.is_pk||'N').trim())}</td><td class="bp-cb">${cb(cid,'is_fk',(c.is_fk||'N').trim())}</td><td class="bp-cb">${cb(cid,'is_business_key',(c.bk_flag||'N').trim())}</td><td class="bp-cb">${cb(cid,'is_pi',(c.is_pi||'N').trim())}</td><td class="bp-cb">${cb(cid,'is_hash',(c.is_hash||'N').trim())}</td><td class="bp-cb">${cb(cid,'nullable',nv)}</td><td class="bp-cb">${cb(cid,'is_casespecific',(c.is_casespecific||'N').trim())}</td><td>${escHtml(c.column_name||'')}</td><td>${_bpFmtType(c.data_type,c.data_length,c.decimal_precision,c.decimal_scale)}</td><td>${sel(cid,'charset',(c.charset||'').trim(),['','UNICODE','LATIN'])}</td><td>${txt(cid,'comment',c.column_desc,120)}</td><td class="bp-zusatz">${txt(cid,'business_name',c.business_name,100)}</td><td class="bp-zusatz">${txt(cid,'masking_rule',c.masking_rule,100)}</td><td class="bp-zusatz bp-cb">${cb(cid,'is_pii',(c.pii_flag||'N').trim())}</td></tr>`; }).join('')
+  }</tbody></table>`;
+}
+async function _bpSaveMeta() {
+  const btn = document.getElementById('bp-meta-save');
+  btn.textContent = '⏳'; btn.disabled = true;
+  const updates = {};
+  document.querySelectorAll('#bp-meta-content .bp-edit').forEach(el => {
+    const cid = parseInt(el.dataset.cid); const field = el.dataset.field;
+    if (!updates[cid]) updates[cid] = {};
+    updates[cid][field] = el.type === 'checkbox' ? (el.checked ? 'Y' : 'N') : (el.value.trim() || null);
+  });
+  const saves = Object.entries(updates).map(([cid, f]) =>
+    window.api.modeler.columns.update(cid, { is_pk: f.is_pk, is_fk: f.is_fk, bk_flag: f.is_business_key, is_pi: f.is_pi, is_hash: f.is_hash, nullable: f.nullable, is_casespecific: f.is_casespecific, charset: f.charset||null, comment: f.comment||null, business_name: f.business_name||null, masking_rule: f.masking_rule||null, is_pii: f.is_pii })
+  );
+  try {
+    await Promise.all(saves);
+    btn.textContent = '✅ Gespeichert';
+  } catch (e) { btn.textContent = '❌ Fehler'; }
+  setTimeout(() => { btn.textContent = '💾 Speichern'; btn.disabled = false; }, 2000);
+}
+async function _bpDdlGenerate() {
+  if (!_bpTableId) return;
+  const btn = document.getElementById('bp-ddl-gen');
+  const status = document.getElementById('bp-ddl-status');
+  btn.disabled = true; status.textContent = 'Generiere…'; status.className = 'bp-status-msg';
+  try {
+    const r = await fetch(`${API}/api/modeler/tables/${_bpTableId}/ddl`).then(r => r.json());
+    if (r.error) { status.textContent = '❌ ' + r.error; status.className = 'bp-status-msg err'; }
+    else { document.getElementById('bp-ddl-text').value = r.ddl || ''; status.textContent = '✓ DDL generiert'; status.className = 'bp-status-msg ok'; }
+  } catch (e) { status.textContent = '❌ ' + e.message; status.className = 'bp-status-msg err'; }
+  btn.disabled = false;
+  setTimeout(() => { status.textContent = ''; status.className = 'bp-status-msg'; }, 4000);
+}
+async function _bpDdlExecute() {
+  const ddl = (document.getElementById('bp-ddl-text').value || '').trim();
+  if (!ddl) { alert('DDL-Text ist leer.'); return; }
+  if (!confirm('DDL wirklich gegen Teradata ausführen?\n\n' + ddl.slice(0, 200) + (ddl.length > 200 ? '…' : ''))) return;
+  const btn = document.getElementById('bp-ddl-exec');
+  const status = document.getElementById('bp-ddl-status');
+  btn.disabled = true; status.textContent = 'Ausführen…'; status.className = 'bp-status-msg';
+  try {
+    const r = await fetch(`${API}/api/modeler/tables/${_bpTableId}/ddl/execute`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ddl }) }).then(r => r.json());
+    if (r.error) { status.textContent = '❌ ' + r.error; status.className = 'bp-status-msg err'; }
+    else { status.textContent = '✅ ' + (r.message||'Ausgeführt'); status.className = 'bp-status-msg ok'; }
+  } catch (e) { status.textContent = '❌ ' + e.message; status.className = 'bp-status-msg err'; }
+  btn.disabled = false;
+}
+async function _bpStatsLoad() {
+  if (!_bpTableId) return;
+  const btn = document.getElementById('bp-stats-load');
+  const result = document.getElementById('bp-stats-result');
+  btn.disabled = true; result.textContent = 'Lade…'; result.className = 'bp-status-msg';
+  try {
+    const r = await fetch(`${API}/api/modeler/tables/${_bpTableId}/stats`).then(r => r.json());
+    if (r.error) { result.textContent = '❌ ' + r.error; result.className = 'bp-status-msg err'; }
+    else {
+      const mb = r.perm_bytes != null ? (r.perm_bytes/1024/1024).toFixed(2) + ' MB' : 'n/a';
+      result.textContent = `Zeilen: ${r.row_count??'n/a'} | Größe: ${mb}`;
+      result.className = 'bp-status-msg ok';
+    }
+  } catch (e) { result.textContent = '❌ ' + e.message; result.className = 'bp-status-msg err'; }
+  btn.disabled = false;
+}
+async function _bpMaintAction(action) {
+  if (!_bpTableId) return;
+  const result = document.getElementById('bp-maint-result');
+  const labels = { 'delete-meta': 'Tabelle aus META löschen (nicht rückgängig)?', 'truncate': 'Alle Zeilen der Tabelle löschen (DELETE ALL)?', 'drop': '⚠ DROP TABLE in Teradata? Dies ist IRREVERSIBEL!' };
+  if (!confirm(labels[action] || 'Aktion ausführen?')) return;
+  const eps = { 'delete-meta': { method: 'DELETE', url: `/api/modeler/tables/${_bpTableId}/meta` }, 'truncate': { method: 'POST', url: `/api/modeler/tables/${_bpTableId}/truncate` }, 'drop': { method: 'POST', url: `/api/modeler/tables/${_bpTableId}/drop` } };
+  const ep = eps[action];
+  result.textContent = 'Ausführen…'; result.className = 'bp-status-msg';
+  try {
+    const r = await fetch(API + ep.url, { method: ep.method }).then(r => r.json());
+    if (r.error) { result.textContent = '❌ ' + r.error; result.className = 'bp-status-msg err'; }
+    else {
+      result.textContent = '✅ ' + (r.message||'Erledigt'); result.className = 'bp-status-msg ok';
+      if (action === 'delete-meta') setTimeout(() => { document.getElementById('bottom-panel').style.display = 'none'; }, 1500);
+    }
+  } catch (e) { result.textContent = '❌ ' + e.message; result.className = 'bp-status-msg err'; }
+}
+
+// ── Hilfsfunktion ─────────────────────────────────────────────────────
+function escHtml(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Init ──────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  initSidebarTabs();
+  initTableSearch();
+  loadTableList();
+  requestAnimationFrame(() => ERD.init());
+  initContextMenu();
+  initDiagramButtons();
+  initFKMode();
+  initImportPanel();
+  initBottomPanel();
+
+  window.addEventListener('erd:select',     e => { showTableProperties(e.detail); showBottomPanel(e.detail); });
+  window.addEventListener('erd:tableAdded', () => ERD.refreshLinks(_allFKs));
+
+  // TableEditor Events weiterleiten → Canvas-Refresh
+  document.addEventListener('studio:table-updated', () => loadTableList());
+});
+
+})();
+</script>
+
+</body>
+</html>

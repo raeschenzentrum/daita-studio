@@ -8,7 +8,7 @@ window.METADAITA_CONFIG = {
     // Beispiele:
     //   'http://192.168.114.21:8015'
     //   'http://daita-studio-server:8015'
-    backend_url: 'http://10.3.0.245:8021',
+    backend_url: 'http://10.3.0.245:9021',
 
     // Fallback-URL wenn backend_url nicht erreichbar (optional)
     // null = kein Fallback

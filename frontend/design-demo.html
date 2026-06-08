@@ -12,6 +12,7 @@
     <script src="components/job-detail.js"></script>
     <script src="components/column-selector.js"></script>
     <script src="components/etl-wizard.js"></script>
+    <script src="components/job-list.js"></script>
     <style>
         body { margin: 0; background: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
@@ -412,6 +413,14 @@
             </div>
         </div>
 
+        <!-- ====== JOB-LIST (C7) ====== -->
+        <div class="demo-card" style="min-height:360px;display:flex;flex-direction:column">
+            <div class="demo-card-header">☰ job-list.js – Job-Liste mit Filter &amp; Suche (C7)</div>
+            <div class="demo-card-body" style="flex:1;padding:0;overflow:hidden">
+                <div id="jl-demo-container" style="height:340px"></div>
+            </div>
+        </div>
+
         <!-- ====== ETL-WIZARD (C6) ====== -->
         <div class="demo-card full-width">
             <div class="demo-card-header">⚇ etl-wizard.js – ETL-Job + Zieltabelle in einem Schritt (C6)</div>
@@ -628,6 +637,26 @@ document.addEventListener('DOMContentLoaded', () => {
         mode: 'inline',
     });
     wiz.open();
+
+    // ---- Job-List Demo ----
+    const fakeJobs = [
+        { job_id:1, job_name:'RAW_PARTNER → DISC_PARTNER_H', source_table_name:'RAW_PARTNER', target_table_name:'DISC_PARTNER_H', source_db_name:'MDP01_RAW', source_layer_name:'RAW', historization_type:'SCD2', last_run_status:'ok',      last_run_at:'2026-06-07T22:14:00' },
+        { job_id:2, job_name:'RAW_EINKOMMEN → DISC_EINKOMMEN_H', source_table_name:'RAW_EINKOMMEN', target_table_name:'DISC_EINKOMMEN_H', source_db_name:'MDP01_RAW', source_layer_name:'RAW', historization_type:'SCD2', last_run_status:'error',    last_run_at:'2026-06-07T21:00:00' },
+        { job_id:3, job_name:'RAW_AUFENTHALT → DISC_AUFENTHALT_H', source_table_name:'RAW_AUFENTHALT', target_table_name:'DISC_AUFENTHALT_H', source_db_name:'MDP01_RAW', source_layer_name:'RAW', historization_type:'SCD1', last_run_status:'ok',      last_run_at:'2026-06-08T06:30:00' },
+        { job_id:4, job_name:'RAW_PERSON → DISC_PERSON_H', source_table_name:'RAW_PERSON', target_table_name:'DISC_PERSON_H', source_db_name:'MDP01_RAW', source_layer_name:'RAW', historization_type:'SCD2', last_run_status:'running',  last_run_at:'2026-06-08T08:00:00' },
+        { job_id:5, job_name:'DISC_PARTNER → REUS_PARTNER', source_table_name:'DISC_PARTNER_H', target_table_name:'REUS_PARTNER', source_db_name:'MDP01_DISC', source_layer_name:'DISC', historization_type:'FULL', last_run_status:'never',    last_run_at:null },
+        { job_id:6, job_name:'DISC_EINKOMMEN → REUS_EINKOMMEN', source_table_name:'DISC_EINKOMMEN_H', target_table_name:'REUS_EINKOMMEN', source_db_name:'MDP01_DISC', source_layer_name:'DISC', historization_type:'FULL', last_run_status:'ok',      last_run_at:'2026-06-07T23:50:00' },
+    ];
+    const fakeLayers = [
+        { layer_id:1, layer_name:'RAW' },
+        { layer_id:2, layer_name:'DISC' },
+        { layer_id:3, layer_name:'REUS' },
+    ];
+    const jlContainer = document.getElementById('jl-demo-container');
+    const jl = new JobList(jlContainer, {
+        onSelect: (jobId, job) => console.log('[JL Demo] ausgewählt:', jobId, job?.job_name),
+    });
+    jl.setJobs(fakeJobs, fakeLayers);
 });
 </script>
 

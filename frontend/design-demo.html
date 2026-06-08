@@ -11,6 +11,7 @@
     <script src="components/table-editor.js"></script>
     <script src="components/job-detail.js"></script>
     <script src="components/column-selector.js"></script>
+    <script src="components/etl-wizard.js"></script>
     <style>
         body { margin: 0; background: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
@@ -411,7 +412,18 @@
             </div>
         </div>
 
-        <!-- ====== COLUMN SELECTOR (C5 – echte Komponente) ====== -->
+        <!-- ====== ETL-WIZARD (C6) ====== -->
+        <div class="demo-card full-width">
+            <div class="demo-card-header">⚇ etl-wizard.js – ETL-Job + Zieltabelle in einem Schritt (C6)</div>
+            <div class="demo-card-body">
+                <p style="font-size:0.83em;color:#888;margin-bottom:10px">
+                    Simulierte Daten. <code>ETLWizard.openModal({ sourceTableId: 5 })</code> öffnet als Modal.
+                </p>
+                <div id="ew-demo-container"></div>
+            </div>
+        </div>
+
+        <!-- ====== COLUMN SELECTOR (C5) ====== -->
         <div class="demo-card full-width">
             <div class="demo-card-header">⬤ column-selector.js – Spalten-Auswahl PK/Hash/Load (C5)</div>
             <div class="demo-card-body">
@@ -597,6 +609,25 @@ document.addEventListener('DOMContentLoaded', () => {
         onChange: sel => console.log('[CS Demo] Selektion:', sel),
     });
     cs.load();
+
+    // ---- ETL-Wizard Demo ----
+    window.api.templates.listJobs = () => Promise.resolve([
+        { template_id: 1, template_name: 'RAW to DISC SCD2', historization_type: 'SCD2' },
+        { template_id: 2, template_name: 'RAW to DISC SCD1', historization_type: 'SCD1' },
+        { template_id: 3, template_name: 'RAW to DISC FULL', historization_type: 'FULL' },
+    ]);
+    window.api.templates.applyJob = (tplId, payload) => Promise.resolve({
+        job_id: 42, target_table_id: 15, target_created: true,
+    });
+
+    const ewContainer = document.getElementById('ew-demo-container');
+    const wiz = new ETLWizard(ewContainer, {
+        sourceTableId:   99,
+        sourceTableName: 'RAW_PARTNER',
+        sourceDbName:    'MDP01_RAW_LAYER',
+        mode: 'inline',
+    });
+    wiz.open();
 });
 </script>
 

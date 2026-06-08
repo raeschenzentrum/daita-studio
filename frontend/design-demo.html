@@ -10,6 +10,7 @@
     <script src="components/nav-header.js"></script>
     <script src="components/table-editor.js"></script>
     <script src="components/job-detail.js"></script>
+    <script src="components/column-selector.js"></script>
     <style>
         body { margin: 0; background: #f0f2f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 
@@ -410,7 +411,18 @@
             </div>
         </div>
 
-        <!-- ====== JOB DETAIL (C4 – echte Komponente) ====== -->
+        <!-- ====== COLUMN SELECTOR (C5 – echte Komponente) ====== -->
+        <div class="demo-card full-width">
+            <div class="demo-card-header">⬤ column-selector.js – Spalten-Auswahl PK/Hash/Load (C5)</div>
+            <div class="demo-card-body">
+                <p style="font-size:0.83em;color:#888;margin-bottom:10px">
+                    Simulierte Spalten. Mit echter Tabelle: <code>cs.setTable(tableId)</code>
+                </p>
+                <div id="cs-demo-container"></div>
+            </div>
+        </div>
+
+        <!-- ====== JOB DETAIL (C4 – echte Komponente) ======  -->
         <div class="demo-card full-width">
             <div class="demo-card-header">⚙ job-detail.js – Job-Detail + Steps + Run-Button (C4)</div>
             <div class="demo-card-body">
@@ -563,6 +575,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const jdContainer = document.getElementById('jd-demo-container');
     const jdDetail    = new JobDetail(jdContainer);
     jdDetail.load(7);
+
+    // ---- Column-Selector Demo ----
+    const fakeCols = [
+        { column_name: 'PARTNER_NR',     data_type: 'VARCHAR',     data_length: 20,  bk_flag: 'Y', pk_flag: 'N', audit_flag: 'N' },
+        { column_name: 'NAME',           data_type: 'VARCHAR',     data_length: 200, bk_flag: 'N', pk_flag: 'N', audit_flag: 'N' },
+        { column_name: 'VORNAME',        data_type: 'VARCHAR',     data_length: 100, bk_flag: 'N', pk_flag: 'N', audit_flag: 'N' },
+        { column_name: 'GEBURTSDATUM',   data_type: 'DATE',        data_length: null,bk_flag: 'N', pk_flag: 'N', audit_flag: 'N' },
+        { column_name: 'LAND_CODE',      data_type: 'CHAR',        data_length: 3,   bk_flag: 'N', pk_flag: 'N', audit_flag: 'N' },
+        { column_name: 'EMAIL',          data_type: 'VARCHAR',     data_length: 255, bk_flag: 'N', pk_flag: 'N', audit_flag: 'N' },
+        { column_name: 'TELEFON',        data_type: 'VARCHAR',     data_length: 50,  bk_flag: 'N', pk_flag: 'N', audit_flag: 'N' },
+        { column_name: 'PARTNER_SK',     data_type: 'BIGINT',      data_length: null,bk_flag: 'N', pk_flag: 'Y', audit_flag: 'N' },
+        { column_name: 'CREATED_AT',     data_type: 'TIMESTAMP',   data_length: null,bk_flag: 'N', pk_flag: 'N', audit_flag: 'Y' },
+        { column_name: 'UPDATED_AT',     data_type: 'TIMESTAMP',   data_length: null,bk_flag: 'N', pk_flag: 'N', audit_flag: 'Y' },
+    ];
+    window.api.etl.tables.columns = () => Promise.resolve(fakeCols);
+
+    const csContainer = document.getElementById('cs-demo-container');
+    const cs = new ColumnSelector(csContainer, {
+        tableId: 99,
+        onChange: sel => console.log('[CS Demo] Selektion:', sel),
+    });
+    cs.load();
 });
 </script>
 

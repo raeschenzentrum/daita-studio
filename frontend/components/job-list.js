@@ -258,7 +258,7 @@
                 const item = e.target.closest('.jl-item');
                 if (!item) return;
                 const jobId = Number(item.dataset.jobId);
-                const job   = this._jobs.find(j => j.job_id === jobId);
+                const job   = this._jobs.find(j => j.etl_job_id === jobId);
                 this._select(jobId, job);
             });
         }
@@ -331,7 +331,7 @@
             this._elList.innerHTML = this._filtered.map(job => {
                 const ht     = histType(job);
                 const dc     = dotClass(job);
-                const active = job.job_id === this._selectedId ? ' active' : '';
+                const active = job.etl_job_id === this._selectedId ? ' active' : '';
                 const src    = esc(job.source_table_name ?? '?');
                 const tgt    = esc(job.target_table_name ?? '?');
                 const srcDb  = esc(job.source_db_name ?? '');
@@ -339,7 +339,7 @@
                 const ts     = formatTs(job.last_run_at);
 
                 return `
-                <li class="jl-item${active}" data-job-id="${job.job_id}" title="${esc(job.job_name)}">
+                <li class="jl-item${active}" data-job-id="${job.etl_job_id}" title="${esc(job.job_name)}">
                     <span class="jl-dot ${dc}" title="${dc}"></span>
                     <span class="jl-body">
                         <div class="jl-name">${esc(job.job_name)}</div>

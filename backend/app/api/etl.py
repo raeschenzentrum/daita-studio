@@ -64,12 +64,12 @@ async def get_jobs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/jobs/{job_id}", response_model=ETLJob)
+@router.get("/jobs/{job_id}", response_model=ETLJobWithDetails)
 async def get_job(
     job_id: int,
     etl_service: ETLService = Depends(get_etl_service)
 ):
-    """Gibt einen spezifischen Job zurück"""
+    """Gibt einen spezifischen Job zurück (inkl. Tabellennamen, Layer, Step-Count)"""
     try:
         job = etl_service.get_job_by_id(job_id)
         if not job:

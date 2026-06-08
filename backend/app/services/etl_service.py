@@ -199,29 +199,57 @@ class ETLService:
         conn.close()
         return jobs
     
-    def get_job_by_id(self, job_id: int) -> Optional[ETLJob]:
-        """Gibt einen spezifischen Job zurück"""
+    def get_job_by_id(self, job_id: int) -> Optional[ETLJobWithDetails]:
+        """Gibt einen spezifischen Job zurück – inkl. Details (Tabellennamen, Layer, Step-Count)"""
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute("""
-            SELECT etl_job_id, job_name, job_type, source_table_id, target_table_id,
-                   is_active, create_timestamp, last_alter_timestamp
-            FROM MDP01_META.META_ETL_JOB
-            WHERE etl_job_id = ?
+            SELECT
+                j.etl_job_id,
+                j.job_name,
+                j.job_type,
+                j.source_table_id,
+                j.target_table_id,
+                j.is_active,
+                j.create_timestamp,
+                j.last_alter_timestamp,
+                st.table_name  AS source_table_name,
+                tt.table_name  AS target_table_name,
+                COALESCE(sd.layer_id, j.source_layer_id) AS source_layer_id,
+                COALESCE(td.layer_id, j.target_layer_id) AS target_layer_id,
+                (SELECT COUNT(*) FROM MDP01_META.META_ETL_JOB_STEP s
+                 WHERE s.etl_job_id = j.etl_job_id AND s.is_active = 'Y') AS step_count,
+                lr.status     AS last_run_status,
+                lr.start_time AS last_run_time
+            FROM MDP01_META.META_ETL_JOB j
+            LEFT JOIN MDP01_META.META_TABLE    st ON j.source_table_id = st.table_id
+            LEFT JOIN MDP01_META.META_TABLE    tt ON j.target_table_id = tt.table_id
+            LEFT JOIN MDP01_META.META_DATABASE sd ON st.database_id   = sd.database_id
+            LEFT JOIN MDP01_META.META_DATABASE td ON tt.database_id   = td.database_id
+            LEFT JOIN (
+                SELECT etl_job_id, status, start_time
+                FROM (
+                    SELECT etl_job_id, status, start_time,
+                           ROW_NUMBER() OVER (PARTITION BY etl_job_id ORDER BY start_time DESC) AS rn
+                    FROM MDP01_META.META_ETL_JOB_RUN
+                ) tmp WHERE rn = 1
+            ) lr ON j.etl_job_id = lr.etl_job_id
+            WHERE j.etl_job_id = ?
         """, (job_id,))
-        
+
         row = cursor.fetchone()
         conn.close()
-        
+
         if row:
-            return ETLJob(
-                etl_job_id=row[0], job_name=row[1], job_type=row[2],
-                source_table_id=row[3], target_table_id=row[4],
-                is_active=row[5], 
-                retry_count=3,  # Default
-                timeout_seconds=3600,  # Default
-                create_timestamp=row[6], last_alter_timestamp=row[7]
+            return ETLJobWithDetails(
+                etl_job_id=row[0],         job_name=row[1],          job_type=row[2],
+                source_table_id=row[3],    target_table_id=row[4],   is_active=row[5],
+                retry_count=3,             timeout_seconds=3600,
+                create_timestamp=row[6],   last_alter_timestamp=row[7],
+                source_table_name=row[8],  target_table_name=row[9],
+                source_layer_id=row[10],   target_layer_id=row[11],
+                step_count=row[12],        last_run_status=row[13],  last_run_time=row[14],
             )
         return None
     

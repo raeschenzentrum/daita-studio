@@ -1,0 +1,32 @@
+# ============================================================================
+# daita-studio – Database Configuration Template
+# ============================================================================
+# ANPASSEN und als cfg/database.yml speichern (NICHT committen!)
+# ============================================================================
+
+teradata:
+  host: '192.168.114.21'       # TODO: Teradata Host / IP
+  user: 'tdops'                # TODO: Datenbankbenutzer
+  password: 'tdops'            # TODO: Passwort
+  autocommit: false
+  transaction_mode: 'ANSI'
+  batch_size: 10000
+  connect_timeout: 10000       # TCP-Verbindungsaufbau max. 10s (ms)
+
+# Metadata Schema
+metadata:
+  schema: 'MDP01_META'
+
+# ==========================================================================
+# Source Systems – Externe Quellsysteme für TPT Loads
+# ==========================================================================
+source_systems:
+  ZEMIS:
+    type: 'MSSQL'
+    host: '10.3.0.15'          # TODO: SQL Server Host
+    port: 1433
+    database: 'AdventureWorks' # TODO: Datenbank-Name
+    user: 'sa'                 # TODO: User
+    password: 'ChangeMe!'      # TODO: Passwort
+    default_schema: 'HumanResources'
+    odbc_dsn: 'SQL_Server_Wire_Protocol'

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>daita-studio – Flow</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="components/api.js"></script>
+    <script src="components/nav-header.js"></script>
+    <script src="components/job-detail.js"></script>
+    <script src="components/etl-wizard.js"></script>
+    <style>
+        /* ── Layout ───────────────────────────────────────────────── */
+        body { margin: 0; background: var(--bg-color, #f0f2f5); }
+        .flow-page { display: flex; flex-direction: column; min-height: 100vh; }
+        .flow-main  { flex: 1; padding: 20px; max-width: 1400px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+
+        /* ── Toolbar ──────────────────────────────────────────────── */
+        .flow-toolbar {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 18px; flex-wrap: wrap;
+        }
+        .flow-toolbar h2 { font-size: 1.1em; font-weight: 700; color: var(--text-primary, #333); flex: 1; }
+        .btn-refresh {
+            padding: 6px 14px; border: 1px solid var(--primary-color, #667eea);
+            border-radius: 6px; background: transparent; color: var(--primary-color, #667eea);
+            cursor: pointer; font-size: 0.85em;
+        }
+        .btn-refresh:hover { background: var(--primary-color, #667eea); color: #fff; }
+        .flow-error {
+            padding: 10px 14px; background: #fff5f5; border: 1px solid #f5c6cb;
+            border-radius: 6px; color: #c0392b; font-size: 0.87em; margin-bottom: 14px;
+        }
+
+        /* ── Pipeline-Canvas ──────────────────────────────────────── */
+        .pipeline-canvas {
+            display: flex; gap: 0; align-items: flex-start;
+            overflow-x: auto; padding-bottom: 8px;
+        }
+
+        /* ── Layer-Spalte ─────────────────────────────────────────── */
+        .layer-col {
+            min-width: 240px; max-width: 300px; flex-shrink: 0;
+            background: #fff; border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        .layer-header {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: #fff; padding: 10px 14px;
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer; user-select: none;
+        }
+        .layer-header-name { font-weight: 700; font-size: 0.95em; }
+        .layer-header-stats { font-size: 0.75em; opacity: 0.85; }
+        .layer-toggle { font-size: 0.8em; opacity: 0.8; transition: transform 0.2s; }
+        .layer-col.collapsed .layer-toggle { transform: rotate(-90deg); }
+
+        .layer-body { display: block; }
+        .layer-col.collapsed .layer-body { display: none; }
+
+        .layer-loading { padding: 14px; font-size: 0.85em; color: #888; }
+
+        /* ── Tabellen-Einträge ────────────────────────────────────── */
+        .table-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 14px; border-bottom: 1px solid #f0f0f0;
+            cursor: pointer; transition: background 0.12s; font-size: 0.87em;
+        }
+        .table-item:last-child { border-bottom: none; }
+        .table-item:hover  { background: #f4f0ff; }
+        .table-item.active { background: #ede9fb; border-left: 3px solid #764ba2; }
+
+        .table-dot {
+            width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+        }
+        .table-dot.ok      { background: #27ae60; }
+        .table-dot.error   { background: #e74c3c; }
+        .table-dot.running { background: #f39c12; animation: flow-pulse 1s infinite; }
+        .table-dot.no-job  { background: #ccc; }
+        @keyframes flow-pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+
+        .table-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .table-badge {
+            font-size: 0.7em; padding: 1px 5px; border-radius: 3px;
+            font-weight: 600; white-space: nowrap;
+        }
+        .table-badge.scd2  { background: #6c5ce7; color: #fff; }
+        .table-badge.scd1  { background: #0984e3; color: #fff; }
+        .table-badge.full  { background: #00b894; color: #fff; }
+
+        /* + ETL erstellen Button */
+        .table-item.add-etl {
+            color: #667eea; font-style: italic; font-size: 0.82em;
+        }
+        .table-item.add-etl:hover { background: #f0f2ff; }
+
+        /* ── Pfeil zwischen Layern ────────────────────────────────── */
+        .layer-arrow {
+            display: flex; align-items: flex-start; padding-top: 42px;
+            flex-shrink: 0; width: 40px; justify-content: center;
+            color: #bbb; font-size: 1.4em;
+        }
+
+        /* ── Detail-Panel ─────────────────────────────────────────── */
+        .flow-detail-panel {
+            margin-top: 20px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            overflow: hidden;
+            display: none;
+        }
+        .flow-detail-panel.visible { display: block; }
+        .detail-panel-header {
+            background: linear-gradient(135deg, #667eea22, #764ba222);
+            border-bottom: 1px solid #e8e4fb;
+            padding: 10px 16px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .detail-panel-title { font-weight: 600; font-size: 0.9em; color: #764ba2; }
+        .detail-panel-close {
+            background: none; border: none; cursor: pointer;
+            font-size: 1.2em; color: #aaa; line-height: 1;
+        }
+        .detail-panel-close:hover { color: #555; }
+        .detail-panel-body { min-height: 200px; }
+
+        /* ── Leer-Zustand ─────────────────────────────────────────── */
+        .flow-empty {
+            text-align: center; padding: 60px 20px; color: #aaa;
+        }
+        .flow-empty-icon { font-size: 3em; margin-bottom: 10px; }
+
+        /* ── Loading-Spinner ──────────────────────────────────────── */
+        .flow-loading {
+            text-align: center; padding: 40px; color: #888; font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+<div class="flow-page">
+
+    <!-- Navigation -->
+    <studio-nav active="flow"></studio-nav>
+
+    <main class="flow-main">
+
+        <!-- Toolbar -->
+        <div class="flow-toolbar">
+            <h2>🔷 ETL Flow – Layer-Übersicht</h2>
+            <button class="btn-refresh" id="btn-refresh">↺ Neu laden</button>
+        </div>
+
+        <!-- Fehler-Anzeige -->
+        <div class="flow-error" id="flow-error" style="display:none"></div>
+
+        <!-- Pipeline-Canvas -->
+        <div class="pipeline-canvas" id="pipeline-canvas">
+            <div class="flow-loading">⏳ Lade Layer …</div>
+        </div>
+
+        <!-- Detail-Panel (job-detail.js inline) -->
+        <div class="flow-detail-panel" id="detail-panel">
+            <div class="detail-panel-header">
+                <span class="detail-panel-title" id="detail-panel-title">Job-Detail</span>
+                <button class="detail-panel-close" id="detail-panel-close" title="Schließen">✕</button>
+            </div>
+            <div class="detail-panel-body" id="detail-panel-body"></div>
+        </div>
+
+    </main>
+</div>
+
+<script>
+(() => {
+    'use strict';
+
+    // ----------------------------------------------------------------
+    // State
+    // ----------------------------------------------------------------
+    let _layers     = [];   // [{layer_id, layer_name, ...}]
+    let _layerJobs  = {};   // { layer_id: [{job_id, source_table_id, ...}] }
+    let _activeJobId = null;
+    let _jobDetail   = null;  // JobDetail-Instanz
+
+    const canvas      = document.getElementById('pipeline-canvas');
+    const detailPanel = document.getElementById('detail-panel');
+    const detailBody  = document.getElementById('detail-panel-body');
+    const detailTitle = document.getElementById('detail-panel-title');
+    const errBox      = document.getElementById('flow-error');
+
+    // ----------------------------------------------------------------
+    // Fehler-Handling (globales API-Error-Event)
+    // ----------------------------------------------------------------
+    document.addEventListener('studio:api-error', e => {
+        showError(`API-Fehler ${e.detail.status}: ${e.detail.message}`);
+    });
+
+    function showError(msg) {
+        errBox.textContent = msg;
+        errBox.style.display = 'block';
+        setTimeout(() => { errBox.style.display = 'none'; }, 8000);
+    }
+
+    // ----------------------------------------------------------------
+    // Laden
+    // ----------------------------------------------------------------
+    async function loadFlow() {
+        canvas.innerHTML = '<div class="flow-loading">⏳ Lade Layer …</div>';
+        hideDetail();
+
+        try {
+            _layers = await window.api.etl.layers();
+        } catch (e) {
+            canvas.innerHTML = `<div class="flow-empty"><div class="flow-empty-icon">⚠️</div>Fehler beim Laden der Layer:<br>${escHtml(e.message)}</div>`;
+            return;
+        }
+
+        if (!_layers || _layers.length === 0) {
+            canvas.innerHTML = '<div class="flow-empty"><div class="flow-empty-icon">🔷</div>Keine Layer konfiguriert.</div>';
+            return;
+        }
+
+        // Jobs aller Layer parallel laden
+        await Promise.all(_layers.map(l => loadLayerJobs(l.layer_id)));
+        renderCanvas();
+    }
+
+    async function loadLayerJobs(layerId) {
+        try {
+            const jobs = await window.api.etl.jobs.list({ layer_id: layerId });
+            _layerJobs[layerId] = Array.isArray(jobs) ? jobs : (jobs?.items ?? []);
+        } catch (_) {
+            _layerJobs[layerId] = [];
+        }
+    }
+
+    // ----------------------------------------------------------------
+    // Render
+    // ----------------------------------------------------------------
+    function renderCanvas() {
+        canvas.innerHTML = '';
+
+        _layers.forEach((layer, idx) => {
+            // Pfeil zwischen Layern
+            if (idx > 0) {
+                const arrow = document.createElement('div');
+                arrow.className = 'layer-arrow';
+                arrow.textContent = '→';
+                canvas.appendChild(arrow);
+            }
+
+            canvas.appendChild(buildLayerCol(layer));
+        });
+    }
+
+    function buildLayerCol(layer) {
+        const jobs = _layerJobs[layer.layer_id] || [];
+        const okCount  = jobs.filter(j => dotClass(j) === 'ok').length;
+        const errCount = jobs.filter(j => dotClass(j) === 'error').length;
+
+        const col = document.createElement('div');
+        col.className = 'layer-col';
+        col.dataset.layerId = layer.layer_id;
+
+        // Header
+        const hdr = document.createElement('div');
+        hdr.className = 'layer-header';
+        hdr.innerHTML = `
+            <span class="layer-header-name">${escHtml(layer.layer_name ?? layer.layer_id)}</span>
+            <span class="layer-header-stats">${jobs.length} Jobs · ${okCount}✅ ${errCount > 0 ? errCount + '❌' : ''}</span>
+            <span class="layer-toggle">▾</span>`;
+        hdr.addEventListener('click', () => {
+            col.classList.toggle('collapsed');
+        });
+        col.appendChild(hdr);
+
+        // Body
+        const body = document.createElement('div');
+        body.className = 'layer-body';
+
+        if (jobs.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'layer-loading';
+            empty.textContent = 'Keine Jobs in diesem Layer.';
+            body.appendChild(empty);
+        } else {
+            jobs.forEach(job => body.appendChild(buildTableItem(job, layer)));
+        }
+
+        // + ETL erstellen (immer am Ende)
+        const addBtn = document.createElement('div');
+        addBtn.className = 'table-item add-etl';
+        addBtn.innerHTML = '＋ ETL-Job erstellen …';
+        addBtn.addEventListener('click', () => openWizard({ layerId: layer.layer_id, layerName: layer.layer_name }));
+        body.appendChild(addBtn);
+
+        col.appendChild(body);
+        return col;
+    }
+
+    function buildTableItem(job, layer) {
+        const item = document.createElement('div');
+        item.className = 'table-item' + (job.job_id === _activeJobId ? ' active' : '');
+        item.dataset.jobId = job.job_id;
+
+        const dc = dotClass(job);
+        const ht = (job.historization_type || 'FULL').toUpperCase();
+
+        item.innerHTML = `
+            <span class="table-dot ${dc}" title="${dc}"></span>
+            <span class="table-name" title="${escHtml(job.source_table_name ?? '')} → ${escHtml(job.target_table_name ?? '')}">
+                ${escHtml(job.source_table_name ?? job.job_name)}
+            </span>
+            <span class="table-badge ${ht.toLowerCase()}">${ht}</span>`;
+
+        item.addEventListener('click', () => selectJob(job, layer));
+        return item;
+    }
+
+    // ----------------------------------------------------------------
+    // Job selektieren → Detail-Panel
+    // ----------------------------------------------------------------
+    function selectJob(job, layer) {
+        _activeJobId = job.job_id;
+
+        // Aktiv-Klasse aktualisieren
+        document.querySelectorAll('.table-item').forEach(el => {
+            el.classList.toggle('active', Number(el.dataset.jobId) === job.job_id);
+        });
+
+        // Detail-Panel anzeigen
+        const src  = job.source_table_name ?? '?';
+        const tgt  = job.target_table_name ?? '?';
+        detailTitle.textContent = `${src} → ${tgt}`;
+        showDetail();
+
+        if (!_jobDetail) {
+            _jobDetail = new JobDetail(detailBody);
+        }
+        _jobDetail.load(job.job_id);
+
+        // Nach unten scrollen
+        detailPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function showDetail() {
+        detailPanel.classList.add('visible');
+    }
+
+    function hideDetail() {
+        detailPanel.classList.remove('visible');
+        _activeJobId = null;
+        document.querySelectorAll('.table-item.active').forEach(el => el.classList.remove('active'));
+    }
+
+    // ----------------------------------------------------------------
+    // ETL-Wizard öffnen
+    // ----------------------------------------------------------------
+    function openWizard(opts = {}) {
+        ETLWizard.openModal({
+            sourceLayerId:   opts.layerId,
+            sourceLayerName: opts.layerName,
+        });
+    }
+
+    // Nach erfolgreicher Job-Erstellung → Canvas neu laden
+    document.addEventListener('studio:job-created', () => {
+        loadFlow();
+    });
+
+    // ----------------------------------------------------------------
+    // Nach Job-Löschung → Detail schließen, neu laden
+    // ----------------------------------------------------------------
+    document.addEventListener('studio:job-deleted', () => {
+        hideDetail();
+        loadFlow();
+    });
+
+    // ----------------------------------------------------------------
+    // Hilfsfunktionen
+    // ----------------------------------------------------------------
+    function dotClass(job) {
+        const s = (job.last_run_status || '').toLowerCase();
+        if (s === 'running')                            return 'running';
+        if (s === 'ok' || s === 'success' || s === 'completed') return 'ok';
+        if (s === 'error' || s === 'failed')            return 'error';
+        return 'no-job';
+    }
+
+    function escHtml(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // ----------------------------------------------------------------
+    // Event-Listener
+    // ----------------------------------------------------------------
+    document.getElementById('btn-refresh').addEventListener('click', loadFlow);
+    document.getElementById('detail-panel-close').addEventListener('click', hideDetail);
+
+    // ----------------------------------------------------------------
+    // Init
+    // ----------------------------------------------------------------
+    loadFlow();
+})();
+</script>
+</body>
+</html>

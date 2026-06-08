@@ -81,7 +81,7 @@ Die daita-modeler-Services werden als neue Router in das bestehende daita-studio
 |----|-----|--------|---------------|--------|
 | **P0** | Infra | Basis-Migration metadaita → daita-studio | – | ✅ Erledigt |
 | **B1** | Backend | Modeler-APIs: Meta, Import, Diagramme, FK, Areas | P0 | ✅ Erledigt |
-| **B2** | Backend | Unified: Table-Create API (ETL + Zieltabelle in einem) | P0 | 📝 Offen |
+| **B2** | Backend | Unified: Table-Create API (ETL + Zieltabelle in einem) | P0 | ✅ Erledigt |
 | **C1** | Component | `api.js` – zentraler API-Client | P0 | 📝 Offen |
 | **C2** | Component | `nav-header.js` – gemeinsamer Header | C1 | 📝 Offen |
 | **C3** | Component | `table-editor.js` – Spalten/Index/FK-Editor | B1 + C1 | 📝 Offen |

@@ -1,0 +1,9 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taaa_identitaet_staging",
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TAAA_IDENTITAET",
+  "BUSINESS_KEY_JOIN": "",
+  "BUSINESS_KEY_NULL_CHECK": "",
+  "PRIMARY_INDEX_COLS": "",
+  "NEW_RECORDS_TABLE": "temp_uzms01_taaa_identitaet_new"
+}

@@ -52,13 +52,14 @@ PATHS = {
     "tpt_log":       _install_root / _paths_config.get('tpt_log', 'log/tpt'),
     "sql_templates": _install_root / _paths_config.get('sql_templates', 'ddl/sql_templates'),
     "sql_output":    _install_root / _paths_config.get('sql_output', 'sql/generated'),
+    "etl_jobs":      _install_root / _paths_config.get('etl_jobs', 'etl/jobs'),
     "log":           _install_root / _paths_config.get('log', 'log'),
     "diagrams":      _install_root / _paths_config.get('diagrams', 'diagrams'),
 }
 
 # Ensure all output directories exist
 for key, path in PATHS.items():
-    if "output" in key or key in ("log", "tpt_log", "diagrams"):
+    if "output" in key or key in ("log", "tpt_log", "diagrams", "etl_jobs"):
         path.mkdir(parents=True, exist_ok=True)
 
 # =============================================================================

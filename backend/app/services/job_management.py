@@ -72,6 +72,19 @@ class CreateStepRequest(BaseModel):
     parameters: Optional[Dict[str, Any]] = None
 
 
+class UpdateStepRequest(BaseModel):
+    """Request für Step-Update (alle Felder optional)"""
+    step_name: Optional[str] = None
+    step_order: Optional[int] = None
+    sql_template_path: Optional[str] = None
+    sql_inline: Optional[str] = None
+    is_active: Optional[str] = None
+    is_critical: Optional[str] = None
+    skip_on_empty: Optional[str] = None
+    rollback_on_error: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+
+
 # =============================================================================
 # Job Management Service
 # =============================================================================
@@ -410,53 +423,57 @@ class JobManagementService:
         logger.info(f"Added step {new_step_id} to job {job_id}: {request.step_name}")
         return new_step_id
     
-    def update_step(
-        self, 
-        step_id: int,
-        step_name: Optional[str] = None,
-        step_order: Optional[int] = None,
-        sql_template_path: Optional[str] = None,
-        sql_inline: Optional[str] = None,
-        is_active: Optional[str] = None
-    ) -> bool:
-        """Aktualisiert einen Step"""
+    def update_step(self, step_id: int, request: 'UpdateStepRequest') -> bool:
+        """Aktualisiert einen Step (alle Felder aus UpdateStepRequest)."""
         conn = self._get_connection()
         cursor = conn.cursor()
-        
+
         updates = []
         params = []
-        
-        if step_name:
+
+        if request.step_name is not None:
             updates.append("step_name = ?")
-            params.append(step_name)
-        if step_order is not None:
+            params.append(request.step_name)
+        if request.step_order is not None:
             updates.append("step_order = ?")
-            params.append(step_order)
-        if sql_template_path:
+            params.append(request.step_order)
+        if request.sql_template_path is not None:
             updates.append("sql_template_path = ?")
-            params.append(sql_template_path)
-        if sql_inline:
+            params.append(request.sql_template_path)
+        if request.sql_inline is not None:
             updates.append("sql_inline = ?")
-            params.append(sql_inline)
-        if is_active:
+            params.append(request.sql_inline)
+        if request.is_active is not None:
             updates.append("is_active = ?")
-            params.append(is_active)
-        
+            params.append(request.is_active)
+        if request.is_critical is not None:
+            updates.append("is_critical = ?")
+            params.append(request.is_critical)
+        if request.skip_on_empty is not None:
+            updates.append("skip_on_empty = ?")
+            params.append(request.skip_on_empty)
+        if request.rollback_on_error is not None:
+            updates.append("rollback_on_error = ?")
+            params.append(request.rollback_on_error)
+        if request.parameters is not None:
+            updates.append("parameters = ?")
+            params.append(json.dumps(request.parameters))
+
         if not updates:
             return False
-        
+
         updates.append("last_alter_timestamp = CURRENT_TIMESTAMP")
         params.append(step_id)
-        
+
         cursor.execute(f"""
-            UPDATE MDP01_META.META_ETL_JOB_STEP 
+            UPDATE MDP01_META.META_ETL_JOB_STEP
             SET {', '.join(updates)}
             WHERE etl_job_step_id = ?
         """, params)
-        
+
         conn.commit()
         conn.close()
-        
+
         logger.info(f"Updated step {step_id}")
         return True
     

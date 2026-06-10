@@ -225,6 +225,16 @@ const ERD = (() => {
         _selected = null;
     }
 
+    function removeTable(tableId) {
+        const shape = _shapes[tableId];
+        if (!shape) return;
+        delete _shapes[tableId];
+        document.querySelector('.table-item[data-table-id="' + tableId + '"]')
+                ?.classList.remove('on-canvas');
+        if (_selected === shape) _selected = null;
+        shape.remove();
+    }
+
     // -------------------------------------------------------------------------
     // Public: Layout lesen / schreiben
     // -------------------------------------------------------------------------
@@ -553,6 +563,6 @@ const ERD = (() => {
         });
     }
 
-    return { init, addTable, removeSelected, getLayout, loadLayout, refreshLinks, toggleFKMode, refreshTheme };
+    return { init, addTable, removeSelected, removeTable, getLayout, loadLayout, refreshLinks, toggleFKMode, refreshTheme };
 
 })();

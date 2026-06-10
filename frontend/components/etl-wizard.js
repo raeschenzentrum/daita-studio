@@ -146,6 +146,30 @@
         .ew-summary-val  { color: #555; font-family: monospace; }
         .ew-summary-note { color: #f57f17; font-size: 0.82em; margin-top: 4px; }
 
+        /* Preview-Blöcke in Schritt 3 */
+        .ew-preview-block { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 10px 14px; margin-top: 4px; }
+        .ew-preview-block-title { font-size: 0.78em; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+        .ew-step-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+        .ew-step-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 10px; font-size: 0.74em; font-weight: 600; background: #e8eaf6; color: #3949ab; }
+        .ew-step-badge-num { background: #c5cae9; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75em; flex-shrink: 0; }
+        .ew-params-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 0.78em; }
+        .ew-params-key { color: #888; font-family: monospace; white-space: nowrap; padding: 1px 0; }
+        .ew-params-val { color: #333; font-family: monospace; word-break: break-all; padding: 1px 0; }
+        .ew-preview-loading { color: #aaa; font-size: 0.8em; font-style: italic; }
+        .ew-summary-divider { border: none; border-top: 1px solid #e0e0e0; margin: 4px 0; }
+
+        /* Preview-Blöcke in Schritt 3 */
+        .ew-preview-block { background: #fff; border: 1px solid #e8e8e8; border-radius: 8px; padding: 10px 14px; margin-top: 4px; }
+        .ew-preview-block-title { font-size: 0.78em; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+        .ew-step-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+        .ew-step-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 10px; font-size: 0.74em; font-weight: 600; background: #e8eaf6; color: #3949ab; }
+        .ew-step-badge-num { background: #c5cae9; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75em; flex-shrink: 0; }
+        .ew-tech-col-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+        .ew-params-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 0.78em; }
+        .ew-params-key { color: #888; font-family: monospace; white-space: nowrap; padding: 1px 0; }
+        .ew-params-val { color: #333; font-family: monospace; word-break: break-all; padding: 1px 0; }
+        .ew-preview-loading { color: #aaa; font-size: 0.8em; font-style: italic; }
+
         /* Ergebnis (Step 4 = Erfolg/Fehler) */
         .ew-result        { text-align: center; padding: 24px 10px; }
         .ew-result-icon   { font-size: 3em; margin-bottom: 10px; }
@@ -210,18 +234,21 @@
             this._sourceId    = opts.sourceTableId || null;
             this._sourceName  = opts.sourceTableName || null;
             this._sourceDb    = opts.sourceDbName || null;
+            this._sourceLayerId = opts.sourceLayerId || null;
             this._mode        = opts.mode || 'inline';
             this._step        = 1;
             this._templates   = [];
             this._selection   = null; // { pk_columns, hash_columns, select_columns }
             this._colSelector = null;
+            this._targetExists = opts.targetExists ?? null; // null=unbekannt, false=fehlt, true=vorhanden
 
             // Form-State
             this._form = {
                 template_id:       null,
                 template_name:     '',
                 job_name:          '',
-                target_table_name: '',
+                // Zieltabellenname sofort mit Quelltabelle vorbelegen falls bekannt
+                target_table_name: this._sourceName ? this._sourceName.toUpperCase() : '',
                 target_table_id:   null, // wenn bereits existierende Zieltabelle
             };
         }
@@ -243,10 +270,17 @@
 
         async _loadSourceInfo() {
             try {
-                const tables = await window.api.etl.tables.get(this._sourceId).catch(() => null);
+                const tables = await window.api.modeler.tables.get(this._sourceId).catch(() => null);
                 if (tables) {
                     this._sourceName = tables.table_name || tables.name;
                     this._sourceDb   = tables.db_name || tables.database_name;
+                    // Zieltabellenname vorschlagen falls noch nicht gesetzt
+                    if (!this._form.target_table_name && this._sourceName) {
+                        this._form.target_table_name = this._sourceName.toUpperCase();
+                        this._form.job_name = 'LOAD_' + this._sourceName.toUpperCase();
+                    } else if (this._form.target_table_name === '' && this._sourceName) {
+                        this._form.target_table_name = this._sourceName.toUpperCase();
+                    }
                 }
             } catch (_) {}
         }
@@ -315,6 +349,11 @@
             ).join('');
 
             body.innerHTML = `
+                ${this._targetExists === false ? `
+                <div style="margin-bottom:12px;padding:10px 14px;background:#fff8e1;border:1px solid #ffe082;border-radius:6px;font-size:0.85em;color:#7d5a00">
+                    ⚠️ Für diese Quelltabelle existiert noch kein ETL-Job und keine Zieltabelle.
+                    Name und Zieltabelle wurden vorausgefüllt — bitte prüfen und anpassen.
+                </div>` : ''}
                 ${this._sourceName ? `
                 <div class="ew-source-info">
                     <div class="ew-source-name">${this._sourceName}</div>
@@ -478,6 +517,10 @@
         _renderStep3(body, footer) {
             const sel  = this._selection || { pk_columns: [], hash_columns: [], select_columns: [] };
             const tpl  = this._templates.find(t => t.template_id === this._form.template_id);
+            const tgtName  = this._form.target_table_name || '';
+            // Core-Name für SK-Spalte: erste Namenskomponente ohne Layer-Prefix
+            const coreName = tgtName.replace(/^(TAAA_|TABB_|TACC_|RAW_|DISC_|REUS_|CONS_)/i, '').split('_')[0].toUpperCase();
+            const skCol    = coreName ? `${coreName}_SK` : 'SURROGATE_KEY';
 
             body.innerHTML = `
                 <div class="ew-summary">
@@ -499,7 +542,7 @@
                         <div class="ew-summary-icon">✅</div>
                         <div class="ew-summary-text">
                             <div class="ew-summary-title">Zieltabelle</div>
-                            <div class="ew-summary-val">${this._form.target_table_name}</div>
+                            <div class="ew-summary-val">${tgtName}</div>
                             <div class="ew-summary-note">
                                 Wird in META_TABLE + META_COLUMN angelegt.
                                 DDL-Ausführung auf Teradata ist ein separater Schritt.
@@ -512,16 +555,79 @@
                             <div class="ew-summary-title">Spalten</div>
                             <div class="ew-summary-val">
                                 ${sel.select_columns.length} laden &nbsp;·&nbsp;
-                                ${sel.pk_columns.length} PK &nbsp;·&nbsp;
+                                ${sel.pk_columns.length} PK (Business Key) &nbsp;·&nbsp;
                                 ${sel.hash_columns.length} Hash
                             </div>
-                            ${sel.pk_columns.length === 0
-                                ? `<div class="ew-summary-note">⚠ Keine PK-Spalten – SCD2-Historisierung benötigt Business Keys</div>`
-                                : ''}
+                            ${sel.pk_columns.length > 0
+                                ? `<div class="ew-summary-note" style="color:#2e7d32">✓ Business Keys: ${sel.pk_columns.join(', ')}</div>`
+                                : `<div class="ew-summary-note">⚠ Keine PK-Spalten – SCD2-Historisierung benötigt Business Keys</div>`}
                         </div>
+                    </div>
+
+                    <!-- Steps Preview (wird asynchron nachgeladen) -->
+                    <div class="ew-preview-block" id="ew-steps-preview">
+                        <div class="ew-preview-block-title">🗂 Steps (werden angelegt)</div>
+                        <div class="ew-preview-loading" id="ew-steps-loading">Lade…</div>
+                        <div class="ew-step-badges" id="ew-step-badges"></div>
+                    </div>
+
+                    <!-- Technische Spalten SCD2 -->
+                    <div class="ew-preview-block">
+                        <div class="ew-preview-block-title">⚙ Technische Spalten (SCD2 – werden automatisch angelegt)</div>
+                        <div class="ew-step-badges">
+                            <span class="ew-step-badge" style="background:#f3e5f5;color:#7b1fa2">${skCol}</span>
+                            <span class="ew-step-badge" style="background:#e8eaf6;color:#3949ab">VALID_FROM</span>
+                            <span class="ew-step-badge" style="background:#e8eaf6;color:#3949ab">VALID_TO</span>
+                            <span class="ew-step-badge" style="background:#e8eaf6;color:#3949ab">IS_CURRENT</span>
+                            <span class="ew-step-badge" style="background:#e0f2f1;color:#00695c">RECORD_HASH</span>
+                            <span class="ew-step-badge" style="background:#f5f5f5;color:#616161">ERSTERFASSUNGSDATUM</span>
+                            <span class="ew-step-badge" style="background:#f5f5f5;color:#616161">AENDERUNGSDATUM</span>
+                        </div>
+                    </div>
+
+                    <!-- Berechnete Parameter -->
+                    <div class="ew-preview-block">
+                        <div class="ew-preview-block-title">📊 Berechnete Parameter</div>
+                        <div class="ew-params-grid">
+                            <span class="ew-params-key">SOURCE_TABLE</span><span class="ew-params-val">${this._sourceName || '–'}</span>
+                            <span class="ew-params-key">SOURCE_DATABASE</span><span class="ew-params-val">${this._sourceDb || '–'}</span>
+                            <span class="ew-params-key">TARGET_TABLE</span><span class="ew-params-val">${tgtName || '–'}</span>
+                            <span class="ew-params-key">SK_COLUMN</span><span class="ew-params-val">${skCol}</span>
+                            <span class="ew-params-key">STAGING_TABLE</span><span class="ew-params-val">temp_${tgtName.toLowerCase()}_stg</span>
+                            <span class="ew-params-key">KEY_TABLE</span><span class="ew-params-val">KEY_${coreName}</span>
+                            ${sel.pk_columns.length > 0 ? `<span class="ew-params-key">BUSINESS_KEY</span><span class="ew-params-val">${sel.pk_columns.join(', ')}</span>` : ''}
+                            ${sel.hash_columns.length > 0 ? `<span class="ew-params-key">HASH_COLUMNS</span><span class="ew-params-val">${sel.hash_columns.join(', ')}</span>` : ''}
+                        </div>
+                        <div class="ew-summary-note" style="margin-top:6px">🔑 KEY_${coreName} wird automatisch angelegt falls nicht vorhanden.</div>
                     </div>
                 </div>
                 <div id="ew-create-error" style="display:none" class="ew-result-error"></div>`;
+
+            // Steps asynchron nachladen
+            if (tpl?.template_id) {
+                window.api.templates.listSteps({ template_id: tpl.template_id })
+                    .then(steps => {
+                        const loadingEl = body.querySelector('#ew-steps-loading');
+                        const badgesEl  = body.querySelector('#ew-step-badges');
+                        if (!loadingEl || !badgesEl) return;
+                        loadingEl.style.display = 'none';
+                        if (!steps || steps.length === 0) {
+                            badgesEl.innerHTML = '<span style="color:#aaa;font-size:0.8em">Keine Steps gefunden</span>';
+                            return;
+                        }
+                        badgesEl.innerHTML = steps
+                            .sort((a, b) => a.step_order - b.step_order)
+                            .map(s => `<span class="ew-step-badge"><span class="ew-step-badge-num">${s.step_order}</span>${s.step_name}</span>`)
+                            .join('');
+                    })
+                    .catch(() => {
+                        const loadingEl = body.querySelector('#ew-steps-loading');
+                        if (loadingEl) loadingEl.textContent = 'Steps nicht verfügbar';
+                    });
+            } else {
+                const loadingEl = body.querySelector('#ew-steps-loading');
+                if (loadingEl) loadingEl.style.display = 'none';
+            }
 
             footer.innerHTML = `
                 <div class="ew-footer-left">

@@ -1,0 +1,9 @@
+{
+  "STAGING_TABLE": "temp_uzms01_tarf_asyl_erled_zus_tx_staging",
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TARF_ASYL_ERLED_ZUS_TX_HISTORY",
+  "BUSINESS_KEY_JOIN": "stg.KEYCD = hist.KEYCD AND stg.LANG_CD = hist.LANG_CD",
+  "BUSINESS_KEY_NULL_CHECK": "hist.KEYCD IS NULL",
+  "PRIMARY_INDEX_COLS": "KEYCD, LANG_CD",
+  "NEW_RECORDS_TABLE": "temp_uzms01_tarf_asyl_erled_zus_tx_new"
+}

@@ -1,0 +1,13 @@
+{
+  "STAGING_TABLE": "temp_uzms01_tarf_asyl_erled_zus_bs_staging",
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TARF_ASYL_ERLED_ZUS_BS_HISTORY",
+  "BUSINESS_KEY_JOIN": "stg.KEYCD = hist.KEYCD",
+  "PRIMARY_INDEX_COLS": "KEYCD",
+  "HASH_COLUMNS": "CTL_ACT_CD",
+  "CHANGED_RECORDS_TABLE": "temp_uzms01_tarf_asyl_erled_zus_bs_changed",
+  "TABLE_ALIAS": "stg",
+  "hash_columns": [
+    "CTL_ACT_CD"
+  ]
+}

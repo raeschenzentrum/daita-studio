@@ -22,6 +22,7 @@ from ..models.etl_models import (
 )
 from ..services.etl_service import ETLService, get_etl_service
 from ..services.metadata_sync_service import MetadataSyncService, create_metadata_sync_service
+from ..config import PATHS
 
 # Dependency für MetadataSyncService
 _metadata_sync_service = None
@@ -685,7 +686,7 @@ async def get_job_performance(
 
 import os
 
-TEMPLATE_BASE_DIR = "/home/tdops/ps_toolbox/PS_ROOT/subsystem/metadaita/ddl/sql_templates"
+TEMPLATE_BASE_DIR = str(PATHS["sql_templates"])
 
 class TemplateContent(BaseModel):
     path: str

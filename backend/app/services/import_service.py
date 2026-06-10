@@ -57,8 +57,10 @@ def _type_str(code: str, length, dec_total, dec_frac) -> str:
         if dec_frac is not None and int(dec_frac) > 0:
             return f"{name}({int(dec_total)},{int(dec_frac)})"
         return f"{name}({int(dec_total)})"
-    if name == "TIMESTAMP" and length is not None:
-        return f"TIMESTAMP({int(length)})"
+    if name in ("TIMESTAMP", "TIMESTAMP WITH TIME ZONE") and dec_frac is not None:
+        return f"{name}({int(dec_frac)})"
+    if name in ("TIME", "TIME WITH TIME ZONE") and dec_frac is not None:
+        return f"{name}({int(dec_frac)})"
     return name
 
 

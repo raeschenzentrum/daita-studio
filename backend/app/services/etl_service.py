@@ -87,6 +87,7 @@ class ETLService:
                 'batch_size': teradata_cfg.get('batch_size', 10000),
                 'sql_templates_base_dir': str(install_dir / paths.get('sql_templates', 'sql/templates')),
                 'log_dir': str(install_dir / paths.get('log', 'log')),
+                'etl_jobs_dir': str(install_dir / paths.get('etl_jobs', 'etl/jobs')),  # F4
                 'verbose': paths_config.get('logging', {}).get('level', 'INFO') == 'DEBUG',
             }
         }
@@ -260,7 +261,11 @@ class ETLService:
         return None
     
     def get_job_steps(self, job_id: int) -> List[ETLJobStep]:
-        """Gibt alle Steps für einen Job zurück"""
+        """Gibt alle Steps für einen Job zurück.
+        F4-A: Parameter werden file-first aus etl/jobs/{job_id}/{step_id}.json geladen."""
+        from .template_engine import resolve_step_parameters
+        from ..config import PATHS
+
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -276,11 +281,14 @@ class ETLService:
         
         steps = []
         for row in cursor.fetchall():
+            step_id = row[0]
+            db_params = row[9]
+            params = resolve_step_parameters(job_id, step_id, db_params, PATHS["etl_jobs"])
             steps.append(ETLJobStep(
-                etl_job_step_id=row[0], etl_job_id=row[1], step_name=row[2],
+                etl_job_step_id=step_id, etl_job_id=row[1], step_name=row[2],
                 step_order=row[3], step_category=row[4], sql_template_path=row[5],
                 sql_inline=row[6], python_module=row[7], python_function=row[8],
-                parameters=row[9], condition_sql=row[10], skip_on_empty=row[11],
+                parameters=params, condition_sql=row[10], skip_on_empty=row[11],
                 is_critical=row[12], rollback_on_error=row[13], is_active=row[14],
                 create_timestamp=row[15], last_alter_timestamp=row[16]
             ))
@@ -289,20 +297,36 @@ class ETLService:
         return steps
     
     def update_step_parameters(self, step_id: int, parameters_json: str) -> None:
-        """Aktualisiert die Parameter eines ETL Job Steps"""
+        """F4-B: Aktualisiert die Parameter eines ETL Job Steps.
+        Dual-write: JSON-Datei + DB-Spalte (Fallback-Kompatibilität)."""
+        from .template_engine import write_step_parameters
+        from ..config import PATHS
+        import json as _json
+
+        # job_id für Dateipfad aus DB lesen
         conn = self._get_connection()
         cursor = conn.cursor()
-        
-        cursor.execute("""
-            UPDATE MDP01_META.META_ETL_JOB_STEP
-            SET parameters = ?,
-                last_alter_timestamp = CURRENT_TIMESTAMP
-            WHERE etl_job_step_id = ?
-        """, (parameters_json, step_id))
-        
-        conn.commit()
-        conn.close()
-        logger.info(f"Updated parameters for step {step_id}")
+        try:
+            cursor.execute(
+                "SELECT etl_job_id FROM MDP01_META.META_ETL_JOB_STEP WHERE etl_job_step_id = ? SAMPLE 1",
+                [step_id]
+            )
+            row = cursor.fetchone()
+            if row:
+                job_id = int(row[0])
+                params = _json.loads(parameters_json) if isinstance(parameters_json, str) else parameters_json
+                write_step_parameters(job_id, step_id, params, PATHS["etl_jobs"])
+
+            cursor.execute("""
+                UPDATE MDP01_META.META_ETL_JOB_STEP
+                SET parameters = ?,
+                    last_alter_timestamp = CURRENT_TIMESTAMP
+                WHERE etl_job_step_id = ?
+            """, (parameters_json, step_id))
+            conn.commit()
+        finally:
+            conn.close()
+        logger.info(f"Updated parameters for step {step_id} (file + DB)")
     
     # =========================================================================
     # Metadata Explorer: Layers, Databases, Tables

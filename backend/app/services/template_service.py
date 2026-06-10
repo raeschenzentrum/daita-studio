@@ -19,6 +19,7 @@ import yaml
 from pydantic import BaseModel
 
 from .type_utils import td_typecode_to_ddl
+from ..config import PATHS
 
 logger = logging.getLogger(__name__)
 
@@ -779,13 +780,32 @@ class TemplateService:
                     step_tpl.step_name,
                     step_tpl.step_order,
                     step_tpl.step_category,
-                    step_tpl.sql_template_path,
+                    # Template-Prefix voranhängen: RAW_TO_DISC_SCD2/delete/delete_target_table.sql
+                    f"{template.template_code}/{step_tpl.sql_template_path}" if step_tpl.sql_template_path else None,
                     step_sql_inline,
                     json.dumps(parameters) if parameters else None
                 ])
             
             conn.commit()
             logger.info(f"Job {job_id} aus Template {request.template_id} erstellt mit {len(step_templates)} Steps")
+
+            # F4-B: Parameter-JSONs für alle Steps in etl/jobs/{job_id}/ schreiben
+            try:
+                from .template_engine import write_step_parameters
+                cursor.execute(
+                    "SELECT ETL_JOB_STEP_ID, PARAMETERS FROM MDP01_META.META_ETL_JOB_STEP WHERE ETL_JOB_ID = ?",
+                    [job_id]
+                )
+                for step_row in cursor.fetchall():
+                    s_id, s_params = step_row[0], step_row[1]
+                    if s_params:
+                        try:
+                            params_dict = json.loads(s_params) if isinstance(s_params, str) else s_params
+                            write_step_parameters(job_id, int(s_id), params_dict, PATHS["etl_jobs"])
+                        except Exception as e:
+                            logger.warning(f"Parameter-JSON für Step {s_id} nicht geschrieben: {e}")
+            except Exception as e:
+                logger.warning(f"Parameter-JSON Schreiben für Job {job_id} fehlgeschlagen: {e}")
             
             # Key-Tabelle automatisch erstellen wenn nicht vorhanden
             if key_table_name and key_database:
@@ -812,6 +832,29 @@ class TemplateService:
                     select_columns=sel_cols,
                     core_name=core_name
                 )
+
+            # F5-A: DDLs + Cleanup-SQLs im Job-Folder ablegen
+            self._write_job_folder_artifacts(
+                job_id=job_id,
+                target_database=key_database or '',
+                target_table=new_target or '',
+                key_database=key_database or '',
+                key_table_name=key_table_name,
+                core_name=core_name,
+                source_table_id=request.source_table_id,
+                cursor=cursor,
+            )
+
+            # F5-B: DDL-Steps am Anfang des Jobs einfügen (Create Target + Create SK)
+            # step_category = 'DDL_CREATE' → Orchestrator ignoriert Error 3803 (bereits vorhanden)
+            self._insert_ddl_steps(
+                cursor, conn,
+                job_id=job_id,
+                target_database=key_database or '',
+                target_table=new_target or '',
+                key_database=key_database or '',
+                key_table_name=key_table_name or '',
+            )
 
             return {"job_id": job_id, "target_table_id": target_table_id, "target_created": target_created}
             
@@ -990,6 +1033,19 @@ class TemplateService:
         cursor.execute(f"SELECT COALESCE(MAX(COLUMN_ID), 0) + 1 FROM {col_tbl}")
         next_col_id = int(cursor.fetchone()[0])
 
+        def _get_datatype_id(col_type_str: str) -> int:
+            """Lookup DATATYPE_ID aus META_DATATYPE; Fallback 1 (unbekannt)."""
+            try:
+                base_type = col_type_str.split('(')[0].strip().upper()
+                cursor.execute(
+                    "SELECT DATATYPE_ID FROM MDP01_META.META_DATATYPE WHERE TERADATA_TYPE = ? SAMPLE 1",
+                    [base_type]
+                )
+                row = cursor.fetchone()
+                return int(row[0]) if row else 1
+            except Exception:
+                return 1
+
         scd2_config = self.param_rules.get('scd2_technical_columns', {})
         col_position = 1
         inserted = 0
@@ -1017,23 +1073,24 @@ class TemplateService:
             is_pk       = 'Y' if key == 'surrogate_key' else 'N'
             is_scd      = 'N' if key == 'surrogate_key' else 'Y'
             is_audit    = 'Y' if key in ('created_timestamp', 'last_updated_timestamp', 'created_by', 'last_updated_by') else 'N'
+            datatype_id = _get_datatype_id(col_type)
 
             cursor.execute(f"""
                 INSERT INTO {col_tbl}
                     (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
-                     COLUMN_TYPE, NULLABLE, IS_TECHNICAL_KEY, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
+                     DATATYPE_ID, COLUMN_TYPE, NULLABLE, IS_TECHNICAL_KEY, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
                      ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
             """, [next_col_id, target_table_id, col_name, col_position,
-                  col_type, nullable, is_pk, is_scd, is_audit])
+                  datatype_id, col_type, nullable, is_pk, is_scd, is_audit])
             next_col_id  += 1
             col_position += 1
             inserted     += 1
 
         # --- 2. Source-Spalten (Typ/Länge aus META_COLUMN der Source) ---
         cursor.execute("""
-            SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_LENGTH,
+            SELECT COLUMN_NAME, DATATYPE_ID, COLUMN_TYPE, COLUMN_LENGTH,
                    DECIMAL_TOTAL_DIGITS, DECIMAL_FRACTIONAL_DIGITS,
                    NULLABLE, IS_BUSINESS_KEY, CHARSET
             FROM MDP01_META.META_COLUMN
@@ -1046,23 +1103,25 @@ class TemplateService:
             col_upper = col_name.upper()
             src = source_col_map.get(col_upper)
             if src:
-                _, col_type, col_length, dec_total, dec_frac, nullable, is_bk, charset = src
+                _, src_dt_id, col_type, col_length, dec_total, dec_frac, nullable, is_bk, charset = src
+                datatype_id = int(src_dt_id) if src_dt_id else _get_datatype_id(col_type or 'VARCHAR')
             else:
                 col_type, col_length, dec_total, dec_frac, nullable, is_bk, charset = \
                     'VARCHAR(255)', None, None, None, 'Y', 'N', None
+                datatype_id = 1
 
             cursor.execute(f"""
                 INSERT INTO {col_tbl}
                     (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
-                     COLUMN_TYPE, COLUMN_LENGTH,
+                     DATATYPE_ID, COLUMN_TYPE, COLUMN_LENGTH,
                      DECIMAL_TOTAL_DIGITS, DECIMAL_FRACTIONAL_DIGITS,
                      NULLABLE, IS_BUSINESS_KEY, IS_TECHNICAL_KEY, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
                      CHARSET,
                      ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'N', 'N', 'N', ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'N', 'N', 'N', ?,
                         CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
             """, [next_col_id, target_table_id, col_upper, col_position,
-                  col_type, col_length, dec_total, dec_frac,
+                  datatype_id, col_type, col_length, dec_total, dec_frac,
                   nullable or 'Y', is_bk or 'N', charset])
             next_col_id  += 1
             col_position += 1
@@ -1240,6 +1299,183 @@ class TemplateService:
             logger.error(f"Fehler beim Erstellen der Ziel-Tabelle {fqn}: {e}\nDDL: {ddl}")
             # Kein raise - Job wurde bereits erstellt
     
+    def _write_job_folder_artifacts(
+        self,
+        job_id: int,
+        target_database: str,
+        target_table: str,
+        key_database: str,
+        key_table_name: str,
+        core_name: str,
+        source_table_id: int,
+        cursor,
+    ):
+        """
+        F5-A: Schreibt DDL- und Cleanup-Dateien in etl/jobs/{job_id}/.
+
+        Struktur:
+            etl/jobs/{job_id}/
+            ├── create_target_table.ddl
+            ├── create_sk_table.ddl        (falls SK-Tabelle vorhanden)
+            └── cleanup/
+                ├── drop_target_table.sql
+                └── drop_sk_table.sql
+        """
+        try:
+            job_dir = Path(PATHS["etl_jobs"]) / str(job_id)
+            cleanup_dir = job_dir / "cleanup"
+            job_dir.mkdir(parents=True, exist_ok=True)
+            cleanup_dir.mkdir(parents=True, exist_ok=True)
+
+            # --- Zieltabelle CREATE DDL ---
+            if target_table and target_database:
+                fqn = f"{target_database}.{target_table}"
+                try:
+                    cursor.execute(f"""
+                        SELECT RequestText FROM dbc.TablesV
+                        WHERE DatabaseName = '{target_database}'
+                        AND TableName = '{target_table}'
+                        AND TableKind = 'T'
+                    """)
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        ddl_text = row[0].strip()
+                    else:
+                        ddl_text = f"-- DDL nicht verfügbar (Tabelle existierte bereits)\n-- CREATE TABLE {fqn} (...)"
+                except Exception:
+                    ddl_text = f"-- DDL nicht verfügbar\n-- CREATE TABLE {fqn} (...)"
+
+                (job_dir / "create_target_table.ddl").write_text(
+                    f"-- Zieltabelle: {fqn}\n-- Generiert beim Job-Erstellen (Job ID: {job_id})\n\n{ddl_text};\n",
+                    encoding="utf-8"
+                )
+                (cleanup_dir / "drop_target_table.sql").write_text(
+                    f"-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!\n-- Job ID: {job_id}\n\nDROP TABLE {fqn};\n",
+                    encoding="utf-8"
+                )
+
+            # --- SK-Tabelle CREATE DDL ---
+            if key_table_name and key_database:
+                sk_fqn = f"{key_database}.{key_table_name}"
+                try:
+                    cursor.execute(f"""
+                        SELECT RequestText FROM dbc.TablesV
+                        WHERE DatabaseName = '{key_database}'
+                        AND TableName = '{key_table_name}'
+                        AND TableKind = 'T'
+                    """)
+                    row = cursor.fetchone()
+                    if row and row[0]:
+                        sk_ddl = row[0].strip()
+                    else:
+                        sk_ddl = f"-- DDL nicht verfügbar\n-- CREATE TABLE {sk_fqn} (...)"
+                except Exception:
+                    sk_ddl = f"-- DDL nicht verfügbar\n-- CREATE TABLE {sk_fqn} (...)"
+
+                (job_dir / "create_sk_table.ddl").write_text(
+                    f"-- SK-Tabelle: {sk_fqn}\n-- Generiert beim Job-Erstellen (Job ID: {job_id})\n\n{sk_ddl};\n",
+                    encoding="utf-8"
+                )
+                (cleanup_dir / "drop_sk_table.sql").write_text(
+                    f"-- ACHTUNG: Löscht SK-Tabelle inkl. aller Surrogate Keys!\n-- Job ID: {job_id}\n\nDROP TABLE {sk_fqn};\n",
+                    encoding="utf-8"
+                )
+
+            logger.info(f"Job-Folder Artefakte geschrieben: {job_dir}")
+
+        except Exception as e:
+            logger.warning(f"Fehler beim Schreiben der Job-Folder Artefakte (nicht kritisch): {e}")
+
+    def _insert_ddl_steps(
+        self,
+        cursor,
+        conn,
+        job_id: int,
+        target_database: str,
+        target_table: str,
+        key_database: str,
+        key_table_name: str,
+    ):
+        """
+        F5-B: Fügt zwei DDL_CREATE-Steps am Anfang des Jobs ein.
+
+        - order -2: Create Target Table
+        - order -1: Create SK Table
+
+        Verwendet die DDL aus dbc.TablesV (Tabelle wurde kurz zuvor erstellt).
+        Orchestrator ignoriert Error 3803 (Tabelle bereits vorhanden) für DDL_CREATE-Steps.
+        """
+        try:
+            cursor.execute(
+                "SELECT COALESCE(MAX(ETL_JOB_STEP_ID), 0) + 1 FROM MDP01_META.META_ETL_JOB_STEP"
+            )
+            next_id = cursor.fetchone()[0]
+
+            steps_inserted = 0
+
+            # --- Zieltabelle ---
+            if target_database and target_table:
+                fqn = f"{target_database}.{target_table}"
+                try:
+                    cursor.execute(f"""
+                        SELECT RequestText FROM dbc.TablesV
+                        WHERE DatabaseName = '{target_database}'
+                        AND TableName = '{target_table}'
+                        AND TableKind = 'T'
+                    """)
+                    row = cursor.fetchone()
+                    ddl = row[0].strip() if row else None
+                except Exception:
+                    ddl = None
+
+                if ddl:
+                    cursor.execute("""
+                        INSERT INTO MDP01_META.META_ETL_JOB_STEP (
+                            ETL_JOB_STEP_ID, ETL_JOB_ID, STEP_NAME, STEP_ORDER,
+                            STEP_CATEGORY, SQL_TEMPLATE_PATH, SQL_INLINE,
+                            IS_CRITICAL, ROLLBACK_ON_ERROR, IS_ACTIVE,
+                            RETRY_COUNT, TIMEOUT_SECONDS
+                        ) VALUES (?, ?, 'Create Target Table (DDL)', -2,
+                                  'DDL_CREATE', NULL, ?, 'Y', 'N', 'Y', 1, 120)
+                    """, [next_id, job_id, ddl + ';'])
+                    next_id += 1
+                    steps_inserted += 1
+                    logger.info(f"DDL-Step 'Create Target Table' für Job {job_id} eingefügt ({fqn})")
+
+            # --- SK-Tabelle ---
+            if key_database and key_table_name:
+                sk_fqn = f"{key_database}.{key_table_name}"
+                try:
+                    cursor.execute(f"""
+                        SELECT RequestText FROM dbc.TablesV
+                        WHERE DatabaseName = '{key_database}'
+                        AND TableName = '{key_table_name}'
+                        AND TableKind = 'T'
+                    """)
+                    row = cursor.fetchone()
+                    sk_ddl = row[0].strip() if row else None
+                except Exception:
+                    sk_ddl = None
+
+                if sk_ddl:
+                    cursor.execute("""
+                        INSERT INTO MDP01_META.META_ETL_JOB_STEP (
+                            ETL_JOB_STEP_ID, ETL_JOB_ID, STEP_NAME, STEP_ORDER,
+                            STEP_CATEGORY, SQL_TEMPLATE_PATH, SQL_INLINE,
+                            IS_CRITICAL, ROLLBACK_ON_ERROR, IS_ACTIVE,
+                            RETRY_COUNT, TIMEOUT_SECONDS
+                        ) VALUES (?, ?, 'Create SK Table (DDL)', -1,
+                                  'DDL_CREATE', NULL, ?, 'Y', 'N', 'Y', 1, 120)
+                    """, [next_id, job_id, sk_ddl + ';'])
+                    steps_inserted += 1
+                    logger.info(f"DDL-Step 'Create SK Table' für Job {job_id} eingefügt ({sk_fqn})")
+
+            if steps_inserted:
+                conn.commit()
+
+        except Exception as e:
+            logger.warning(f"Fehler beim Einfügen der DDL-Steps für Job {job_id} (nicht kritisch): {e}")
+
     def add_step_from_template(
         self, 
         job_id: int, 
@@ -1444,6 +1680,111 @@ class TemplateService:
             return True
         except Exception as e:
             logger.error(f"update_step_template {step_template_id}: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _step_params_file(self, step_template_id: int) -> Optional[Path]:
+        """Gibt den Pfad zur .params.json-Datei eines Step-Templates zurück (oder None)."""
+        from app.config import PATHS
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT s.SQL_TEMPLATE_PATH, t.TEMPLATE_CODE
+                FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE s
+                LEFT JOIN MDP01_META.META_ETL_JOB_TEMPLATE t ON t.TEMPLATE_ID = s.TEMPLATE_ID
+                WHERE s.STEP_TEMPLATE_ID = ?
+            """, [step_template_id])
+            row = cursor.fetchone()
+        finally:
+            cursor.close()
+            conn.close()
+        if not row or not row[0]:
+            return None
+        sql_path = str(row[0])           # z.B. "delete/delete_target_table.sql"
+        template_code = str(row[1]) if row[1] else ''
+        # Wenn sql_path bereits template_code als Prefix enthält, nicht doppeln
+        if template_code and not sql_path.startswith(template_code + '/'):
+            full_path = f"{template_code}/{sql_path}"
+        else:
+            full_path = sql_path
+        # .sql → .params.json
+        params_path = Path(full_path).with_suffix('.params.json')
+        return Path(PATHS['sql_templates']) / params_path
+
+    def get_step_template_params(self, step_template_id: int) -> dict:
+        """
+        Lädt default_parameters eines Step-Templates.
+        File-first: .params.json neben der .sql-Datei, Fallback DB.
+        """
+        params_file = self._step_params_file(step_template_id)
+        if params_file and params_file.exists():
+            try:
+                return json.loads(params_file.read_text(encoding='utf-8'))
+            except Exception:
+                pass
+        # DB-Fallback
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT DEFAULT_PARAMETERS FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE WHERE STEP_TEMPLATE_ID = ?",
+                [step_template_id]
+            )
+            row = cursor.fetchone()
+        finally:
+            cursor.close()
+            conn.close()
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except Exception:
+                pass
+        return {}
+
+    def save_step_template_params(self, step_template_id: int, params: dict) -> bool:
+        """
+        Speichert default_parameters file-first (.params.json) + dual-write in DB.
+        """
+        params_file = self._step_params_file(step_template_id)
+        # Datei schreiben
+        if params_file:
+            params_file.parent.mkdir(parents=True, exist_ok=True)
+            params_file.write_text(json.dumps(params, ensure_ascii=False, indent=2), encoding='utf-8')
+        # DB dual-write
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "UPDATE MDP01_META.META_ETL_JOB_STEP_TEMPLATE SET DEFAULT_PARAMETERS = ? WHERE STEP_TEMPLATE_ID = ?",
+                [json.dumps(params, ensure_ascii=False), step_template_id]
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"save_step_template_params {step_template_id}: {e}")
+            conn.rollback()
+            return False
+        finally:
+            cursor.close()
+            conn.close()
+
+    def delete_step_template(self, step_template_id: int) -> bool:
+        """Löscht ein einzelnes Step-Template. Returns: True wenn erfolgreich."""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                DELETE FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE
+                WHERE STEP_TEMPLATE_ID = ?
+            """, [step_template_id])
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as e:
+            logger.error(f"delete_step_template {step_template_id}: {e}")
             conn.rollback()
             return False
         finally:

@@ -28,9 +28,9 @@ except ImportError:
 
 # Template Engine (lokal aus services/)
 try:
-    from .template_engine import SQLTemplateEngine, load_parameters_from_json
+    from .template_engine import SQLTemplateEngine, load_parameters_from_json, resolve_step_parameters
 except ImportError:
-    from template_engine import SQLTemplateEngine, load_parameters_from_json
+    from template_engine import SQLTemplateEngine, load_parameters_from_json, resolve_step_parameters
 
 
 # =============================================================================
@@ -62,7 +62,7 @@ class ETLJobStep:
     sql_inline: Optional[str]
     python_module: Optional[str]
     python_function: Optional[str]
-    parameters: Optional[str]  # JSON String
+    parameters: Optional[Any]  # dict (nach F4) oder JSON-String (legacy Fallback)
     condition_sql: Optional[str]
     skip_on_empty: str
     is_critical: str
@@ -115,6 +115,9 @@ class MetadataETLOrchestrator:
         # Template-Engine initialisieren
         template_base_dir = self.etl_config.get('sql_templates_base_dir')
         self.template_engine = SQLTemplateEngine(base_dir=template_base_dir)
+
+        # F4-A: etl/jobs/ Pfad für parameter files
+        self._etl_jobs_path = Path(self.etl_config.get('etl_jobs_dir', '/tmp/etl_jobs'))
         
         # Logging Connection (separate Session für Meta-Daten Updates)
         # Diese Connection wird für Job-Run/Step-Run Updates verwendet,
@@ -370,7 +373,8 @@ class MetadataETLOrchestrator:
         )
     
     def _load_steps(self, conn: teradatasql.TeradataConnection, job_id: int) -> List[ETLJobStep]:
-        """Lädt Steps aus META_ETL_JOB_STEP (sortiert nach step_order)."""
+        """Lädt Steps aus META_ETL_JOB_STEP (sortiert nach step_order).
+        F4-A: Parameter werden file-first aus etl/jobs/{job_id}/{step_id}.json geladen."""
         cursor = conn.cursor()
         cursor.execute("""
             SELECT 
@@ -386,8 +390,12 @@ class MetadataETLOrchestrator:
         
         steps = []
         for row in cursor.fetchall():
+            step_id = row[0]
+            db_params = row[9]
+            # F4-A: Datei hat Priorität über DB-Spalte
+            params = resolve_step_parameters(job_id, step_id, db_params, self._etl_jobs_path)
             steps.append(ETLJobStep(
-                etl_job_step_id=row[0],
+                etl_job_step_id=step_id,
                 etl_job_id=row[1],
                 step_name=row[2],
                 step_order=row[3],
@@ -396,7 +404,7 @@ class MetadataETLOrchestrator:
                 sql_inline=row[6],
                 python_module=row[7],
                 python_function=row[8],
-                parameters=row[9],
+                parameters=params,   # dict statt JSON-String
                 condition_sql=row[10],
                 skip_on_empty=row[11],
                 is_critical=row[12],
@@ -454,8 +462,10 @@ class MetadataETLOrchestrator:
         step_run_id = self._create_step_run(conn, job_run_id, step.etl_job_step_id)
         
         try:
-            # Parameter laden
-            params = load_parameters_from_json(step.parameters) if step.parameters else {}
+            # Parameter laden (bereits als dict durch _load_steps / resolve_step_parameters)
+            params = step.parameters if isinstance(step.parameters, dict) else (
+                load_parameters_from_json(step.parameters) if step.parameters else {}
+            )
             
             # =========================================================================
             # Python Module Execution (z.B. TPT_LOAD)
@@ -522,6 +532,22 @@ class MetadataETLOrchestrator:
             return (True, metrics)
         
         except Exception as e:
+            err_str = str(e)
+
+            # DDL_CREATE-Steps: Teradata Error 3803 (Tabelle existiert bereits) = OK
+            # Passiert beim 2. Run oder wenn Tabelle manuell angelegt wurde.
+            if getattr(step, 'step_category', None) == 'DDL_CREATE' and '[Error 3803]' in err_str:
+                logger.info(f"Step '{step.step_name}': Tabelle existiert bereits (3803) – wird als SUCCESS gewertet")
+                metrics.duration_seconds = (datetime.now() - start_time).total_seconds()
+                self._update_step_run(
+                    conn, step_run_id,
+                    status='SUCCESS',
+                    metrics=metrics,
+                    executed_sql=sql if 'sql' in dir() else '',
+                    error_message='Tabelle existierte bereits (3803 ignoriert)'
+                )
+                return (True, metrics)
+
             # Step fehlgeschlagen
             logger.error(f"Step failed: {str(e)}")
             
@@ -531,7 +557,7 @@ class MetadataETLOrchestrator:
                 conn, step_run_id,
                 status='FAILED',
                 metrics=metrics,
-                error_message=str(e),
+                error_message=err_str,
                 error_stacktrace=traceback.format_exc()
             )
             

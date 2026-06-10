@@ -86,7 +86,9 @@
     const post   = (path, body)     => _fetch(path, { method: 'POST', body });
     const put    = (path, body)     => _fetch(path, { method: 'PUT',  body });
     const patch  = (path, body)     => _fetch(path, { method: 'PATCH', body });
-    const del    = (path)           => _fetch(path, { method: 'DELETE' });
+    const del    = (path, body)     => _fetch(path, body
+        ? { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
+        : { method: 'DELETE' });
 
     function _qs(params) {
         if (!params) return '';
@@ -124,7 +126,7 @@
             sqlExport:  (id)                => get(`/etl/jobs/${id}/sql-export`),
             tptPreview: (id)                => get(`/etl/jobs/${id}/tpt-preview`),
             delete:     (id)                => del(`/etl/jobs/${id}`),
-            execute:    (id)                => post(`/etl/jobs/${id}/execute`),
+            execute:    (id, body={})        => post(`/etl/jobs/${id}/execute`, body),
             updateStepParams: (stepId, p)   => put(`/etl/steps/${stepId}/parameters`, p),
         },
 
@@ -154,6 +156,13 @@
             cancel:     (runId)             => post(`/etl/runs/${runId}/cancel`),
         },
 
+        // ---- SQL Template Files ----
+        sqlTemplates: {
+            get:    (path)                  => get(`/etl/templates/${path}`),
+            update: (path, content)         => put(`/etl/templates/${path}`, { content }),
+            render: (path, parameters)      => post(`/etl/templates/${path}/render`, { parameters }),
+        },
+
         // ---- Dashboard ----
         dashboard:  ()                      => get('/etl/dashboard/stats'),
     };
@@ -165,16 +174,17 @@
         /** Tabellen eines Layers mit Load-Status */
         layerTables:    (layerId)           => get(`/layers/${layerId}/tables`),
         /** Jobs zwischen zwei Layern */
-        between:        (srcId, tgtId)      => get(`/jobs/layers/${srcId}/to/${tgtId}/jobs`),
+        between:        (srcId, tgtId)      => get(`/layers/${srcId}/to/${tgtId}/jobs`),
 
-        create:         (body)              => post('/jobs/jobs', body),
-        update:         (id, body)          => put(`/jobs/jobs/${id}`, body),
-        delete:         (id)                => del(`/jobs/jobs/${id}`),
+        create:         (body)              => post('/jobs', body),
+        update:         (id, body)          => put(`/jobs/${id}`, body),
+        delete:         (id, body)          => del(`/jobs/${id}`, body),
+        deletePreview:  (id)                => get(`/jobs/${id}/delete-preview`),
 
-        addStep:        (jobId, body)       => post(`/jobs/jobs/${jobId}/steps`, body),
-        updateStep:     (jobId, stepId, b)  => put(`/jobs/jobs/${jobId}/steps/${stepId}`, b),
-        deleteStep:     (jobId, stepId)     => del(`/jobs/jobs/${jobId}/steps/${stepId}`),
-        updateMapping:  (jobId, stepId, b)  => put(`/jobs/jobs/${jobId}/steps/${stepId}/mapping`, b),
+        addStep:        (jobId, body)       => post(`/jobs/${jobId}/steps`, body),
+        updateStep:     (jobId, stepId, b)  => put(`/jobs/${jobId}/steps/${stepId}`, b),
+        deleteStep:     (jobId, stepId)     => del(`/jobs/${jobId}/steps/${stepId}`),
+        updateMapping:  (jobId, stepId, b)  => put(`/jobs/${jobId}/steps/${stepId}/mapping`, b),
     };
 
     // ----------------------------------------------------------------
@@ -189,7 +199,10 @@
 
         listSteps:      (params)            => get('/templates/steps', params),
         createStep:     (body)              => post('/templates/steps', body),
+        deleteStep:     (id)                => del(`/templates/steps/${id}`),
         patchStep:      (id, body)          => patch(`/templates/steps/${id}`, body),
+        getStepParams:  (id)                => get(`/templates/steps/${id}/params`),
+        saveStepParams: (id, body)          => put(`/templates/steps/${id}/params`, body),
 
         /** B2: Erstellt ETL-Job + Zieltabelle in einem Schritt */
         applyJob:       (templateId, body)  => post(`/templates/jobs/${templateId}/create-job`, body),
@@ -255,8 +268,9 @@
     // import  – /api/import/*
     // ----------------------------------------------------------------
     api.importTd = {
-        candidates:     (db)                => get('/import/candidates', { database: db }),
+        candidates:     (db)                => get('/import/candidates', { db }),
         table:          (body)              => post('/import/table', body),
+        importTable:    (body)              => post('/import/table', body),
     };
 
     // ----------------------------------------------------------------

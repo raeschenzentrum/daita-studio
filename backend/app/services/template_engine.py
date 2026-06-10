@@ -353,17 +353,66 @@ class SQLTemplateEngine:
 def load_parameters_from_json(json_string: str) -> Dict[str, Any]:
     """
     Lädt Parameter aus JSON-String (aus META_ETL_JOB_STEP.parameters).
-    
-    Args:
-        json_string: JSON-formatierter String
-    
-    Returns:
-        Parameter-Dictionary
-    
-    Raises:
-        json.JSONDecodeError: Ungültiges JSON
     """
     return json.loads(json_string)
+
+
+def resolve_step_parameters(
+    job_id: int,
+    step_id: int,
+    db_params: Optional[str],
+    etl_jobs_path: "Path",
+) -> Dict[str, Any]:
+    """
+    F4-A: Löst Step-Parameter auf.
+    Priorität: JSON-Datei (etl/jobs/{job_id}/{step_id}.json) → DB-Fallback.
+
+    Args:
+        job_id:        etl_job_id
+        step_id:       etl_job_step_id
+        db_params:     JSON-String aus META_ETL_JOB_STEP.parameters (Fallback)
+        etl_jobs_path: PATHS["etl_jobs"] als Path-Objekt
+
+    Returns:
+        Parameter-Dictionary (leer wenn nichts gefunden)
+    """
+    json_file = Path(etl_jobs_path) / str(job_id) / f"{step_id}.json"
+    if json_file.exists():
+        try:
+            return json.loads(json_file.read_text(encoding="utf-8"))
+        except Exception:
+            pass  # Fallback auf DB
+    if db_params:
+        try:
+            return json.loads(db_params)
+        except Exception:
+            pass
+    return {}
+
+
+def write_step_parameters(
+    job_id: int,
+    step_id: int,
+    parameters: Dict[str, Any],
+    etl_jobs_path: "Path",
+) -> None:
+    """
+    F4-B: Schreibt Step-Parameter in JSON-Datei.
+    Erstellt den Job-Ordner falls nicht vorhanden.
+
+    Args:
+        job_id:        etl_job_id
+        step_id:       etl_job_step_id
+        parameters:    Parameter-Dictionary
+        etl_jobs_path: PATHS["etl_jobs"] als Path-Objekt
+    """
+    job_dir = Path(etl_jobs_path) / str(job_id)
+    job_dir.mkdir(parents=True, exist_ok=True)
+    json_file = job_dir / f"{step_id}.json"
+    json_file.write_text(
+        json.dumps(parameters, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
 
 
 def validate_template_parameters(

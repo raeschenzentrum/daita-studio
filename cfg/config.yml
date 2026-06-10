@@ -27,13 +27,16 @@ paths:
   tpt_log: 'log/tpt'
 
   # SQL Templates (Input)
-  sql_templates: 'ddl/sql_templates'
+  sql_templates: 'etl/sql_templates'
 
   # SQL generiert
   sql_output: 'sql/generated'
 
   # Logs
   log: 'log'
+
+  # ETL Jobs (Parameter-JSONs, DDL-Artefakte)
+  etl_jobs: 'etl/jobs'
 
   # Diagramm-Layouts (ERD)
   diagrams: 'diagrams'

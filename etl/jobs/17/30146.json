@@ -1,0 +1,12 @@
+{
+  "SOURCE_DATABASE": "MDP01_RAW_LAYER",
+  "SOURCE_TABLE": "UZMS01_TARF_ASYL_ERLED_ZUS_TX",
+  "STAGING_TABLE": "temp_uzms01_tarf_asyl_erled_zus_tx_staging",
+  "BUSINESS_KEY": "KEYCD, LANG_CD",
+  "SELECT_COLUMNS": "KEYCD, LANG_CD, TXT",
+  "select_columns": [
+    "KEYCD",
+    "LANG_CD",
+    "TXT"
+  ]
+}

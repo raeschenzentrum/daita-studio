@@ -112,6 +112,36 @@ async def create_step_template(request: CreateStepTemplateRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.delete("/steps/{step_template_id}", response_model=dict)
+async def delete_step_template(step_template_id: int):
+    """Step-Template löschen"""
+    ok = _service.delete_step_template(step_template_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Step-Template {step_template_id} nicht gefunden")
+    return {"message": f"Step-Template {step_template_id} gelöscht"}
+
+
+@router.get("/steps/{step_template_id}/params", response_model=dict)
+async def get_step_params(step_template_id: int):
+    """
+    Lädt default_parameters eines Step-Templates.
+    File-first: .params.json neben der .sql-Datei, Fallback DB.
+    """
+    return _service.get_step_template_params(step_template_id)
+
+
+@router.put("/steps/{step_template_id}/params", response_model=dict)
+async def save_step_params(step_template_id: int, data: dict):
+    """
+    Speichert default_parameters eines Step-Templates.
+    Dual-write: .params.json auf Disk + DB-Spalte DEFAULT_PARAMETERS.
+    """
+    ok = _service.save_step_template_params(step_template_id, data)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Speichern fehlgeschlagen")
+    return {"message": "Parameter gespeichert"}
+
+
 # =============================================================================
 # Job aus Template erstellen
 # =============================================================================

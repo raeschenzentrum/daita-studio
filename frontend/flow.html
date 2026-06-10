@@ -11,14 +11,17 @@
     <script src="components/job-detail.js"></script>
     <script src="components/column-selector.js"></script>
     <script src="components/etl-wizard.js"></script>
+    <script src="components/table-bottom-panel.js"></script>
     <style>
         body { margin: 0; background: var(--bg-color, #f0f2f5); }
-        .flow-page { display: flex; flex-direction: column; min-height: 100vh; }
+        .flow-page {
+            display: flex; flex-direction: column;
+            height: 100vh; overflow: hidden;
+        }
 
         /* ── Main-Layout: Flow-Bereich + Side-Panel ───────────────── */
         .flow-body {
-            display: flex; flex: 1; overflow: hidden;
-            height: calc(100vh - 56px); /* Nav-Höhe abziehen */
+            display: flex; flex: 1; min-height: 0; overflow: hidden;
         }
         .flow-area {
             flex: 1; overflow-y: auto; padding: 24px;
@@ -168,6 +171,27 @@
             cursor: pointer; white-space: nowrap;
         }
         .btn-modeler:hover { background: #0984e3; color: #fff; }
+        .btn-tabel {
+            padding: 2px 8px; border-radius: 4px; font-size: 0.75em;
+            background: #fff8e1; color: #e67e00; border: 1px solid #ffd280;
+            cursor: pointer; white-space: nowrap;
+        }
+        .btn-tabel:hover { background: #e67e00; color: #fff; }
+        .btn-etl-create {
+            padding: 2px 8px; border-radius: 4px; font-size: 0.75em;
+            background: #fdecea; color: #e74c3c; border: 1px solid #f5b7b1;
+            cursor: pointer; white-space: nowrap; font-weight: 600;
+        }
+        .btn-etl-create:hover { background: #e74c3c; color: #fff; }
+        .btn-job-manage {
+            padding: 2px 8px; border-radius: 4px; font-size: 0.75em;
+            background: #e8f5e9; color: #27ae60; border: 1px solid #a9dfbf;
+            cursor: pointer; white-space: nowrap; font-weight: 600;
+        }
+        .btn-job-manage:hover { background: #27ae60; color: #fff; }
+
+        /* ── Bottom-Panel ─────────────────────────────────────────── */
+        #flow-bottom-panel { flex-shrink: 0; display: none; }
 
         /* ── Loading ──────────────────────────────────────────────── */
         .flow-loading { text-align: center; padding: 40px; color: #888; font-size: 0.9em; }
@@ -219,6 +243,10 @@
         </div>
 
     </div>
+
+    <!-- ── Bottom-Panel (TableBottomPanel-Komponente) ───────────── -->
+    <div id="flow-bottom-panel"></div>
+
 </div>
 
 <script>
@@ -407,7 +435,6 @@ function renderConnectionJobRows(jobs) {
                 <div class="table-row-meta">${src} → ${tgt}</div>
             </div>
             <div class="table-row-actions">
-                <button class="btn-modeler" onclick="openModelerForJob(${job.etl_job_id})">⬡ Modeler</button>
             </div>
         </div>`;
     }).join('');
@@ -459,10 +486,12 @@ function renderTables(tables, layer) {
                 <div class="table-row-meta">${metaInfo}</div>
             </div>
             <div class="table-row-actions">
-                <button class="btn-modeler"
-                        onclick="openModeler(${table.table_id}, '${esc(table.table_name)}')">⬡</button>
-                ${!table.has_job ? `<button class="btn-sm" style="font-size:0.75em;padding:2px 8px"
-                        onclick="openWizardForTable(${table.table_id}, '${esc(table.table_name)}', ${layer.layer_id})">+ ETL</button>` : ''}
+                ${!table.has_job ? `<button class="btn-tabel" data-action="open-table-editor" data-table-id="${table.table_id}" data-table-name="${esc(table.table_name)}">⊕ Zieltabelle</button>` : ''}
+                <button class="btn-modeler" data-action="open-modeler" data-table-id="${table.table_id}" data-table-name="${esc(table.table_name)}">⬡</button>
+                ${!table.has_job
+                    ? `<button class="btn-etl-create" data-action="open-wizard" data-table-id="${table.table_id}" data-table-name="${esc(table.table_name)}" data-layer-id="${layer.layer_id}">+ ETL</button>`
+                    : `<button class="btn-job-manage" data-action="open-job" data-job-id="${table.job_id}">⚙ Job</button>`
+                }
             </div>
             <span class="status-arrow out ${table.is_used_as_source ? 'active' : 'inactive'}"
                   title="${table.is_used_as_source ? 'Downstream-Job: ' + esc(table.downstream_job_name ?? '') : 'Wird nicht als Source genutzt'}"
@@ -484,6 +513,23 @@ function renderTables(tables, layer) {
     elTablesBody.querySelectorAll('.status-arrow[data-action="open-downstream"]').forEach(el => {
         el.addEventListener('click', () => {
             const jid = Number(el.dataset.jobId);
+            if (jid) openJobDetailById(jid);
+        });
+    });
+
+    // Klick auf Aktions-Buttons in der Tabellenzeile
+    elTablesBody.querySelectorAll('[data-action="open-table-editor"]').forEach(btn => {
+        btn.addEventListener('click', () => openTableEditor(Number(btn.dataset.tableId), btn.dataset.tableName));
+    });
+    elTablesBody.querySelectorAll('[data-action="open-modeler"]').forEach(btn => {
+        btn.addEventListener('click', () => openModeler(Number(btn.dataset.tableId), btn.dataset.tableName));
+    });
+    elTablesBody.querySelectorAll('[data-action="open-wizard"]').forEach(btn => {
+        btn.addEventListener('click', () => openWizardForTable(Number(btn.dataset.tableId), btn.dataset.tableName, Number(btn.dataset.layerId)));
+    });
+    elTablesBody.querySelectorAll('[data-action="open-job"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const jid = Number(btn.dataset.jobId);
             if (jid) openJobDetailById(jid);
         });
     });
@@ -515,12 +561,20 @@ function openModeler(tableId, tableName) {
     window.location = `modeler.html?table_id=${tableId}`;
 }
 
-function openModelerForJob(jobId) {
-    window.location = `modeler.html`;
+function openModelerForJob(targetTableId) {
+    if (targetTableId) window.location = `modeler.html?table_id=${targetTableId}`;
+    else window.location = 'modeler.html';
 }
 
 function openWizardForTable(tableId, tableName, layerId) {
-    ETLWizard.openModal({ sourceTableId: tableId, sourceLayerId: layerId });
+    ETLWizard.openModal({ sourceTableId: tableId, sourceTableName: tableName, sourceLayerId: layerId, targetExists: false });
+}
+
+// ── Bottom-Panel (TableBottomPanel-Komponente) ──────────────────────
+const _bp = new TableBottomPanel(document.getElementById('flow-bottom-panel'));
+
+function openTableEditor(tableId, tableName) {
+    _bp.show({ table_id: tableId, table_name: tableName });
 }
 
 function closeSide() {

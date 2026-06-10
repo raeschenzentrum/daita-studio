@@ -102,6 +102,199 @@ Die daita-modeler-Services werden als neue Router in das bestehende daita-studio
 
 ---
 
+### F1 – Feature: Flow UX – Job-Erstellung, Steps & Template-Architektur
+
+**Konzept:** `docs/FLOW_UX_KONZEPT.md`
+
+Sammelt mehrere zusammenhängende UX- und Architektur-Änderungen rund um Flow, Job-Erstellung und Step-Verwaltung.
+
+#### Teilaufgaben
+
+**F1-A – Tabellenzeile in `flow.html`: neue Buttons**
+- `⊕ Zieltabelle` (nur sichtbar wenn Zieltabelle fehlt) → Tabellen-Subform (Erstellung)
+- `⬡ Modeler` (immer) → `modeler.html?table_id=X`
+- `+ ETL` (rot, kein Job) → ETL-Wizard
+- `⚙ Job` (grün, Job vorhanden) → Job-Verwaltung (Subform)
+- Modeler-Button aus der Job-Zeile entfernen (liegt jetzt in Tabellenzeile)
+
+**F1-B – ETL-Wizard: Schritt 0 "Zieltabelle anlegen"**
+- Wizard prüft ob Zieltabelle vorhanden
+- Falls nicht: vorgelagerter Schritt mit vorgeschlagenem Zieltabellenname
+- Nach Anlage: direkt weiter zu Schritt 1 (kein Kontextverlust)
+- Expliziter `⊕ Zieltabelle`-Button in Tabellenzeile als alternative Einstieg
+
+**F1-C – Job-Detail: Step-Ansicht mit Template + Parameter**
+- Pro Step: Template-Name + Link zum SQL
+- Parameter-Anzeige als Key-Value (aus JSON-Datei)
+- Preview: Template-SQL mit eingesetzten Parametern
+
+**F1-D – Architektur: Parameter von DB-JSON auf Datei-basiert**
+- Templates bleiben fix in `sql/template_sqls/` (unveränderlich, keine Kopien)
+- Parameter pro Step pro Job als JSON-Datei: `params/jobs/<JOBNAME>/step_NN_TYP.json`
+- Backend: Lesen/Schreiben der Parameterdateien statt DB-Spalte
+- Dateinamenschema festlegen
+
+**Voraussetzungen:** M1, M3, C4, C6
+
+**Status:** 📝 Offen
+
+---
+
+### F2 – Feature: Job-Detail Master-Detail + Wizard-Transparenz
+
+**Konzept:** `docs/JOB_DETAIL_KONZEPT.md`
+
+Ergänzt `job-detail.js` um das vollständige Step-Detail-Panel wie in metadaita (Screenshot),
+und macht den ETL-Wizard transparenter bzgl. was beim Speichern tatsächlich passiert.
+
+#### Teilaufgaben
+
+**F2-A – job-detail.js: Master-Detail-Layout**
+- Links: Step-Liste (klickbar, Kategorie-Badge, step_order)
+- Rechts: Step-Detail-Panel (read-only)
+- Responsive: In schmalem Container (flow.html) nur Step-Liste
+
+**F2-B – job-detail.js: Step-Detail-Panel (vollständig)**
+- Sektion „Step Informationen": ID, Name, Reihenfolge, Kategorie, Gehört zu Job
+- Sektion „Ausführung": SQL Template / Inline, Template-Pfad, Buttons „Template bearbeiten" + „Mit Parametern anzeigen"
+- Sektion „Einstellungen": Aktiv, Kritisch, Skip wenn leer, Rollback bei Fehler (editierbar, Y/N Toggle)
+- Sektion „Parameter": Key-Value-Liste (aus `step.parameters` JSON), editierbar, Speichern, + Neu
+
+**F2-C – job-detail.js: Job-Toolbar**
+- ▶ Starten (grün, prominent wie im Screenshot)
+- SQL Export → Download
+- Als Template → POST /api/templates/from-job/{id}
+- Template Import
+- Im Dashboard
+
+**F2-D – etl-wizard.js: Schritt 3 „Was wird erstellt?"**
+- Berechnete Parameter anzeigen (SOURCE_TABLE, TARGET_TABLE, SK_COLUMN, STAGING_TABLE, KEY_TABLE, …)
+- Steps-Preview: welche Steps werden angelegt (Kategorie-Badges)
+- Technische Spalten explizit aufzählen (nicht nur Badge, sondern mit Datentypen)
+- Key-Tabellen-Erstellung nennen
+- Backend: `/api/templates/{id}/preview` (dry-run)
+
+**F2-E – Backend: Neue Endpunkte**
+- `PATCH /api/jobs/{id}/steps/{step_id}` – Step Einstellungen + Parameter
+- `POST /api/jobs/{id}/steps` – Step hinzufügen
+- `DELETE /api/jobs/{id}/steps/{step_id}` – Step löschen
+- `GET /api/jobs/{id}/sql-export` – SQL-Export Download
+- `POST /api/templates/from-job/{id}` – Job als Template speichern
+- `POST /api/templates/{id}/preview` – Dry-run Parameter + Steps + technische Spalten
+- `POST /api/jobs/{id}/steps/{step_id}/preview` – Template + Parameter → fertiges SQL
+
+**Voraussetzungen:** C4, C6, `metadaita` job_management.py als Referenz
+
+**Status:** 📝 Offen
+
+---
+
+### F3 – Feature: Template-Versionierung / SQL-Fix als neues Template
+
+Wenn ein Template-SQL korrigiert werden muss (Bug-Fix, neue Logik), soll der User:
+1. Das bestehende Template kopieren (neuer Name / neues Verzeichnis)
+2. Das SQL im Editor anpassen
+3. Die betroffenen Jobs auf das neue Template umstellen
+
+**Teilaufgaben:**
+- F3-A: „Template kopieren" Button im Template-Editor Modal (`POST /etl/templates/copy`)
+- F3-B: Step-Detail: Template-Pfad inline editierbar (neues Template zuweisen)
+- F3-C: Übersicht welche Jobs/Steps ein Template verwenden (`GET /etl/templates/{path}/usages`)
+
+**Status:** 📝 Offen
+
+---
+
+### F4 – Feature: Step-Parameter als JSON-File statt DB-Spalte
+
+Aktuell werden Step-Parameter als JSON-String in `META_ETL_JOB_STEP.STEP_PARAMETERS` gespeichert.
+
+**Ziel:** Parameter als Datei auf dem Filesystem:
+```
+etl/jobs/{job_id}/{step_id}.json
+```
+
+**Teilaufgaben:**
+- F4-A: Backend `job_management.py`: Parameter-Lesen aus JSON-File (Fallback: DB-Spalte)
+- F4-B: Backend `job_management.py`: Parameter-Schreiben in JSON-File (kein DB-Update mehr)
+- F4-C: Backend: Migrationsskript bestehende DB-Parameter → JSON-Files exportieren
+- F4-D: `PATHS["etl_jobs"]` in `config.py` eintragen (`etl/jobs/`)
+- F4-E: Frontend `job-detail.js`: keine Änderung nötig (API bleibt gleich)
+- F4-F: Ordner `ddl/sql_templates/` → `etl/sql_templates/` umbenennen + `PATHS["sql_templates"]` in `config.py` anpassen + `TEMPLATE_BASE_DIR` in `etl.py` prüfen
+
+**Hinweis:** DB-Spalte kann nach Migration leer bleiben oder als Fallback erhalten bleiben.
+
+**Status:** 📝 Offen
+
+---
+
+### F5 – Feature: Job-Folder DDLs + Löschen mit Objekt-Auswahl
+
+**Kontext:** Ein ETL-Job legt beim Erstellen mehrere DB-Objekte an (Zieltabelle, SK-Tabelle).
+Diese DDLs sollen im Job-Folder abgelegt werden, und beim Löschen des Jobs soll der User
+explizit steuern können, welche Objekte wirklich entfernt werden.
+
+#### F5-A – DDLs im Job-Folder ablegen
+
+Beim `create_job_from_template` werden folgende DDL-Artefakte in `etl/jobs/{job_id}/` geschrieben:
+
+```
+etl/jobs/{job_id}/
+├── create_target_table.ddl     ← CREATE TABLE Zieltabelle (generiert)
+├── create_sk_table.ddl         ← CREATE TABLE SK-Tabelle (generiert, falls neu)
+└── cleanup/
+    ├── drop_target_table.sql   ← DROP TABLE Zieltabelle
+    └── drop_sk_table.sql       ← DROP TABLE SK-Tabelle
+```
+
+**Teilaufgaben:**
+- F5-A1: Backend `template_service.py`: DDL-Generierung für Zieltabelle + SK-Tabelle beim Job-Erstellen
+- F5-A2: Backend: DDL-Dateien in `etl/jobs/{job_id}/` schreiben (nach DB-Commit)
+- F5-A3: Backend: Cleanup-SQLs (`DROP TABLE`) ebenfalls im Job-Folder speichern
+- F5-A4: `PATHS["etl_jobs"]` sicherstellen (Teilaufgabe von F4-D)
+
+#### F5-B – Job löschen mit Objekt-Auswahl
+
+Beim Klick auf „🗑 Löschen" in der Job-Toolbar erscheint **kein einfaches `confirm()`**,
+sondern ein Panel mit allen betroffenen Objekten und Häkchen:
+
+```
+┌─ Job löschen: LOAD_UZMS01_TAAA_PERSON_HISTORY ─────────────────┐
+│ Folgende Objekte werden gelöscht:                               │
+│                                                                 │
+│  ☑  ETL-Job               LOAD_UZMS01_TAAA_PERSON_HISTORY      │
+│  ☑  Job-Steps (9)         alle Steps + Parameter               │
+│  ☑  Job-Folder            etl/jobs/42/ (DDLs + Parameter)      │
+│                                                                 │
+│  ─── Datenbankobjekte (optional) ────────────────────────────── │
+│  ☐  Zieltabelle           UZMS01_TAAA_PERSON_HISTORY           │
+│  ☐  SK-Tabelle            KEY_PERSON                           │
+│  ☐  META_TABLE Eintrag    Zieltabelle aus META_TABLE entfernen  │
+│  ☐  META_COLUMN Einträge  Spalten aus META_COLUMN entfernen     │
+│                                                                 │
+│  ⚠ Datenbankobjekte sind standardmäßig NICHT ausgewählt.       │
+│                                                                 │
+│  [Abbrechen]                          [🗑 Ausgewähltes löschen] │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Regeln:**
+- Job-Metadaten (Job, Steps, Parameter-JSONs) sind **immer** ausgewählt (nicht deselektierbar)
+- Datenbankobjekte (Zieltabelle, SK-Tabelle, META_TABLE, META_COLUMN) sind **standardmäßig abgewählt**
+- Wenn Datenbankobjekte gewählt: generiertes `DROP TABLE` SQL wird aus `cleanup/` geladen und angezeigt
+
+**Teilaufgaben:**
+- F5-B1: Backend `GET /api/jobs/{id}/delete-preview` → liefert Liste aller betroffenen Objekte
+- F5-B2: Backend `DELETE /api/jobs/{id}` → erweiterter Body `{ drop_target_table, drop_sk_table, drop_meta_table, drop_meta_columns }`
+- F5-B3: Frontend `job-detail.js`: Löschen-Button öffnet Objekt-Auswahl-Panel statt `confirm()`
+- F5-B4: Panel zeigt generiertes DROP-SQL als Vorschau wenn DB-Objekte ausgewählt
+
+**Voraussetzungen:** F4-D (etl_jobs Pfad), F5-A (DDLs im Job-Folder)
+
+**Status:** 📝 Offen
+
+---
+
 ### B1 – Backend: Modeler-APIs integrieren ✅
 
 **Umgesetzt am:** 2026-06-08

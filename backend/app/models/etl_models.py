@@ -9,7 +9,7 @@ Autor: DWH MVP Team
 Datum: 2026-01-19
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
@@ -85,7 +85,7 @@ class ETLJobStepBase(BaseModel):
     sql_inline: Optional[str] = None
     python_module: Optional[str] = None
     python_function: Optional[str] = None
-    parameters: Optional[str] = None  # JSON String
+    parameters: Optional[Union[str, dict]] = None  # JSON String oder dict (F4: file-first)
     condition_sql: Optional[str] = None
     skip_on_empty: str = "N"
     is_critical: str = "Y"

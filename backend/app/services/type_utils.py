@@ -149,6 +149,20 @@ def td_typecode_to_ddl(
     if t in _ddl_passthrough:
         return t
 
+    # TIMESTAMP(n): Teradata speichert intern col_length=26 (Byte-Länge), nicht die Precision.
+    # decimal_frac enthält die echte Precision (0–6). Wir cappen auf max 6.
+    if t.startswith('TIMESTAMP(') or t.startswith('TIME('):
+        # Precision aus dem gespeicherten String lesen
+        try:
+            stored_prec = int(t.split('(')[1].rstrip(')').strip())
+            if stored_prec > 6:
+                # Falsche interne Byte-Länge – echte Precision aus decimal_frac oder Default 6
+                real_prec = min(int(decimal_frac), 6) if decimal_frac is not None else 6
+                base = 'TIMESTAMP' if t.startswith('TIMESTAMP') else 'TIME'
+                return f'{base}({real_prec})'
+        except (ValueError, IndexError):
+            pass
+
     _ddl_prefixes = (
         'VARCHAR(', 'CHAR(', 'NVARCHAR(', 'VARBYTE(', 'BYTE(',
         'DECIMAL(', 'NUMERIC(', 'NUMBER(', 'FLOAT(',

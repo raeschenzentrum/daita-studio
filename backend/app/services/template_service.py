@@ -822,15 +822,32 @@ class TemplateService:
                     core_name=core_name
                 )
 
-            # B2: META_COLUMN für neue Zieltabelle anlegen (Spalten + SCD2-Technische-Spalten)
+            # B2a: IS_BUSINESS_KEY in Source-META_COLUMN setzen (falls noch nicht gesetzt)
+            pk_list = pk_columns if isinstance(pk_columns, list) else ([pk_columns] if pk_columns else [])
+            if pk_list:
+                for pk_col in pk_list:
+                    try:
+                        cursor.execute("""
+                            UPDATE MDP01_META.META_COLUMN
+                            SET IS_BUSINESS_KEY = 'Y', AENDERUNGSDATUM = CURRENT_TIMESTAMP(6)
+                            WHERE TABLE_ID = ? AND COLUMN_NAME = ?
+                        """, [request.source_table_id, pk_col.upper()])
+                    except Exception as e:
+                        logger.warning(f"IS_BUSINESS_KEY Update für {pk_col} fehlgeschlagen: {e}")
+                conn.commit()
+
+            # B2b: META_COLUMN für neue Zieltabelle anlegen (Spalten + SCD2-Technische-Spalten)
             if target_created and target_table_id:
                 sel_cols = select_columns if isinstance(select_columns, list) else ([select_columns] if select_columns else [])
+                hash_list = hash_columns if isinstance(hash_columns, list) else ([hash_columns] if hash_columns else [])
                 self._populate_target_columns_in_meta(
                     cursor, conn,
                     target_table_id=target_table_id,
                     source_table_id=request.source_table_id,
                     select_columns=sel_cols,
-                    core_name=core_name
+                    core_name=core_name,
+                    pk_columns=pk_list,
+                    hash_columns=hash_list,
                 )
 
             # F5-A: DDLs + Cleanup-SQLs im Job-Folder ablegen
@@ -1009,7 +1026,9 @@ class TemplateService:
         target_table_id: int,
         source_table_id: int,
         select_columns: List[str],
-        core_name: str = ''
+        core_name: str = '',
+        pk_columns: List[str] = None,
+        hash_columns: List[str] = None,
     ) -> int:
         """
         B2: Erstellt META_COLUMN-Einträge für eine neu angelegte Zieltabelle.
@@ -1049,6 +1068,8 @@ class TemplateService:
         scd2_config = self.param_rules.get('scd2_technical_columns', {})
         col_position = 1
         inserted = 0
+        pk_set   = {c.upper() for c in (pk_columns or [])}
+        hash_set = {c.upper() for c in (hash_columns or [])}
 
         # --- 1. SCD2-Technische-Spalten ---
         scd2_order = [
@@ -1071,6 +1092,7 @@ class TemplateService:
             col_type    = cfg.get('type', 'VARCHAR(255)')
             nullable    = 'N' if not cfg.get('nullable', True) else 'Y'
             is_pk       = 'Y' if key == 'surrogate_key' else 'N'
+            is_pi       = 'Y' if key == 'surrogate_key' else 'N'  # SK = PRIMARY INDEX
             is_scd      = 'N' if key == 'surrogate_key' else 'Y'
             is_audit    = 'Y' if key in ('created_timestamp', 'last_updated_timestamp', 'created_by', 'last_updated_by') else 'N'
             datatype_id = _get_datatype_id(col_type)
@@ -1078,12 +1100,13 @@ class TemplateService:
             cursor.execute(f"""
                 INSERT INTO {col_tbl}
                     (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
-                     DATATYPE_ID, COLUMN_TYPE, NULLABLE, IS_TECHNICAL_KEY, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
+                     DATATYPE_ID, COLUMN_TYPE, NULLABLE,
+                     IS_TECHNICAL_KEY, IS_PI, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
                      ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                         CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
             """, [next_col_id, target_table_id, col_name, col_position,
-                  datatype_id, col_type, nullable, is_pk, is_scd, is_audit])
+                  datatype_id, col_type, nullable, is_pk, is_pi, is_scd, is_audit])
             next_col_id  += 1
             col_position += 1
             inserted     += 1
@@ -1110,19 +1133,25 @@ class TemplateService:
                     'VARCHAR(255)', None, None, None, 'Y', 'N', None
                 datatype_id = 1
 
+            # BK: aus pk_columns (überschreibt Source-Flag) oder Source-Flag als Fallback
+            final_bk   = 'Y' if col_upper in pk_set else (is_bk or 'N')
+            # Hash: aus hash_columns
+            final_hash = 'Y' if col_upper in hash_set else 'N'
+
             cursor.execute(f"""
                 INSERT INTO {col_tbl}
                     (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
                      DATATYPE_ID, COLUMN_TYPE, COLUMN_LENGTH,
                      DECIMAL_TOTAL_DIGITS, DECIMAL_FRACTIONAL_DIGITS,
-                     NULLABLE, IS_BUSINESS_KEY, IS_TECHNICAL_KEY, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
+                     NULLABLE, IS_BUSINESS_KEY, IS_HASH,
+                     IS_TECHNICAL_KEY, IS_PI, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
                      CHARSET,
                      ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'N', 'N', 'N', ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'N', 'N', 'N', 'N', ?,
                         CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
             """, [next_col_id, target_table_id, col_upper, col_position,
                   datatype_id, col_type, col_length, dec_total, dec_frac,
-                  nullable or 'Y', is_bk or 'N', charset])
+                  nullable or 'Y', final_bk, final_hash, charset])
             next_col_id  += 1
             col_position += 1
             inserted     += 1

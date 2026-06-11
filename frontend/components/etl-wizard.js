@@ -238,7 +238,7 @@
             this._mode        = opts.mode || 'inline';
             this._step        = 1;
             this._templates   = [];
-            this._selection   = null; // { pk_columns, hash_columns, select_columns }
+            this._selection   = null; // { bk_columns, pk_columns, pi_columns, hash_columns, select_columns }
             this._colSelector = null;
             this._targetExists = opts.targetExists ?? null; // null=unbekannt, false=fehlt, true=vorhanden
 
@@ -436,7 +436,7 @@
                 </div>`;
 
             footer.querySelector('#ew-cancel').addEventListener('click', () => this._close());
-            footer.querySelector('#ew-next1').addEventListener('click', () => {
+            footer.querySelector('#ew-next1').addEventListener('click', async () => {
                 // Validieren
                 this._form.template_id        = parseInt(tplSel.value) || null;
                 this._form.target_table_name  = targetEl.value.trim().toUpperCase();
@@ -450,6 +450,51 @@
                 }
                 if (!this._form.job_name) {
                     jobEl.style.borderColor = '#f44336'; return;
+                }
+
+                // Zieltabelle in META_TABLE suchen → wenn vorhanden, Spalten als _selection laden
+                const nextBtn = footer.querySelector('#ew-next1');
+                nextBtn.disabled = true;
+                nextBtn.textContent = '⏳ Prüfe Zieltabelle…';
+                try {
+                    const tables = await window.api.modeler.tables.list({ search: this._form.target_table_name }).catch(() => []);
+                    const exact  = (tables || []).find(t =>
+                        (t.table_name || '').toUpperCase() === this._form.target_table_name
+                        && t.table_id !== this._sourceId  // Source-Tabelle ausschließen
+                    );
+                    if (exact) {
+                        this._form.target_table_id = exact.table_id;
+                        // Spalten der Zieltabelle laden und als _selection vorbefüllen
+                        const cols = await window.api.modeler.tables.columns(exact.table_id).catch(() => []);
+                        if (cols?.length) {
+                            const bk = [], pk = [], pi = [], hash = [], load = [];
+                            for (const c of cols) {
+                                const name = (c.column_name || '').toUpperCase();
+                                if (!name) continue;
+                                if (['Y','y'].includes(c.bk_flag || '')) bk.push(name);
+                                if (['Y','y'].includes(c.pk_flag || '')) pk.push(name);
+                                if (['Y','y'].includes(c.is_pi   || '')) pi.push(name);
+                                if (['Y','y'].includes(c.is_hash || '')) hash.push(name);
+                                load.push(name); // alle Spalten als "laden" vorbelegen
+                            }
+                            this._selection = { bk_columns: bk, pk_columns: pk, pi_columns: pi, hash_columns: hash, select_columns: load };
+                        }
+                        // Hinweis im Step 1 anzeigen
+                        const hint = body.querySelector('.ew-target-exists-hint');
+                        if (hint) hint.style.display = '';
+                        else {
+                            const hintEl = document.createElement('div');
+                            hintEl.className = 'ew-target-exists-hint';
+                            hintEl.style.cssText = 'margin-top:8px;padding:8px 12px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;font-size:0.83em;color:#1b5e20';
+                            hintEl.innerHTML = `✓ Zieltabelle <strong>${exact.table_name}</strong> (ID ${exact.table_id}) existiert bereits – Metadaten vorgeladen.`;
+                            body.querySelector('#ew-form-row-target')?.after(hintEl) || body.appendChild(hintEl);
+                        }
+                    } else {
+                        this._form.target_table_id = null;
+                    }
+                } catch (_) { /* ignore */ } finally {
+                    nextBtn.disabled = false;
+                    nextBtn.textContent = 'Weiter: Spalten →';
                 }
                 this._goStep(2);
             });
@@ -491,7 +536,7 @@
             } else {
                 wrap.innerHTML = `<div style="color:#888;font-size:0.85em;padding:10px 0">
                     Keine Quelltabelle angegeben – Spaltenauswahl übersprungen.</div>`;
-                this._selection = { pk_columns: [], hash_columns: [], select_columns: [] };
+                this._selection = { bk_columns: [], pk_columns: [], pi_columns: [], hash_columns: [], select_columns: [] };
             }
 
             footer.innerHTML = `
@@ -515,7 +560,7 @@
         // ---- Step 3: Zusammenfassung ----
 
         _renderStep3(body, footer) {
-            const sel  = this._selection || { pk_columns: [], hash_columns: [], select_columns: [] };
+            const sel  = this._selection || { bk_columns: [], pk_columns: [], pi_columns: [], hash_columns: [], select_columns: [] };
             const tpl  = this._templates.find(t => t.template_id === this._form.template_id);
             const tgtName  = this._form.target_table_name || '';
             // Core-Name für SK-Spalte: erste Namenskomponente ohne Layer-Prefix
@@ -555,12 +600,14 @@
                             <div class="ew-summary-title">Spalten</div>
                             <div class="ew-summary-val">
                                 ${sel.select_columns.length} laden &nbsp;·&nbsp;
-                                ${sel.pk_columns.length} PK (Business Key) &nbsp;·&nbsp;
+                                ${sel.bk_columns.length} BK &nbsp;·&nbsp;
+                                ${sel.pk_columns.length} PK &nbsp;·&nbsp;
+                                ${sel.pi_columns.length} PI &nbsp;·&nbsp;
                                 ${sel.hash_columns.length} Hash
                             </div>
-                            ${sel.pk_columns.length > 0
-                                ? `<div class="ew-summary-note" style="color:#2e7d32">✓ Business Keys: ${sel.pk_columns.join(', ')}</div>`
-                                : `<div class="ew-summary-note">⚠ Keine PK-Spalten – SCD2-Historisierung benötigt Business Keys</div>`}
+                            ${sel.bk_columns.length > 0
+                                ? `<div class="ew-summary-note" style="color:#2e7d32">✓ Business Keys: ${sel.bk_columns.join(', ')}</div>`
+                                : `<div class="ew-summary-note" style="color:#e65100">⚠ Kein Business Key ausgewählt (SCD2 benötigt mind. 1 BK)</div>`}
                         </div>
                     </div>
 
@@ -595,7 +642,8 @@
                             <span class="ew-params-key">SK_COLUMN</span><span class="ew-params-val">${skCol}</span>
                             <span class="ew-params-key">STAGING_TABLE</span><span class="ew-params-val">temp_${tgtName.toLowerCase()}_stg</span>
                             <span class="ew-params-key">KEY_TABLE</span><span class="ew-params-val">KEY_${coreName}</span>
-                            ${sel.pk_columns.length > 0 ? `<span class="ew-params-key">BUSINESS_KEY</span><span class="ew-params-val">${sel.pk_columns.join(', ')}</span>` : ''}
+                            ${sel.bk_columns.length > 0 ? `<span class="ew-params-key">BUSINESS_KEY</span><span class="ew-params-val">${sel.bk_columns.join(', ')}</span>` : ''}
+                            ${sel.pk_columns.length > 0 ? `<span class="ew-params-key">PRIMARY_KEY</span><span class="ew-params-val">${sel.pk_columns.join(', ')}</span>` : ''}
                             ${sel.hash_columns.length > 0 ? `<span class="ew-params-key">HASH_COLUMNS</span><span class="ew-params-val">${sel.hash_columns.join(', ')}</span>` : ''}
                         </div>
                         <div class="ew-summary-note" style="margin-top:6px">🔑 KEY_${coreName} wird automatisch angelegt falls nicht vorhanden.</div>
@@ -653,15 +701,19 @@
             if (createBtn) { createBtn.disabled = true; createBtn.innerHTML = `<span class="ew-spinner"></span> Anlegen…`; }
             if (errEl)       errEl.style.display = 'none';
 
-            const sel  = this._selection || { pk_columns: [], hash_columns: [], select_columns: [] };
+            const sel  = this._selection || { bk_columns: [], pk_columns: [], pi_columns: [], hash_columns: [], select_columns: [] };
             const payload = {
                 source_table_id:   this._sourceId,
                 target_table_name: this._form.target_table_name,
                 target_table_id:   this._form.target_table_id || null,
-                pk_columns:        sel.pk_columns,
-                hash_columns:      sel.hash_columns,
-                select_columns:    sel.select_columns,
                 job_name:          this._form.job_name,
+                parameters: {
+                    primary_key_columns: sel.bk_columns,
+                    pk_columns:          sel.pk_columns,
+                    pi_columns:          sel.pi_columns,
+                    hash_columns:        sel.hash_columns,
+                    select_columns:      sel.select_columns,
+                },
             };
 
             try {
@@ -788,7 +840,9 @@
         }
     }
 
-    customElements.define('studio-etl-wizard', StudioEtlWizard);
+    if (!customElements.get('studio-etl-wizard')) {
+        customElements.define('studio-etl-wizard', StudioEtlWizard);
+    }
     window.ETLWizard = ETLWizard;
 
 })();

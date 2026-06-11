@@ -94,10 +94,14 @@ const STYLE = `
     .jd-step-item:hover { background: #f4f0ff; }
     .jd-step-item.active { background: #ede9fb; border-left: 3px solid #667eea; padding-left: 7px; }
     .jd-step-item.active .jd-si-num { background: #667eea; color: #fff; }
+    .jd-step-item.jd-step-inactive { opacity: 0.45; }
+    .jd-step-item.jd-step-inactive .jd-si-name { text-decoration: line-through; color: #999; }
     .jd-si-num  { width: 20px; height: 20px; border-radius: 50%; background: #e8eaf6; color: #3949ab; font-size: 0.68em; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
     .jd-si-info { flex: 1; min-width: 0; }
     .jd-si-name { font-size: 0.79em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .jd-si-cat  { margin-top: 2px; }
+    .jd-si-toggle { flex-shrink: 0; background: none; border: none; cursor: pointer; font-size: 1em; padding: 0 2px; line-height: 1; opacity: 0.7; transition: opacity 0.15s; }
+    .jd-si-toggle:hover { opacity: 1; }
     .jd-step-list-footer { padding: 8px 10px; flex-shrink: 0; }
     .jd-step-add-btn { width: 100%; padding: 5px; border: 1px dashed #ccc; border-radius: 5px; background: transparent; cursor: pointer; font-size: 0.74em; color: #888; }
     .jd-step-add-btn:hover { border-color: #667eea; color: #667eea; background: #f4f0ff; }
@@ -433,15 +437,38 @@ class JobDetail {
         const itemsEl     = this._q('#jd-step-items');
 
         this._steps.forEach(step => {
+            const isActive = (step.is_active || 'Y').trim() === 'Y';
             const item = document.createElement('div');
-            item.className = 'jd-step-item';
+            item.className = 'jd-step-item' + (isActive ? '' : ' jd-step-inactive');
             item.dataset.stepId = step.etl_job_step_id;
             item.innerHTML = `
                 <div class="jd-si-num">${step.step_order}</div>
                 <div class="jd-si-info">
                     <div class="jd-si-name">${esc(step.step_name)}</div>
                     <div class="jd-si-cat">${catBadge(step.step_category)}</div>
-                </div>`;
+                </div>
+                <button class="jd-si-toggle" title="Aktiv/Inaktiv umschalten" data-step-id="${step.etl_job_step_id}">${isActive ? '🟢' : '⭕'}</button>`;
+
+            // Toggle-Button: sofort IS_ACTIVE umschalten, ohne den Step-Detail zu öffnen
+            const toggleBtn = item.querySelector('.jd-si-toggle');
+            toggleBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const newActive = (step.is_active || 'Y').trim() === 'Y' ? 'N' : 'Y';
+                toggleBtn.textContent = '⏳';
+                try {
+                    await window.api.jobs.updateStep(this._jobId, step.etl_job_step_id, { is_active: newActive });
+                    step.is_active = newActive;
+                    toggleBtn.textContent = newActive === 'Y' ? '🟢' : '⭕';
+                    item.classList.toggle('jd-step-inactive', newActive !== 'Y');
+                    // Falls Step-Detail gerade offen → Checkbox synchronisieren
+                    const chk = detailPanel.querySelector('#jd-chk-active');
+                    if (chk) chk.checked = newActive === 'Y';
+                } catch (err) {
+                    toggleBtn.textContent = (step.is_active || 'Y').trim() === 'Y' ? '🟢' : '⭕';
+                    alert('Fehler: ' + err.message);
+                }
+            });
+
             item.addEventListener('click', () => {
                 itemsEl.querySelectorAll('.jd-step-item').forEach(i => i.classList.remove('active'));
                 item.classList.add('active');
@@ -687,6 +714,13 @@ class JobDetail {
                 step.is_critical = yn('jd-chk-critical');
                 step.skip_on_empty = yn('jd-chk-skip');
                 step.rollback_on_error = yn('jd-chk-rollback');
+                // Toggle-Button in der Liste synchronisieren
+                const listItem = this._el.querySelector(`[data-step-id="${step.etl_job_step_id}"]`);
+                if (listItem) {
+                    const tb = listItem.querySelector('.jd-si-toggle');
+                    if (tb) tb.textContent = step.is_active === 'Y' ? '🟢' : '⭕';
+                    listItem.classList.toggle('jd-step-inactive', step.is_active !== 'Y');
+                }
                 msg.textContent = '✅ Gespeichert'; msg.className = 'jd-save-msg ok';
             } catch (e) {
                 msg.textContent = `❌ ${e.message}`; msg.className = 'jd-save-msg err';
@@ -974,6 +1008,13 @@ class JobDetail {
         }
         const div = document.createElement('div');
         div.className = `jd-step ${cls}`;
+        // Inaktive Steps im Ausführen-Tab als deaktiviert anzeigen
+        const stepIsActive = (step.is_active || 'Y').trim() === 'Y';
+        if (!stepIsActive && !stepRun) {
+            cls = 'skipped';
+            statusHtml = `<span class="jd-badge jd-badge-grey" title="Step ist deaktiviert">⏩ Deaktiviert</span>`;
+        }
+        div.className = `jd-step ${cls}`;
         div.innerHTML = `
             <div class="jd-step-header">
                 <span class="jd-step-num">${step.step_order}</span>
@@ -1156,7 +1197,9 @@ class StudioJobDetail extends HTMLElement {
     }
 }
 
-customElements.define('studio-job-detail', StudioJobDetail);
+if (!customElements.get('studio-job-detail')) {
+    customElements.define('studio-job-detail', StudioJobDetail);
+}
 window.JobDetail = JobDetail;
 
 })();

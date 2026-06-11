@@ -82,7 +82,9 @@
 
         /* Checkboxen */
         .cs-chk { width: 16px; height: 16px; cursor: pointer; accent-color: #667eea; }
-        .cs-chk-pk   { accent-color: #f59e0b; }
+        .cs-chk-bk   { accent-color: #f59e0b; }
+        .cs-chk-pk   { accent-color: #e53935; }
+        .cs-chk-pi   { accent-color: #0288d1; }
         .cs-chk-hash { accent-color: #9575cd; }
         .cs-chk-load { accent-color: #4caf50; }
 
@@ -159,23 +161,29 @@
 
         /** Gibt aktuelle Selektion zurück. */
         getSelection() {
-            const pk = [], hash = [], load = [];
+            const bk = [], pk = [], pi = [], hash = [], load = [];
             for (const [name, s] of Object.entries(this._state)) {
+                if (s.bk)   bk.push(name);
                 if (s.pk)   pk.push(name);
+                if (s.pi)   pi.push(name);
                 if (s.hash) hash.push(name);
                 if (s.load) load.push(name);
             }
-            return { pk_columns: pk, hash_columns: hash, select_columns: load };
+            return { bk_columns: bk, pk_columns: pk, pi_columns: pi, hash_columns: hash, select_columns: load };
         }
 
         /** Setzt eine externe Selektion (z.B. aus Template-Defaults). */
         setSelection(sel) {
+            const bkSet   = new Set((sel.bk_columns   || []).map(s => s.toUpperCase()));
             const pkSet   = new Set((sel.pk_columns   || []).map(s => s.toUpperCase()));
+            const piSet   = new Set((sel.pi_columns   || []).map(s => s.toUpperCase()));
             const hashSet = new Set((sel.hash_columns || []).map(s => s.toUpperCase()));
             const loadSet = new Set((sel.select_columns || []).map(s => s.toUpperCase()));
             for (const [name, s] of Object.entries(this._state)) {
                 const u = name.toUpperCase();
+                s.bk   = bkSet.has(u);
                 s.pk   = pkSet.has(u);
+                s.pi   = piSet.has(u);
                 s.hash = hashSet.has(u);
                 s.load = loadSet.has(u);
             }
@@ -187,10 +195,12 @@
 
         _initState() {
             this._state = {};
+            const initBk   = new Set((this._initial?.bk_columns   || []).map(s => s.toUpperCase()));
             const initPk   = new Set((this._initial?.pk_columns   || []).map(s => s.toUpperCase()));
+            const initPi   = new Set((this._initial?.pi_columns   || []).map(s => s.toUpperCase()));
             const initHash = new Set((this._initial?.hash_columns || []).map(s => s.toUpperCase()));
             const initLoad = new Set((this._initial?.select_columns|| []).map(s => s.toUpperCase()));
-            const hasInit  = initLoad.size > 0 || initPk.size > 0 || initHash.size > 0;
+            const hasInit  = initLoad.size > 0 || initBk.size > 0 || initPk.size > 0 || initPi.size > 0 || initHash.size > 0;
 
             this._cols.forEach(c => {
                 const name = (c.column_name || c.COLUMN_NAME || '').toUpperCase();
@@ -199,15 +209,19 @@
 
                 if (hasInit) {
                     this._state[name] = {
+                        bk:   initBk.has(name),
                         pk:   initPk.has(name),
+                        pi:   initPi.has(name),
                         hash: initHash.has(name),
                         load: initLoad.has(name),
                     };
                 } else {
-                    // Defaults: Audit-Spalten nicht laden, Rest alles laden
                     const isAudit = ['Y','y'].includes(c.audit_flag || c.is_audit_column || '');
+                    const isPI    = ['Y','y'].includes(c.pi_flag || c.is_pi || '');
                     this._state[name] = {
-                        pk:   isBk || isPk,
+                        bk:   isBk,
+                        pk:   isPk,
+                        pi:   isPI,
                         hash: !isAudit && !isPk,
                         load: !isAudit,
                     };
@@ -223,7 +237,7 @@
                     <div class="cs-toolbar">
                         <input class="cs-search" type="text" placeholder="🔍 Spalten filtern…" id="cs-search">
                         <button class="cs-tool-btn" id="cs-all-load" title="Alle Laden-Checkboxen">☑ Alle laden</button>
-                        <button class="cs-tool-btn" id="cs-pk-hash" title="PK-Spalten auch als Hash">🔑 PK→Hash</button>
+                        <button class="cs-tool-btn" id="cs-pk-hash" title="BK-Spalten auch als Hash markieren">🏷 BK→Hash</button>
                         <button class="cs-tool-btn" id="cs-none-load" title="Alle Laden abwählen">☐ Keiner</button>
                     </div>
                     <div class="cs-wrap">
@@ -233,8 +247,18 @@
                                     <th>Spaltenname</th>
                                     <th>Typ</th>
                                     <th class="chk-col">
-                                        <label title="PK/Business Key (alle)">
+                                        <label title="Business Key – Natural Key für SCD2-Historisierung">
+                                            <input type="checkbox" class="cs-chk cs-chk-bk" id="cs-all-bk"> BK
+                                        </label>
+                                    </th>
+                                    <th class="chk-col">
+                                        <label title="Technischer PK der Quelltabelle (IS_TECHNICAL_KEY)">
                                             <input type="checkbox" class="cs-chk cs-chk-pk" id="cs-all-pk"> PK
+                                        </label>
+                                    </th>
+                                    <th class="chk-col">
+                                        <label title="Primary Index Teradata (IS_PI)">
+                                            <input type="checkbox" class="cs-chk cs-chk-pi" id="cs-all-pi"> PI
                                         </label>
                                     </th>
                                     <th class="chk-col">
@@ -281,7 +305,7 @@
                 const typeStr = len ? `${type}(${len})` : type;
                 const isBk  = ['Y','y'].includes(c.bk_flag || c.is_business_key || '');
                 const isPk  = ['Y','y'].includes(c.pk_flag || c.is_technical_key || '');
-                const s     = this._state[name] || { pk: false, hash: false, load: false };
+                const s     = this._state[name] || { bk: false, pk: false, pi: false, hash: false, load: false };
 
                 const tr = document.createElement('tr');
                 tr.dataset.col = name;
@@ -294,7 +318,13 @@
                     </td>
                     <td><span class="cs-col-type">${typeStr}</span></td>
                     <td class="chk-col">
+                        <input type="checkbox" class="cs-chk cs-chk-bk  cs-row-bk"   data-col="${name}" ${s.bk   ? 'checked' : ''}>
+                    </td>
+                    <td class="chk-col">
                         <input type="checkbox" class="cs-chk cs-chk-pk  cs-row-pk"   data-col="${name}" ${s.pk   ? 'checked' : ''}>
+                    </td>
+                    <td class="chk-col">
+                        <input type="checkbox" class="cs-chk cs-chk-pi  cs-row-pi"   data-col="${name}" ${s.pi   ? 'checked' : ''}>
                     </td>
                     <td class="chk-col">
                         <input type="checkbox" class="cs-chk cs-chk-hash cs-row-hash" data-col="${name}" ${s.hash ? 'checked' : ''}>
@@ -307,8 +337,14 @@
             });
 
             // Row-Events
+            tbody.querySelectorAll('.cs-row-bk').forEach(chk => {
+                chk.addEventListener('change', () => { this._state[chk.dataset.col].bk = chk.checked; this._onRowChange(chk.dataset.col); });
+            });
             tbody.querySelectorAll('.cs-row-pk').forEach(chk => {
                 chk.addEventListener('change', () => { this._state[chk.dataset.col].pk = chk.checked; this._onRowChange(chk.dataset.col); });
+            });
+            tbody.querySelectorAll('.cs-row-pi').forEach(chk => {
+                chk.addEventListener('change', () => { this._state[chk.dataset.col].pi = chk.checked; this._onRowChange(chk.dataset.col); });
             });
             tbody.querySelectorAll('.cs-row-hash').forEach(chk => {
                 chk.addEventListener('change', () => { this._state[chk.dataset.col].hash = chk.checked; this._onRowChange(chk.dataset.col); });
@@ -316,9 +352,11 @@
             tbody.querySelectorAll('.cs-row-load').forEach(chk => {
                 chk.addEventListener('change', () => {
                     this._state[chk.dataset.col].load = chk.checked;
-                    // Wenn nicht laden: auch hash/pk deaktivieren
+                    // Wenn nicht laden: auch hash/bk/pk deaktivieren
                     if (!chk.checked) {
+                        this._state[chk.dataset.col].bk   = false;
                         this._state[chk.dataset.col].pk   = false;
+                        this._state[chk.dataset.col].pi   = false;
                         this._state[chk.dataset.col].hash = false;
                     }
                     this._onRowChange(chk.dataset.col);
@@ -327,7 +365,9 @@
                     if (tr) tr.className = chk.checked ? '' : 'cs-row-excluded';
                     // Andere Checkboxen in dieser Zeile synchronisieren
                     if (tr) {
+                        tr.querySelector('.cs-row-bk').checked   = this._state[chk.dataset.col].bk;
                         tr.querySelector('.cs-row-pk').checked   = this._state[chk.dataset.col].pk;
+                        tr.querySelector('.cs-row-pi').checked   = this._state[chk.dataset.col].pi;
                         tr.querySelector('.cs-row-hash').checked = this._state[chk.dataset.col].hash;
                     }
                 });
@@ -342,15 +382,21 @@
         }
 
         _syncHeaderChecks() {
+            const allBk   = this._el.querySelector('#cs-all-bk');
             const allPk   = this._el.querySelector('#cs-all-pk');
+            const allPi   = this._el.querySelector('#cs-all-pi');
             const allHash = this._el.querySelector('#cs-all-hash');
             const allLoad = this._el.querySelector('#cs-all-load-chk');
-            if (!allPk) return;
+            if (!allBk) return;
             const vals = Object.values(this._state);
+            allBk.indeterminate   = vals.some(s => s.bk)   && !vals.every(s => s.bk);
             allPk.indeterminate   = vals.some(s => s.pk)   && !vals.every(s => s.pk);
+            allPi.indeterminate   = vals.some(s => s.pi)   && !vals.every(s => s.pi);
             allHash.indeterminate = vals.some(s => s.hash) && !vals.every(s => s.hash);
             allLoad.indeterminate = vals.some(s => s.load) && !vals.every(s => s.load);
+            if (!allBk.indeterminate)   allBk.checked   = vals.every(s => s.bk);
             if (!allPk.indeterminate)   allPk.checked   = vals.every(s => s.pk);
+            if (!allPi.indeterminate)   allPi.checked   = vals.every(s => s.pi);
             if (!allHash.indeterminate) allHash.checked = vals.every(s => s.hash);
             if (!allLoad.indeterminate) allLoad.checked = vals.every(s => s.load);
         }
@@ -361,8 +407,10 @@
             const sel = this.getSelection();
             summary.innerHTML = `
                 <div class="cs-summary-item"><span>Laden:</span> <span>${sel.select_columns.length} / ${this._cols.length}</span></div>
-                <div class="cs-summary-item"><span>PK-Spalten:</span> <span>${sel.pk_columns.length}</span></div>
-                <div class="cs-summary-item"><span>Hash-Spalten:</span> <span>${sel.hash_columns.length}</span></div>`;
+                <div class="cs-summary-item"><span>BK:</span> <span>${sel.bk_columns.length}</span></div>
+                <div class="cs-summary-item"><span>PK:</span> <span>${sel.pk_columns.length}</span></div>
+                <div class="cs-summary-item"><span>PI:</span> <span>${sel.pi_columns.length}</span></div>
+                <div class="cs-summary-item"><span>Hash:</span> <span>${sel.hash_columns.length}</span></div>`;
         }
 
         _fireChange() {
@@ -387,19 +435,27 @@
 
             // Keiner
             this._el.querySelector('#cs-none-load')?.addEventListener('click', () => {
-                Object.values(this._state).forEach(s => { s.load = false; s.pk = false; s.hash = false; });
+                Object.values(this._state).forEach(s => { s.load = false; s.bk = false; s.pk = false; s.pi = false; s.hash = false; });
                 this._renderRows(); this._updateSummary(); this._fireChange();
             });
 
-            // PK→Hash
+            // BK→Hash
             this._el.querySelector('#cs-pk-hash')?.addEventListener('click', () => {
-                Object.values(this._state).forEach(s => { if (s.pk) s.hash = true; });
+                Object.values(this._state).forEach(s => { if (s.bk) s.hash = true; });
                 this._renderRows(); this._updateSummary(); this._fireChange();
             });
 
-            // Header-Checkboxen (Alle PK / alle Hash / alle Laden)
+            // Header-Checkboxen (Alle BK / alle PK / alle Hash / alle Laden)
+            this._el.querySelector('#cs-all-bk')?.addEventListener('change', e => {
+                Object.values(this._state).forEach(s => { if (s.load) s.bk = e.target.checked; });
+                this._renderRows(); this._updateSummary(); this._fireChange();
+            });
             this._el.querySelector('#cs-all-pk')?.addEventListener('change', e => {
                 Object.values(this._state).forEach(s => { if (s.load) s.pk = e.target.checked; });
+                this._renderRows(); this._updateSummary(); this._fireChange();
+            });
+            this._el.querySelector('#cs-all-pi')?.addEventListener('change', e => {
+                Object.values(this._state).forEach(s => { if (s.load) s.pi = e.target.checked; });
                 this._renderRows(); this._updateSummary(); this._fireChange();
             });
             this._el.querySelector('#cs-all-hash')?.addEventListener('change', e => {
@@ -409,7 +465,7 @@
             this._el.querySelector('#cs-all-load-chk')?.addEventListener('change', e => {
                 Object.values(this._state).forEach(s => {
                     s.load = e.target.checked;
-                    if (!e.target.checked) { s.pk = false; s.hash = false; }
+                    if (!e.target.checked) { s.bk = false; s.pk = false; s.pi = false; s.hash = false; }
                 });
                 this._renderRows(); this._updateSummary(); this._fireChange();
             });
@@ -439,7 +495,9 @@
         setTable(id, init)    { this._cs?.setTable(id, init); }
     }
 
-    customElements.define('studio-column-selector', StudioColumnSelector);
+    if (!customElements.get('studio-column-selector')) {
+        customElements.define('studio-column-selector', StudioColumnSelector);
+    }
     window.ColumnSelector = ColumnSelector;
 
 })();

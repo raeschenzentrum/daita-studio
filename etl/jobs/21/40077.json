@@ -1,8 +1,0 @@
-{
-  "STAGING_TABLE": "temp_uzms01_taaa_identitaet_staging",
-  "KEY_DATABASE": "MDP01_DISCOVERABLE_LAYER",
-  "KEY_TABLE": "KEY_UZMS01_TAAA_IDENTITAET",
-  "NATURAL_KEY_COL": "",
-  "NATURAL_KEY_EXPRESSION_STG": "",
-  "DOMAIN": "ZEMIS"
-}

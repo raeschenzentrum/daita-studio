@@ -1,4 +1,4 @@
 -- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
--- Job ID: 20
+-- Job ID: 23
 
 DROP TABLE MDP01_DISCOVERABLE_LAYER.UZMS01_TAAA_PERSON;

@@ -1,0 +1,17 @@
+{
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TAAS_GESCHAEFTSSCHRITT_HISTORY",
+  "CHANGED_RECORDS_TABLE": "temp_uzms01_taas_geschaeftsschritt_changed",
+  "BUSINESS_KEY_TGT_JOIN": "MDP01_DISCOVERABLE_LAYER.UZMS01_TAAS_GESCHAEFTSSCHRITT_HISTORY.GESCHAEFTSSCHRITT_ID = chg.GESCHAEFTSSCHRITT_ID",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_GESCHAEFT_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAS_GESCHAEFT_HISTORY",
+      "parent_sk_column": "UZMS01_TAAS_GESCHAEFT_SK",
+      "parent_bk_column": "GESCHAEFT_ID",
+      "natural_key_expr": "CAST(src.GESCHAEFT_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

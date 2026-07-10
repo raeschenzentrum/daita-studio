@@ -1,0 +1,15 @@
+{
+  "target_database": "MDP01_DISCOVERABLE_LAYER",
+  "target_table": "UZMS01_TAAS_VERFAHREN_HISTORY",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAA_PERSON_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAA_PERSON_HISTORY",
+      "parent_sk_column": "UZMS01_TAAA_PERSON_SK",
+      "parent_bk_column": "PERSON_ID",
+      "natural_key_expr": "CAST(src.PERSON_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

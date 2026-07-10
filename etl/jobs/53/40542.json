@@ -1,0 +1,5 @@
+{
+  "target_database": "MDP01_REUSABLE_LAYER",
+  "target_table": "CODE_ASYL_ERLEDIG",
+  "fk_definitions": []
+}

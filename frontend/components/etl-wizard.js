@@ -133,6 +133,26 @@
         .ew-tech-cols-title { font-size: 0.8em; font-weight: 700; color: #7b1fa2; margin-bottom: 6px; }
         .ew-tech-col-list   { font-size: 0.8em; color: #666; line-height: 1.8; }
         .ew-tech-col-badge  { display: inline-block; padding: 1px 8px; border-radius: 8px; background: #ede7f6; color: #6a1b9a; font-size: 0.85em; margin: 1px 3px; }
+        .ew-tech-col-sk     { background: #f3e5f5; color: #7b1fa2; font-weight: 600; border: 1px solid #ce93d8; }
+
+        /* FK-Block (Step 2) */
+        .ew-fk-block        { margin-top: 14px; border: 1px solid #c8e6c9; border-radius: 8px; padding: 12px 14px; background: #f1f8e9; }
+        .ew-fk-title        { font-size: 0.85em; font-weight: 700; color: #2e7d32; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .ew-fk-hint         { font-weight: 400; color: #555; font-size: 0.9em; }
+        .ew-fk-row          { display: flex; align-items: flex-start; gap: 6px; background: #fff; border: 1px solid #dcedc8; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; }
+        .ew-fk-fields       { flex: 1; display: flex; flex-wrap: wrap; gap: 8px; }
+        .ew-fk-fields label { font-size: 0.78em; color: #555; display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 160px; }
+        .ew-fk-fields input { font-size: 0.85em; padding: 3px 6px; border: 1px solid #a5d6a7; border-radius: 4px; }
+        .ew-fk-remove       { background: none; border: none; cursor: pointer; color: #e53935; font-size: 1em; padding: 2px 6px; flex-shrink: 0; margin-top: 18px; }
+        .ew-fk-add          { font-size: 0.82em; margin-top: 4px; padding: 4px 10px; }
+
+        /* FK über Master-Tabelle (F6-A) */
+        .ew-fkm-add-row     { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .ew-fkm-select      { flex: 1; font-size: 0.85em; padding: 4px 8px; border: 1px solid #a5d6a7; border-radius: 4px; background: #fff; }
+        .ew-fkm-list        { display: flex; flex-wrap: wrap; gap: 6px; }
+        .ew-fkm-row         { display: flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #dcedc8; border-radius: 6px; padding: 4px 8px; }
+        .ew-fkm-tag         { font-size: 0.82em; color: #2e7d32; font-weight: 600; }
+        .ew-fkm-row .ew-fk-remove { margin-top: 0; }
 
         /* Zusammenfassung (Step 3) */
         .ew-summary      { display: flex; flex-direction: column; gap: 10px; }
@@ -219,6 +239,25 @@
     }
 
     // ----------------------------------------------------------------
+    // Core-Name aus Tabellennamen extrahieren (identisch zur Backend-Logik
+    // template_service.extract_core_name) – bestimmt den SK-Spaltennamen.
+    // ----------------------------------------------------------------
+    function extractCoreName(tableName) {
+        if (!tableName) return '';
+        const prefixes = ['TAAA_', 'TAAS_', 'TAA_', 'ZAS_'];
+        const nameUpper = tableName.toUpperCase();
+        for (const p of prefixes) {
+            if (nameUpper.startsWith(p)) return tableName.slice(p.length);
+        }
+        // Fallback: nach erstem _ splitten wenn Präfix kurz (≤4 Zeichen)
+        if (tableName.includes('_')) {
+            const idx = tableName.indexOf('_');
+            if (idx <= 4) return tableName.slice(idx + 1);
+        }
+        return tableName;
+    }
+
+    // ----------------------------------------------------------------
     // Kern-Klasse ETLWizard
     // ----------------------------------------------------------------
 
@@ -250,7 +289,13 @@
                 // Zieltabellenname sofort mit Quelltabelle vorbelegen falls bekannt
                 target_table_name: this._sourceName ? this._sourceName.toUpperCase() : '',
                 target_table_id:   null, // wenn bereits existierende Zieltabelle
+                fk_definitions:    [], // [{sk_column, key_table, key_database, natural_key_expr, domain}] – alter Block (deaktiviert)
+                fk_master_table_ids: [], // F6-A: gewählte Master-Tabellen (Parent für FK-Surrogate-Keys)
+                fk_master_mappings: [], // F6-Beladung: [{table_id, table_name, db_name, source_column, master_sk, master_bk}]
             };
+            this._sourceColumns = null;  // Quellspalten (für FK-Mapping-Dropdown), lazy geladen
+            this._useSk = false;         // F7: SK-Anzeige aktiv?
+            this._skCol = '';            // SK-Spaltenname
         }
 
         async open() {
@@ -504,13 +549,21 @@
 
         _renderStep2(body, footer) {
             const tpl = this._templates.find(t => t.template_id === this._form.template_id);
-            const isScd2 = (tpl?.historization_type || tpl?.template_name || '').toUpperCase().includes('SCD2');
+            // F7: SK-Anzeige template-abhängig über Flag USE_SK (NICHT über Namen).
+            const useSk = (tpl?.use_sk || 'N').toUpperCase() === 'Y';
 
-            const techColHtml = isScd2 ? `
+            // SK-Spaltenname identisch zur Backend-Logik (Source-Core, Fallback Target)
+            const coreName = extractCoreName(this._sourceName || this._form.target_table_name || '').toUpperCase();
+            const skCol    = coreName ? `${coreName}_SK` : 'SURROGATE_KEY';
+            // Für Tech-Zeilen-Aufbau merken
+            this._useSk = useSk;
+            this._skCol = skCol;
+
+            const techColHtml = useSk ? `
                 <div class="ew-tech-cols">
-                    <div class="ew-tech-cols-title">⚙ SCD2 – Technische Spalten (automatisch hinzugefügt)</div>
+                    <div class="ew-tech-cols-title">⚙ Weitere technische Spalten (automatisch hinzugefügt)</div>
                     <div class="ew-tech-col-list">
-                        ${SCD2_TECH_COLS.map(c =>
+                        ${SCD2_TECH_COLS.filter(c => c !== '{NAME}_SK').map(c =>
                             `<span class="ew-tech-col-badge">${c.replace('{NAME}', this._form.target_table_name)}</span>`
                         ).join('')}
                     </div>
@@ -522,14 +575,19 @@
                     die in den ETL-Job übernommen werden sollen.
                 </p>
                 <div id="ew-col-selector-wrap"></div>
-                ${techColHtml}`;
+                ${techColHtml}
+                <div id="ew-fk-master-wrap"></div>
+                <div id="ew-fk-block-wrap"></div>`;
 
             // ColumnSelector einbetten
             const wrap = body.querySelector('#ew-col-selector-wrap');
             if (this._sourceId) {
+                // F7/F6: SK + FK als fixe (read-only) Zeilen oben in der Spaltentabelle
+                const techRows = this._buildTechRows();
                 this._colSelector = new window.ColumnSelector(wrap, {
                     tableId: this._sourceId,
                     initial: this._selection || null,
+                    techRows,
                     onChange: sel => { this._selection = sel; },
                 });
                 this._colSelector.load();
@@ -538,6 +596,10 @@
                     Keine Quelltabelle angegeben – Spaltenauswahl übersprungen.</div>`;
                 this._selection = { bk_columns: [], pk_columns: [], pi_columns: [], hash_columns: [], select_columns: [] };
             }
+
+            // FK-Block einbetten
+            this._renderFkMasterBlock(body.querySelector('#ew-fk-master-wrap'));
+            this._renderFkBlock(body.querySelector('#ew-fk-block-wrap'));
 
             footer.innerHTML = `
                 <div class="ew-footer-left">
@@ -557,14 +619,244 @@
             });
         }
 
+        // ---- Tech-Zeilen (SK + FK) für die Spaltentabelle ----
+
+        /** Baut die fixen Tech-Zeilen: SK (wenn USE_SK) + je Master-Mapping eine FK-Zeile. */
+        _buildTechRows() {
+            const rows = [];
+            if (this._useSk && this._skCol) {
+                rows.push({ name: this._skCol, type: 'BIGINT', badge: 'SK', pk: true, pi: true, piEditable: true, load: true });
+            }
+            (this._form.fk_master_mappings || []).forEach(m => {
+                if (m.master_sk) {
+                    rows.push({ name: `${m.master_sk}_FK`, type: 'BIGINT', badge: 'FK', load: true });
+                }
+            });
+            return rows;
+        }
+
+        /** Aktualisiert die Tech-Zeilen im ColumnSelector (nach Master-Änderung). */
+        _refreshTechRows() {
+            if (this._colSelector?.setTechRows) {
+                this._colSelector.setTechRows(this._buildTechRows());
+            }
+        }
+
+        /** Lädt die Quellspalten (für FK-Mapping-Dropdown), einmalig gecacht. */
+        async _loadSourceColumns() {
+            if (this._sourceColumns) return this._sourceColumns;
+            try {
+                this._sourceColumns = await window.api.etl.tables.columns(this._sourceId) || [];
+            } catch (_) {
+                this._sourceColumns = [];
+            }
+            return this._sourceColumns;
+        }
+
+        // ---- FK über Master-Tabelle (F6-A) ----
+
+        async _renderFkMasterBlock(container) {
+            const wrap = document.createElement('div');
+            wrap.className = 'ew-fk-block';
+            wrap.innerHTML = `
+                <div class="ew-fk-title">
+                    🧩 Foreign Keys über Master-Tabelle
+                    <span class="ew-fk-hint">Master-Tabelle wählen + Quellspalte zuordnen – FK-Spalte, Beziehung &amp; Beladung werden abgeleitet</span>
+                </div>
+                <div class="ew-fkm-add-row">
+                    <select id="ew-fkm-select" class="ew-fkm-select">
+                        <option value="">– Master-Tabelle wählen –</option>
+                    </select>
+                    <button class="ew-btn ew-btn-secondary" id="ew-fkm-add" type="button">＋ hinzufügen</button>
+                </div>
+                <div id="ew-fkm-list" class="ew-fkm-list"></div>`;
+            container.appendChild(wrap);
+
+            const selectEl = wrap.querySelector('#ew-fkm-select');
+
+            // Tabellen einmalig laden + cachen
+            if (!this._allTables) {
+                try {
+                    this._allTables = await window.api.modeler.tables.list() || [];
+                } catch (e) {
+                    this._allTables = [];
+                }
+            }
+            // Quellspalten laden (für Mapping-Dropdown)
+            await this._loadSourceColumns();
+
+            // Quelltabelle selbst nicht als Master anbieten
+            const tables = (this._allTables || [])
+                .filter(t => t.table_id !== this._sourceId)
+                .sort((a, b) => (a.table_name || '').localeCompare(b.table_name || ''));
+            tables.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t.table_id;
+                opt.textContent = `${t.table_name}${t.db_name ? ' (' + t.db_name + ')' : ''}`;
+                selectEl.appendChild(opt);
+            });
+
+            const tableById = (id) => (this._allTables || []).find(t => String(t.table_id) === String(id));
+
+            // Master-Spalten laden → SK (is_technical_key) + BK (is_business_key) ermitteln
+            const loadMasterKeys = async (masterId) => {
+                let cols = [];
+                try { cols = await window.api.etl.tables.columns(masterId) || []; } catch (_) { cols = []; }
+                const findFlag = (flag) => {
+                    const c = cols.find(x => x[flag] === true || x[flag] === 'Y' || x[flag] === 'y');
+                    return c ? (c.column_name || '').toUpperCase() : '';
+                };
+                let sk = findFlag('is_technical_key');
+                if (!sk) {
+                    const c = cols.find(x => (x.column_name || '').toUpperCase().endsWith('_SK'));
+                    sk = c ? (c.column_name || '').toUpperCase() : '';
+                }
+                const bk = findFlag('is_business_key');
+                return { master_sk: sk, master_bk: bk };
+            };
+
+            const sourceColOptions = (selected) => {
+                const opts = ['<option value="">– Quellspalte –</option>'];
+                (this._sourceColumns || []).forEach(c => {
+                    const n = (c.column_name || '').toUpperCase();
+                    if (!n) return;
+                    opts.push(`<option value="${n}" ${n === (selected || '').toUpperCase() ? 'selected' : ''}>${n}</option>`);
+                });
+                return opts.join('');
+            };
+
+            const renderMasterItems = () => {
+                const listEl = wrap.querySelector('#ew-fkm-list');
+                listEl.innerHTML = '';
+                (this._form.fk_master_mappings || []).forEach((m, idx) => {
+                    const t = tableById(m.table_id);
+                    const fkColName = m.master_sk ? `${m.master_sk}_FK` : '(SK unbekannt)';
+                    const row = document.createElement('div');
+                    row.className = 'ew-fkm-row';
+                    row.style.cssText = 'flex-direction:column;align-items:stretch;gap:6px;width:100%';
+                    row.innerHTML = `
+                        <div style="display:flex;align-items:center;gap:8px">
+                            <span class="ew-fkm-tag">🔗 ${t ? t.table_name : ('#' + m.table_id)}</span>
+                            <span style="font-size:0.78em;color:#2e7d32;font-family:monospace">→ ${fkColName}</span>
+                            <button class="ew-fk-remove" title="entfernen" style="margin-left:auto">✕</button>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;font-size:0.78em;color:#555">
+                            <span>Quellspalte → ${m.master_bk || 'BK'}:</span>
+                            <select class="ew-fkm-srccol ew-fkm-select" style="flex:1">${sourceColOptions(m.source_column)}</select>
+                        </div>`;
+                    row.querySelector('.ew-fk-remove').addEventListener('click', () => {
+                        this._form.fk_master_mappings.splice(idx, 1);
+                        renderMasterItems();
+                        this._refreshTechRows();
+                    });
+                    row.querySelector('.ew-fkm-srccol').addEventListener('change', (e) => {
+                        this._form.fk_master_mappings[idx].source_column = e.target.value.toUpperCase();
+                    });
+                    listEl.appendChild(row);
+                });
+            };
+
+            wrap.querySelector('#ew-fkm-add').addEventListener('click', async () => {
+                const val = selectEl.value;
+                if (!val) return;
+                const id = parseInt(val, 10);
+                if (!this._form.fk_master_mappings) this._form.fk_master_mappings = [];
+                if (this._form.fk_master_mappings.some(m => m.table_id === id)) { selectEl.value = ''; return; }
+                const t = tableById(id);
+                const keys = await loadMasterKeys(id);
+                this._form.fk_master_mappings.push({
+                    table_id:      id,
+                    table_name:    t ? t.table_name : '',
+                    db_name:       t ? (t.db_name || '') : '',
+                    source_column: '',
+                    master_sk:     keys.master_sk,
+                    master_bk:     keys.master_bk,
+                });
+                selectEl.value = '';
+                renderMasterItems();
+                this._refreshTechRows();
+            });
+
+            renderMasterItems();
+        }
+
+        // ---- FK-Block rendern ----
+
+        _renderFkBlock(container) {
+            const wrap = document.createElement('div');
+            wrap.className = 'ew-fk-block';
+            wrap.innerHTML = `
+                <div class="ew-fk-title">
+                    🔗 Foreign Surrogate Keys (optional)
+                    <span class="ew-fk-hint">SK-Lookup auf andere KEY-Tabellen beim INSERT</span>
+                </div>
+                <div id="ew-fk-list"></div>
+                <button class="ew-btn ew-btn-secondary ew-fk-add" id="ew-fk-add">＋ FK hinzufügen</button>`;
+            container.appendChild(wrap);
+
+            const renderFkItems = () => {
+                const listEl = wrap.querySelector('#ew-fk-list');
+                listEl.innerHTML = '';
+                (this._form.fk_definitions || []).forEach((fk, idx) => {
+                    const row = document.createElement('div');
+                    row.className = 'ew-fk-row';
+                    row.innerHTML = `
+                        <div class="ew-fk-fields">
+                            <label>SK-Spaltenname<br>
+                                <input class="ew-fk-sk" type="text" value="${fk.sk_column || ''}" placeholder="z.B. GESCHAEFT_SK">
+                            </label>
+                            <label>Key-Database<br>
+                                <input class="ew-fk-kdb" type="text" value="${fk.key_database || 'MDP01_DISCOVERABLE_LAYER'}" placeholder="MDP01_DISCOVERABLE_LAYER">
+                            </label>
+                            <label>Key-Tabelle<br>
+                                <input class="ew-fk-ktbl" type="text" value="${fk.key_table || ''}" placeholder="z.B. KEY_TAAS_GESCHAEFT">
+                            </label>
+                            <label>Natural-Key-Expression (src.)<br>
+                                <input class="ew-fk-nk" type="text" value="${fk.natural_key_expr || ''}" placeholder="CAST(src.GESCHAEFT_ID AS VARCHAR(255))">
+                            </label>
+                            <label>Domain<br>
+                                <input class="ew-fk-domain" type="text" value="${fk.domain || ''}" placeholder="z.B. UZMS01">
+                            </label>
+                        </div>
+                        <button class="ew-fk-remove" data-idx="${idx}" title="FK entfernen">✕</button>`;
+                    // Live-Update ins _form
+                    const update = () => {
+                        this._form.fk_definitions[idx] = {
+                            sk_column:        row.querySelector('.ew-fk-sk').value.trim().toUpperCase(),
+                            key_database:     row.querySelector('.ew-fk-kdb').value.trim(),
+                            key_table:        row.querySelector('.ew-fk-ktbl').value.trim(),
+                            natural_key_expr: row.querySelector('.ew-fk-nk').value.trim(),
+                            domain:           row.querySelector('.ew-fk-domain').value.trim(),
+                        };
+                    };
+                    row.querySelectorAll('input').forEach(inp => inp.addEventListener('input', update));
+                    row.querySelector('.ew-fk-remove').addEventListener('click', () => {
+                        this._form.fk_definitions.splice(idx, 1);
+                        renderFkItems();
+                    });
+                    listEl.appendChild(row);
+                });
+            };
+
+            wrap.querySelector('#ew-fk-add').addEventListener('click', () => {
+                if (!this._form.fk_definitions) this._form.fk_definitions = [];
+                this._form.fk_definitions.push({ sk_column: '', key_database: 'MDP01_DISCOVERABLE_LAYER', key_table: '', natural_key_expr: '', domain: '' });
+                renderFkItems();
+            });
+
+            renderFkItems();
+        }
+
         // ---- Step 3: Zusammenfassung ----
 
         _renderStep3(body, footer) {
             const sel  = this._selection || { bk_columns: [], pk_columns: [], pi_columns: [], hash_columns: [], select_columns: [] };
             const tpl  = this._templates.find(t => t.template_id === this._form.template_id);
             const tgtName  = this._form.target_table_name || '';
-            // Core-Name für SK-Spalte: erste Namenskomponente ohne Layer-Prefix
-            const coreName = tgtName.replace(/^(TAAA_|TABB_|TACC_|RAW_|DISC_|REUS_|CONS_)/i, '').split('_')[0].toUpperCase();
+            // F7: SK-Anzeige template-abhängig über Flag USE_SK
+            const useSk = (tpl?.use_sk || 'N').toUpperCase() === 'Y';
+            // Core-Name für SK-Spalte: Source-Tabelle (Fallback Target), identisch zur Backend-Logik
+            const coreName = extractCoreName(this._sourceName || tgtName).toUpperCase();
             const skCol    = coreName ? `${coreName}_SK` : 'SURROGATE_KEY';
 
             body.innerHTML = `
@@ -611,6 +903,24 @@
                         </div>
                     </div>
 
+                    <!-- FK über Master-Tabellen (F6) -->
+                    ${(() => {
+                        const fks = (this._form.fk_master_mappings || []).filter(m => m.table_id && m.master_sk);
+                        if (!fks.length) return '';
+                        return `<div class="ew-preview-block">
+                            <div class="ew-preview-block-title">🔗 Foreign Keys über Master-Tabelle (${fks.length})</div>
+                            <div class="ew-step-badges">
+                                ${fks.map(m => {
+                                    const fkCol = `${m.master_sk}_FK`;
+                                    const mapped = m.source_column
+                                        ? `src.${m.source_column} → ${m.table_name}.${m.master_bk}`
+                                        : '⚠ keine Quellspalte gemappt (keine Beladung)';
+                                    return `<span class="ew-step-badge" style="background:#e8f5e9;color:#1b5e20" title="${mapped}">${fkCol}</span>`;
+                                }).join('')}
+                            </div>
+                        </div>`;
+                    })()}
+
                     <!-- Steps Preview (wird asynchron nachgeladen) -->
                     <div class="ew-preview-block" id="ew-steps-preview">
                         <div class="ew-preview-block-title">🗂 Steps (werden angelegt)</div>
@@ -618,11 +928,12 @@
                         <div class="ew-step-badges" id="ew-step-badges"></div>
                     </div>
 
-                    <!-- Technische Spalten SCD2 -->
+                    <!-- Technische Spalten (nur wenn USE_SK) -->
+                    ${useSk ? `
                     <div class="ew-preview-block">
-                        <div class="ew-preview-block-title">⚙ Technische Spalten (SCD2 – werden automatisch angelegt)</div>
+                        <div class="ew-preview-block-title">⚙ Technische Spalten (werden automatisch angelegt)</div>
                         <div class="ew-step-badges">
-                            <span class="ew-step-badge" style="background:#f3e5f5;color:#7b1fa2">${skCol}</span>
+                            <span class="ew-step-badge" style="background:#f3e5f5;color:#7b1fa2" title="Surrogate Key – ist immer Primary Key">${skCol} 🔑 PK</span>
                             <span class="ew-step-badge" style="background:#e8eaf6;color:#3949ab">VALID_FROM</span>
                             <span class="ew-step-badge" style="background:#e8eaf6;color:#3949ab">VALID_TO</span>
                             <span class="ew-step-badge" style="background:#e8eaf6;color:#3949ab">IS_CURRENT</span>
@@ -630,7 +941,7 @@
                             <span class="ew-step-badge" style="background:#f5f5f5;color:#616161">ERSTERFASSUNGSDATUM</span>
                             <span class="ew-step-badge" style="background:#f5f5f5;color:#616161">AENDERUNGSDATUM</span>
                         </div>
-                    </div>
+                    </div>` : ''}
 
                     <!-- Berechnete Parameter -->
                     <div class="ew-preview-block">
@@ -639,14 +950,14 @@
                             <span class="ew-params-key">SOURCE_TABLE</span><span class="ew-params-val">${this._sourceName || '–'}</span>
                             <span class="ew-params-key">SOURCE_DATABASE</span><span class="ew-params-val">${this._sourceDb || '–'}</span>
                             <span class="ew-params-key">TARGET_TABLE</span><span class="ew-params-val">${tgtName || '–'}</span>
-                            <span class="ew-params-key">SK_COLUMN</span><span class="ew-params-val">${skCol}</span>
+                            ${useSk ? `<span class="ew-params-key">SK_COLUMN</span><span class="ew-params-val">${skCol}</span>` : ''}
                             <span class="ew-params-key">STAGING_TABLE</span><span class="ew-params-val">temp_${tgtName.toLowerCase()}_stg</span>
-                            <span class="ew-params-key">KEY_TABLE</span><span class="ew-params-val">KEY_${coreName}</span>
+                            ${useSk ? `<span class="ew-params-key">KEY_TABLE</span><span class="ew-params-val">KEY_${coreName}</span>` : ''}
                             ${sel.bk_columns.length > 0 ? `<span class="ew-params-key">BUSINESS_KEY</span><span class="ew-params-val">${sel.bk_columns.join(', ')}</span>` : ''}
                             ${sel.pk_columns.length > 0 ? `<span class="ew-params-key">PRIMARY_KEY</span><span class="ew-params-val">${sel.pk_columns.join(', ')}</span>` : ''}
                             ${sel.hash_columns.length > 0 ? `<span class="ew-params-key">HASH_COLUMNS</span><span class="ew-params-val">${sel.hash_columns.join(', ')}</span>` : ''}
                         </div>
-                        <div class="ew-summary-note" style="margin-top:6px">🔑 KEY_${coreName} wird automatisch angelegt falls nicht vorhanden.</div>
+                        ${useSk ? `<div class="ew-summary-note" style="margin-top:6px">🔑 KEY_${coreName} wird automatisch angelegt falls nicht vorhanden.</div>` : ''}
                     </div>
                 </div>
                 <div id="ew-create-error" style="display:none" class="ew-result-error"></div>`;
@@ -702,6 +1013,15 @@
             if (errEl)       errEl.style.display = 'none';
 
             const sel  = this._selection || { bk_columns: [], pk_columns: [], pi_columns: [], hash_columns: [], select_columns: [] };
+            // F6: Master-Tabellen-Auswahl + Quellspalten-Mapping → Backend leitet
+            //     FK-Spalte, Beziehung UND Beladung (SK-Lookup) ab.
+            const fkMappings = (this._form.fk_master_mappings || []).filter(m => m.table_id);
+            const fkMasterTableIds = fkMappings.map(m => m.table_id);
+            // F7: SK-PI ist editierbar – Wahl aus der SK-Tech-Zeile auslesen (Default Y)
+            const techState = this._colSelector?.getTechState ? this._colSelector.getTechState() : {};
+            const skKey = (this._skCol || '').toUpperCase();
+            const skTech = techState[skKey] || Object.values(techState)[0];
+            const skIsPi = skTech ? (skTech.pi ? 'Y' : 'N') : 'Y';
             const payload = {
                 source_table_id:   this._sourceId,
                 target_table_name: this._form.target_table_name,
@@ -713,6 +1033,10 @@
                     pi_columns:          sel.pi_columns,
                     hash_columns:        sel.hash_columns,
                     select_columns:      sel.select_columns,
+                    fk_definitions:      [],                  // F6: alten 5-Felder-Block bewusst leer lassen
+                    fk_master_table_ids: fkMasterTableIds,    // F6-A: Master-Tabellen (für META-Beziehung)
+                    fk_master_mappings:  fkMappings,          // F6-Beladung: Master + Quellspalten-Mapping
+                    sk_is_pi:            skIsPi,              // F7: SK als Primary Index? (editierbar)
                 },
             };
 

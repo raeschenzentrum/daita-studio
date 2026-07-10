@@ -1,0 +1,18 @@
+{
+  "STAGING_TABLE": "temp_v_code_asylgs_art_staging",
+  "TARGET_DATABASE": "MDP01_REUSABLE_LAYER",
+  "TARGET_TABLE": "CODE_ASYLGS_ART",
+  "BUSINESS_KEY_JOIN": "stg.ASYLGS_ART_CD = hist.ASYLGS_ART_CD",
+  "PRIMARY_INDEX_COLS": "ASYLGS_ART_CD",
+  "CHANGED_RECORDS_TABLE": "temp_v_code_asylgs_art_changed",
+  "TABLE_ALIAS": "stg",
+  "IST_AKTUELL_COL": "IS_CURRENT",
+  "IST_AKTUELL_VAL": "Y",
+  "hash_columns": [
+    "BEZEICHNUNG_DE",
+    "BEZEICHNUNG_FR",
+    "BEZEICHNUNG_IT",
+    "BEZEICHNUNG_EN"
+  ],
+  "fk_definitions": []
+}

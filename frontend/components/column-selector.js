@@ -80,6 +80,15 @@
         .cs-col-pk   { font-size: 0.72em; font-weight: 700; padding: 1px 6px;
                         border-radius: 8px; background: #fff9e6; color: #b45309; margin-left: 4px; }
 
+        /* Technische Zeilen (z.B. Surrogate Key) – nicht editierbar */
+        .cs-table tr.cs-row-tech td { background: #f3e9fb; }
+        .cs-table tr.cs-row-tech:hover td { background: #eddcf7; }
+        .cs-table tr.cs-row-tech-fk td { background: #e8f5e9; }
+        .cs-table tr.cs-row-tech-fk:hover td { background: #d7eddb; }
+        .cs-col-sk   { font-size: 0.72em; font-weight: 700; padding: 1px 6px;
+                        border-radius: 8px; background: #f3e5f5; color: #7b1fa2; margin-left: 4px; }
+        .cs-col-fk   { background: #c8e6c9; color: #1b5e20; }
+        .cs-chk:disabled { cursor: not-allowed; opacity: 0.85; }
         /* Checkboxen */
         .cs-chk { width: 16px; height: 16px; cursor: pointer; accent-color: #667eea; }
         .cs-chk-bk   { accent-color: #f59e0b; }
@@ -130,10 +139,28 @@
             this._tableId  = opts.tableId || null;
             this._onChange = opts.onChange || null;
             this._initial  = opts.initial || null;
+            this._techRows = opts.techRows || [];  // fixe, nicht-editierbare Zeilen (z.B. Surrogate Key)
             this._cols     = [];
             this._state    = {};   // colName → { pk, hash, load }
+            this._techState= {};   // techRowName → pi (editierbarer PI-Zustand technischer Zeilen)
             this._filter   = '';
             this._el.innerHTML = `<div class="cs-root"><div class="cs-placeholder">Keine Tabelle ausgewählt.</div></div>`;
+        }
+
+        /** Setzt fixe technische Zeilen (z.B. Surrogate Key) und rendert neu. */
+        setTechRows(techRows) {
+            this._techRows = techRows || [];
+            if (this._cols.length) { this._renderRows(); }
+        }
+
+        /** Liefert den editierbaren Zustand technischer Zeilen, z.B. { '..._SK': { pi: true } }. */
+        getTechState() {
+            const out = {};
+            this._techRows.forEach(tr0 => {
+                const name = (tr0.name || '').toUpperCase();
+                out[name] = { pi: this._techState[name] !== undefined ? this._techState[name] : !!tr0.pi };
+            });
+            return out;
         }
 
         /** Setzt eine neue Tabelle und lädt Spalten. */
@@ -297,6 +324,42 @@
             const tbody = this._el.querySelector('#cs-tbody');
             if (!tbody) return;
             tbody.innerHTML = '';
+
+            // Fixe technische Zeilen (z.B. Surrogate Key) – read-only, fließen NICHT in getSelection()
+            const f = this._filter.toLowerCase();
+            this._techRows.forEach(tr0 => {
+                const name = (tr0.name || '').toUpperCase();
+                if (f && !name.toLowerCase().includes(f)) return;
+                const type = tr0.type || '';
+                // PI-Zustand persistieren (editierbar bei piEditable)
+                if (this._techState[name] === undefined) this._techState[name] = !!tr0.pi;
+                const piChecked = this._techState[name];
+                const piDisabled = tr0.piEditable ? '' : 'disabled';
+                const badgeTxt  = tr0.badge || 'SK';
+                const isFk      = badgeTxt === 'FK';
+                const badgeIcon = isFk ? '🔗' : '🔑';
+                const tr = document.createElement('tr');
+                tr.className = isFk ? 'cs-row-tech cs-row-tech-fk' : 'cs-row-tech';
+                tr.innerHTML = `
+                    <td>
+                        <span class="cs-col-name">${name}</span>
+                        <span class="cs-col-sk ${isFk ? 'cs-col-fk' : ''}" title="Technische Spalte – wird automatisch erzeugt">${badgeTxt} ${badgeIcon}</span>
+                    </td>
+                    <td><span class="cs-col-type">${type}</span></td>
+                    <td class="chk-col"><input type="checkbox" class="cs-chk cs-chk-bk"   disabled ${tr0.bk   ? 'checked' : ''}></td>
+                    <td class="chk-col"><input type="checkbox" class="cs-chk cs-chk-pk"   disabled ${tr0.pk   ? 'checked' : ''}></td>
+                    <td class="chk-col"><input type="checkbox" class="cs-chk cs-chk-pi cs-tech-pi" data-tech="${name}" ${piDisabled} ${piChecked ? 'checked' : ''}></td>
+                    <td class="chk-col"><input type="checkbox" class="cs-chk cs-chk-hash" disabled ${tr0.hash ? 'checked' : ''}></td>
+                    <td class="chk-col"><input type="checkbox" class="cs-chk cs-chk-load" disabled ${tr0.load ? 'checked' : ''}></td>`;
+                tbody.appendChild(tr);
+                const piChk = tr.querySelector('.cs-tech-pi');
+                if (tr0.piEditable && piChk) {
+                    piChk.addEventListener('change', () => {
+                        this._techState[name] = piChk.checked;
+                        this._fireChange();
+                    });
+                }
+            });
 
             this._visibleCols().forEach(c => {
                 const name  = (c.column_name || c.COLUMN_NAME || '').toUpperCase();

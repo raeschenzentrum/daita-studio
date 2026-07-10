@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht SK-Tabelle inkl. aller Surrogate Keys!
+-- Job ID: 33
+
+DROP TABLE MDP01_DISCOVERABLE_LAYER.KEY_UZMS01_TARF_ASYL_ERLEDIG_TX;

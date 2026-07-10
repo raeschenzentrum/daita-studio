@@ -1,0 +1,19 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taas_erledigung_staging",
+  "KEY_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "KEY_TABLE": "KEY_UZMS01_TAAS_ERLEDIGUNG",
+  "NATURAL_KEY_COL": "ERLEDIGUNG_ID",
+  "NATURAL_KEY_EXPRESSION_STG": "CAST(stg.ERLEDIGUNG_ID AS VARCHAR(255))",
+  "DOMAIN": "ZEMIS",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_GESCHAEFT_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAS_GESCHAEFT_HISTORY",
+      "parent_sk_column": "UZMS01_TAAS_GESCHAEFT_SK",
+      "parent_bk_column": "GESCHAEFT_ID",
+      "natural_key_expr": "CAST(src.GESCHAEFT_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

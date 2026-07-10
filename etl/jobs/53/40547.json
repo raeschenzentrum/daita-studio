@@ -1,0 +1,26 @@
+{
+  "TARGET_DATABASE": "MDP01_REUSABLE_LAYER",
+  "TARGET_TABLE": "CODE_ASYL_ERLEDIG",
+  "NEW_RECORDS_TABLE": "temp_v_code_asyl_erledig_new",
+  "INSERT_COLUMNS": [
+    "CODE_ASYL_ERLEDIG_SK",
+    "ASYL_ERLEDIG_CD",
+    "BEZEICHNUNG_DE",
+    "BEZEICHNUNG_FR",
+    "BEZEICHNUNG_IT",
+    "BEZEICHNUNG_EN"
+  ],
+  "TABLE_ALIAS": "src",
+  "SK_COLUMN": "CODE_ASYL_ERLEDIG_SK",
+  "GUELTIGVON_COL": "VALID_FROM",
+  "GUELTIGBIS_COL": "VALID_TO",
+  "IST_AKTUELL_COL": "IS_CURRENT",
+  "IST_AKTUELL_VAL": "Y",
+  "hash_columns": [
+    "BEZEICHNUNG_DE",
+    "BEZEICHNUNG_FR",
+    "BEZEICHNUNG_IT",
+    "BEZEICHNUNG_EN"
+  ],
+  "fk_definitions": []
+}

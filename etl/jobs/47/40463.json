@@ -1,0 +1,21 @@
+{
+  "SOURCE_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "SOURCE_TABLE": "V_CASE_GESCHAEFT",
+  "STAGING_TABLE": "temp_v_case_geschaeft_staging",
+  "BUSINESS_KEY": "GESCHAEFT_ID",
+  "select_columns": [
+    "CASE_GESCHAEFT_SK",
+    "GESCHAEFT_ID",
+    "VERFAHREN_SK",
+    "VERFAHREN_ID",
+    "ASYLGS_ART_CD",
+    "AUPER_BFF_GESCH_NR",
+    "AUPER_LFD_NR",
+    "EROEFFNUNG_DAT",
+    "STAT_EROEFFNUNG_DAT",
+    "EROEFFNUNG_BENUTZER",
+    "DURCH_EINBEZUG_JN",
+    "ZEMIS_JURIS_ID"
+  ],
+  "fk_definitions": []
+}

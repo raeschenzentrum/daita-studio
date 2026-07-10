@@ -1,0 +1,20 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taas_geschaeft_staging",
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TAAS_GESCHAEFT_HISTORY",
+  "BUSINESS_KEY_JOIN": "stg.GESCHAEFT_ID = hist.GESCHAEFT_ID",
+  "BUSINESS_KEY_NULL_CHECK": "hist.GESCHAEFT_ID IS NULL",
+  "PRIMARY_INDEX_COLS": "GESCHAEFT_ID",
+  "NEW_RECORDS_TABLE": "temp_uzms01_taas_geschaeft_new",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_VERFAHREN_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAS_VERFAHREN_HISTORY",
+      "parent_sk_column": "UZMS01_TAAS_VERFAHREN_SK",
+      "parent_bk_column": "VERFAHREN_ID",
+      "natural_key_expr": "CAST(src.VERFAHREN_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

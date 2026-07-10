@@ -162,6 +162,8 @@ scd2_technical_columns:
     type: "CHAR(1) CHARACTER SET UNICODE"
     nullable: true
     default: "'Y'"
+    current_value: "Y"      # Wert für aktuelle Version (ohne Quotes, für WHERE/SET/INSERT)
+    closed_value: "N"       # Wert für geschlossene/historische Version
   
   # Change Detection Hash
   record_hash:

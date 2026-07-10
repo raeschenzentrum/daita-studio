@@ -1,0 +1,20 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taaa_identitaet_staging",
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TAAA_IDENTITAET_HISTORY",
+  "BUSINESS_KEY_JOIN": "stg.IDENTITAET_ID = hist.IDENTITAET_ID",
+  "BUSINESS_KEY_NULL_CHECK": "hist.IDENTITAET_ID IS NULL",
+  "PRIMARY_INDEX_COLS": "IDENTITAET_ID",
+  "NEW_RECORDS_TABLE": "temp_uzms01_taaa_identitaet_new",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAA_PERSON_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAA_PERSON_HISTORY",
+      "parent_sk_column": "UZMS01_TAAA_PERSON_SK",
+      "parent_bk_column": "PERSON_ID",
+      "natural_key_expr": "CAST(src.PERSON_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

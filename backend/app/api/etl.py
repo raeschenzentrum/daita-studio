@@ -168,6 +168,52 @@ async def export_job_sql(
     )
 
 
+class LayerExportRequest(BaseModel):
+    """Request für den Layer-Bulk-Export (F10)."""
+    transitions: Optional[List[str]] = None  # ["raw_to_disc", "disc_to_reus"]; None = beide
+    include_ddl: bool = True
+    include_views: bool = True
+    mode: str = "initial_load"  # "initial_load" | "delta"
+
+
+@router.post("/export/layer")
+async def export_layer_sql(req: LayerExportRequest):
+    """Erzeugt den Layer-Bulk-Export (Job-Scripts + DDLs + View-DDLs) als ZIP.
+
+    Reihenfolge nach FK-Topologie, DDL_CREATE inaktiv, DELETE_TARGET im
+    Initial-Load aktiv. Liefert ein ZIP-Download.
+    """
+    from fastapi import Response
+    from datetime import datetime
+    from ..services.layer_export_service import get_layer_export_service
+
+    try:
+        service = get_layer_export_service()
+        zip_bytes, manifest = service.generate_zip(
+            transitions=req.transitions,
+            include_ddl=req.include_ddl,
+            include_views=req.include_views,
+            mode=req.mode,
+        )
+    except Exception as e:
+        logger.error(f"Layer-Export fehlgeschlagen: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if manifest["file_count"] == 0:
+        raise HTTPException(status_code=404, detail="Keine Jobs für die gewählte(n) Transition(en) gefunden.")
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"layer_export_{ts}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Export-File-Count": str(manifest["file_count"]),
+        },
+    )
+
+
 class TPTPreviewResponse(BaseModel):
     """Response für TPT Script Preview"""
     job_id: int

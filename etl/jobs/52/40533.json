@@ -1,0 +1,15 @@
+{
+  "SOURCE_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "SOURCE_TABLE": "V_CODE_ASYLGS_ART",
+  "STAGING_TABLE": "temp_v_code_asylgs_art_staging",
+  "BUSINESS_KEY": "ASYLGS_ART_CD",
+  "select_columns": [
+    "CODE_ASYLGS_ART_SK",
+    "ASYLGS_ART_CD",
+    "BEZEICHNUNG_DE",
+    "BEZEICHNUNG_FR",
+    "BEZEICHNUNG_IT",
+    "BEZEICHNUNG_EN"
+  ],
+  "fk_definitions": []
+}

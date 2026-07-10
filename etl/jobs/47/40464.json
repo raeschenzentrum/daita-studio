@@ -1,0 +1,12 @@
+{
+  "STAGING_TABLE": "temp_v_case_geschaeft_staging",
+  "TARGET_DATABASE": "MDP01_REUSABLE_LAYER",
+  "TARGET_TABLE": "CASE_GESCHAEFT",
+  "BUSINESS_KEY_JOIN": "stg.GESCHAEFT_ID = hist.GESCHAEFT_ID",
+  "BUSINESS_KEY_NULL_CHECK": "hist.GESCHAEFT_ID IS NULL",
+  "PRIMARY_INDEX_COLS": "GESCHAEFT_ID",
+  "NEW_RECORDS_TABLE": "temp_v_case_geschaeft_new",
+  "IST_AKTUELL_COL": "IS_CURRENT",
+  "IST_AKTUELL_VAL": "Y",
+  "fk_definitions": []
+}

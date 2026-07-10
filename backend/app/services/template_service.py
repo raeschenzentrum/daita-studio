@@ -47,6 +47,7 @@ class JobTemplate(BaseModel):
     default_valid_from_column: Optional[str] = None
     default_valid_to_column: Optional[str] = None
     default_is_current_column: Optional[str] = None
+    use_sk: str = 'N'  # F7: SK-Spalte verwenden (template-abhängiges Flag, unabhängig von SCD2)
 
 
 class StepTemplate(BaseModel):
@@ -222,7 +223,8 @@ class TemplateService:
                     DEFAULT_HASH_COLUMNS,
                     DEFAULT_VALID_FROM_COLUMN,
                     DEFAULT_VALID_TO_COLUMN,
-                    DEFAULT_IS_CURRENT_COLUMN
+                    DEFAULT_IS_CURRENT_COLUMN,
+                    USE_SK
                 FROM MDP01_META.META_ETL_JOB_TEMPLATE
                 WHERE IS_ACTIVE = 'Y'
             """
@@ -268,7 +270,8 @@ class TemplateService:
                     default_hash_columns=row[12],
                     default_valid_from_column=row[13],
                     default_valid_to_column=row[14],
-                    default_is_current_column=row[15]
+                    default_is_current_column=row[15],
+                    use_sk=row[16].strip() if row[16] else 'N'
                 ))
             
             return templates
@@ -697,7 +700,18 @@ class TemplateService:
             else:
                 # Legacy: nur String-Wert
                 sk_column_name = sk_config if sk_config else 'SURROGATE_KEY'
-            
+
+            # SCD2-Spaltennamen + Flag-Werte aus Config (C-b: zentral aus parameter_rules.yml,
+            # statt projektspezifischer REUS_-Defaults in den Step-Templates)
+            vf_cfg = scd2_config.get('valid_from', {})
+            vt_cfg = scd2_config.get('valid_to', {})
+            ic_cfg = scd2_config.get('is_current', {})
+            gueltigvon_col = vf_cfg.get('name', 'VALID_FROM') if isinstance(vf_cfg, dict) else 'VALID_FROM'
+            gueltigbis_col = vt_cfg.get('name', 'VALID_TO') if isinstance(vt_cfg, dict) else 'VALID_TO'
+            ist_aktuell_col = ic_cfg.get('name', 'IS_CURRENT') if isinstance(ic_cfg, dict) else 'IS_CURRENT'
+            ist_aktuell_val = ic_cfg.get('current_value', 'Y') if isinstance(ic_cfg, dict) else 'Y'
+            ist_aktuell_geschlossen = ic_cfg.get('closed_value', 'N') if isinstance(ic_cfg, dict) else 'N'
+
             # Generierte Parameter-Werte (berechnet aus User-Input + Config)
             generated_values = {
                 'SOURCE_TABLE': new_source,
@@ -723,9 +737,31 @@ class TemplateService:
                 'select_columns': select_columns,
                 'SK_COLUMN': sk_column_name,  # z.B. AUFENTHALT_SK
                 'CORE_NAME': core_name.upper() if core_name else '',
+                # SCD2-Spaltennamen + Flag-Werte aus Config (C-b)
+                'GUELTIGVON_COL': gueltigvon_col,
+                'GUELTIGBIS_COL': gueltigbis_col,
+                'IST_AKTUELL_COL': ist_aktuell_col,
+                'IST_AKTUELL_VAL': ist_aktuell_val,
+                'IST_AKTUELL_GESCHLOSSEN': ist_aktuell_geschlossen,
             }
             
             logger.debug(f"Parameter-Generierung: source={new_source}, core_name={core_name}, pk_columns={pk_columns}, select_columns={len(select_columns)} Spalten")
+
+            # F6-Beladung: fk_definitions aus Master-Mappings ableiten (Master-Modus).
+            # mappings: [{ table_id, source_column }]  → liefert FK_SK_COLUMNS/FK_INSERT_COLUMNS/FK_JOINS
+            fk_master_mappings = []
+            if request.parameters:
+                raw_map = (request.parameters.get('fk_master_mappings')
+                           or request.parameters.get('FK_MASTER_MAPPINGS') or [])
+                if isinstance(raw_map, list):
+                    fk_master_mappings = raw_map
+            derived_fk_definitions = (
+                self._build_fk_defs_from_mappings(cursor, fk_master_mappings)
+                if fk_master_mappings else []
+            )
+            fk_column_names = [d['sk_column'] for d in derived_fk_definitions]
+            if derived_fk_definitions:
+                logger.info(f"F6-Beladung: {len(derived_fk_definitions)} FK-Definitionen abgeleitet: {fk_column_names}")
 
             for step_tpl in step_templates:
                 # Alle Parameter zusammenführen (generated + defaults + user)
@@ -754,6 +790,17 @@ class TemplateService:
                 for k, v in generated_values.items():
                     if isinstance(v, list) and k.upper() in parameters and k not in parameters:
                         parameters[k] = v
+
+                # FK_DEFINITIONS (list) aus request.parameters in Step-Parameter übernehmen
+                # (kommt vom Wizard, muss als lowercase 'fk_definitions' in parameters stehen
+                #  damit template_engine._prepare_parameters es verarbeiten kann)
+                if derived_fk_definitions:
+                    # F6-Beladung: aus Master-Mappings abgeleitete FK-Definitionen (Master-Modus)
+                    parameters['fk_definitions'] = derived_fk_definitions
+                elif request.parameters and 'fk_definitions' in request.parameters:
+                    parameters['fk_definitions'] = request.parameters['fk_definitions']
+                elif request.parameters and 'FK_DEFINITIONS' in request.parameters:
+                    parameters['fk_definitions'] = request.parameters['FK_DEFINITIONS']
                 
                 # SQL_INLINE: Platzhalter {{KEY}} durch generierte Werte ersetzen
                 if step_tpl.sql_inline:
@@ -812,14 +859,16 @@ class TemplateService:
                 self._ensure_key_table_exists(cursor, conn, key_database, key_table_name)
             
             # Ziel-Tabelle physisch in Teradata anlegen wenn nicht vorhanden (AF-009)
+            target_ddl_generated = None
             if new_target and key_database:
-                self._ensure_target_table_exists(
+                target_ddl_generated = self._ensure_target_table_exists(
                     cursor, conn,
                     key_database,
                     new_target,
                     request.source_table_id,
                     pk_columns if isinstance(pk_columns, list) else [],
-                    core_name=core_name
+                    core_name=core_name,
+                    fk_columns=fk_column_names,
                 )
 
             # B2a: IS_BUSINESS_KEY in Source-META_COLUMN setzen (falls noch nicht gesetzt)
@@ -840,6 +889,12 @@ class TemplateService:
             if target_created and target_table_id:
                 sel_cols = select_columns if isinstance(select_columns, list) else ([select_columns] if select_columns else [])
                 hash_list = hash_columns if isinstance(hash_columns, list) else ([hash_columns] if hash_columns else [])
+                # F7: SK als Primary Index? (editierbar im Wizard, Default 'Y')
+                sk_is_pi = 'Y'
+                if request.parameters:
+                    raw_sk_pi = (request.parameters.get('sk_is_pi')
+                                 or request.parameters.get('SK_IS_PI') or 'Y')
+                    sk_is_pi = 'Y' if str(raw_sk_pi).strip().upper() in ('Y', 'TRUE', '1') else 'N'
                 self._populate_target_columns_in_meta(
                     cursor, conn,
                     target_table_id=target_table_id,
@@ -848,7 +903,23 @@ class TemplateService:
                     core_name=core_name,
                     pk_columns=pk_list,
                     hash_columns=hash_list,
+                    sk_is_pi=sk_is_pi,
+                    fk_columns=fk_column_names,
                 )
+
+            # F6: FK über Master-Tabellen – FK-Spalte ({MASTER_SK}_FK) in META_COLUMN
+            #     anlegen + META_FOREIGN_KEY-Beziehung schreiben (auch bei bestehender Zieltabelle)
+            fk_master_ids = []
+            if request.parameters:
+                raw_master = (request.parameters.get('fk_master_table_ids')
+                              or request.parameters.get('FK_MASTER_TABLE_IDS') or [])
+                if isinstance(raw_master, list):
+                    fk_master_ids = raw_master
+            # Fallback: Master-IDs aus den Mappings ableiten (Wizard sendet beides)
+            if not fk_master_ids and fk_master_mappings:
+                fk_master_ids = [m.get('table_id') for m in fk_master_mappings if m.get('table_id')]
+            if target_table_id and fk_master_ids:
+                self._create_fk_from_master_tables(cursor, conn, target_table_id, fk_master_ids)
 
             # F5-A: DDLs + Cleanup-SQLs im Job-Folder ablegen
             self._write_job_folder_artifacts(
@@ -871,6 +942,7 @@ class TemplateService:
                 target_table=new_target or '',
                 key_database=key_database or '',
                 key_table_name=key_table_name or '',
+                target_ddl=target_ddl_generated,
             )
 
             return {"job_id": job_id, "target_table_id": target_table_id, "target_created": target_created}
@@ -1019,6 +1091,210 @@ class TemplateService:
             logger.error(f"Fehler beim Erstellen der Key-Tabelle {fqn}: {e}")
             # Kein raise - Job wurde bereits erstellt, Key-Tabelle kann später manuell erstellt werden
     
+    def _build_fk_defs_from_mappings(self, cursor, mappings: List[dict]) -> list:
+        """
+        F6-Beladung: Leitet aus den Master-Mappings des Wizards `fk_definitions`
+        im Master-Modus ab (für template_engine._build_fk_expressions).
+
+        mappings: [{ "table_id": <master_id>, "source_column": "<Quellspalte>" }, ...]
+
+        Pro Master:
+          - Master-DB/-Tabelle aus META_TABLE/META_DATABASE
+          - Master-SK  (IS_PK='Y', Fallback IS_TECHNICAL_KEY='Y')
+          - Master-BK  (IS_BUSINESS_KEY='Y')
+          - FK-Spaltenname {MASTER_SK}_FK
+        Liefert eine Liste von FK-Definitionen (master_mode=True).
+        """
+        col_tbl = "MDP01_META.META_COLUMN"
+        defs = []
+        for m in (mappings or []):
+            try:
+                master_id = int(m.get('table_id'))
+            except (TypeError, ValueError):
+                continue
+            source_col = (m.get('source_column') or '').strip()
+            if not source_col:
+                # Ohne gemappte Quellspalte kann keine Beladung gebaut werden
+                continue
+
+            # Master-DB/-Tabelle
+            cursor.execute("""
+                SELECT t.TABLE_NAME, d.DATABASE_NAME
+                FROM MDP01_META.META_TABLE t
+                JOIN MDP01_META.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
+                WHERE t.TABLE_ID = ? SAMPLE 1
+            """, [master_id])
+            row = cursor.fetchone()
+            if not row:
+                logger.warning(f"F6-Beladung: Master-Tabelle {master_id} nicht gefunden, übersprungen")
+                continue
+            master_tbl, master_db = (row[0] or '').strip(), (row[1] or '').strip()
+
+            # Master-SK (IS_PK, Fallback IS_TECHNICAL_KEY)
+            cursor.execute(f"""
+                SELECT COLUMN_NAME FROM {col_tbl}
+                WHERE TABLE_ID = ? AND TRIM(IS_PK) = 'Y'
+                ORDER BY COLUMN_POSITION SAMPLE 1
+            """, [master_id])
+            sk_row = cursor.fetchone()
+            if not sk_row:
+                cursor.execute(f"""
+                    SELECT COLUMN_NAME FROM {col_tbl}
+                    WHERE TABLE_ID = ? AND TRIM(IS_TECHNICAL_KEY) = 'Y'
+                    ORDER BY COLUMN_POSITION SAMPLE 1
+                """, [master_id])
+                sk_row = cursor.fetchone()
+            if not sk_row:
+                logger.warning(f"F6-Beladung: Keine SK-Spalte in Master {master_id}, übersprungen")
+                continue
+            master_sk = (sk_row[0] or '').strip().upper()
+
+            # Master-BK (IS_BUSINESS_KEY)
+            cursor.execute(f"""
+                SELECT COLUMN_NAME FROM {col_tbl}
+                WHERE TABLE_ID = ? AND TRIM(IS_BUSINESS_KEY) = 'Y'
+                ORDER BY COLUMN_POSITION SAMPLE 1
+            """, [master_id])
+            bk_row = cursor.fetchone()
+            if not bk_row:
+                logger.warning(f"F6-Beladung: Kein Business Key in Master {master_id}, übersprungen")
+                continue
+            master_bk = (bk_row[0] or '').strip().upper()
+
+            defs.append({
+                'sk_column':        f"{master_sk}_FK",
+                'key_database':     master_db,
+                'key_table':        master_tbl,
+                'parent_sk_column': master_sk,
+                'parent_bk_column': master_bk,
+                'natural_key_expr': f"CAST(src.{source_col.upper()} AS VARCHAR(255))",
+                'master_mode':      True,
+            })
+        return defs
+
+    def _create_fk_from_master_tables(
+        self,
+        cursor,
+        conn,
+        target_table_id: int,
+        master_table_ids: List[int],
+    ) -> None:
+        """
+        F6-B/C: FK über Master-Tabellen.
+
+        Für jede Master-Tabelle:
+          1. SK/PK-Spalte der Master-Tabelle ermitteln (IS_PK='Y', Fallback IS_TECHNICAL_KEY='Y')
+          2. FK-Spalte {MASTER_SK}_FK in META_COLUMN der Zieltabelle anlegen (BIGINT, IS_FK='Y')
+          3. META_FOREIGN_KEY-Beziehung schreiben (child=Ziel/FK-Spalte, parent=Master/SK)
+
+        Idempotent: vorhandene FK-Spalten/Beziehungen werden übersprungen.
+        """
+        col_tbl = "MDP01_META.META_COLUMN"
+        fk_tbl  = "MDP01_META.META_FOREIGN_KEY"
+
+        # DATATYPE_ID für BIGINT
+        try:
+            cursor.execute(
+                "SELECT DATATYPE_ID FROM MDP01_META.META_DATATYPE WHERE TERADATA_TYPE = 'BIGINT' SAMPLE 1"
+            )
+            r = cursor.fetchone()
+            bigint_id = int(r[0]) if r else 1
+        except Exception:
+            bigint_id = 1
+
+        for raw_id in master_table_ids:
+            try:
+                master_id = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            if master_id == target_table_id:
+                continue
+
+            # 1. SK/PK-Spalte der Master-Tabelle ermitteln
+            cursor.execute(f"""
+                SELECT COLUMN_ID, COLUMN_NAME FROM {col_tbl}
+                WHERE TABLE_ID = ? AND TRIM(IS_PK) = 'Y'
+                ORDER BY COLUMN_POSITION SAMPLE 1
+            """, [master_id])
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute(f"""
+                    SELECT COLUMN_ID, COLUMN_NAME FROM {col_tbl}
+                    WHERE TABLE_ID = ? AND TRIM(IS_TECHNICAL_KEY) = 'Y'
+                    ORDER BY COLUMN_POSITION SAMPLE 1
+                """, [master_id])
+                row = cursor.fetchone()
+            if not row:
+                logger.warning(f"F6: Keine SK/PK-Spalte in Master-Tabelle {master_id} gefunden, FK übersprungen")
+                continue
+
+            master_sk_col_id   = int(row[0])
+            master_sk_col_name = (row[1] or '').strip()
+            fk_col_name        = f"{master_sk_col_name.upper()}_FK"
+
+            # 2. FK-Spalte in Zieltabelle anlegen (falls nicht vorhanden)
+            cursor.execute(f"""
+                SELECT COLUMN_ID FROM {col_tbl}
+                WHERE TABLE_ID = ? AND UPPER(COLUMN_NAME) = ? SAMPLE 1
+            """, [target_table_id, fk_col_name])
+            existing = cursor.fetchone()
+            if existing:
+                fk_col_id = int(existing[0])
+            else:
+                cursor.execute(f"SELECT COALESCE(MAX(COLUMN_ID), 0) + 1 FROM {col_tbl}")
+                fk_col_id = int(cursor.fetchone()[0])
+                cursor.execute(
+                    f"SELECT COALESCE(MAX(COLUMN_POSITION), 0) + 1 FROM {col_tbl} WHERE TABLE_ID = ?",
+                    [target_table_id]
+                )
+                fk_col_pos = int(cursor.fetchone()[0])
+                cursor.execute(f"""
+                    INSERT INTO {col_tbl}
+                        (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
+                         DATATYPE_ID, COLUMN_TYPE, NULLABLE, IS_FK,
+                         ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
+                    VALUES (?, ?, ?, ?, ?, 'BIGINT', 'Y', 'Y',
+                            CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
+                """, [fk_col_id, target_table_id, fk_col_name, fk_col_pos, bigint_id])
+                conn.commit()
+                logger.info(
+                    f"F6-B: FK-Spalte {fk_col_name} (col_id={fk_col_id}) in Zieltabelle {target_table_id} angelegt"
+                )
+
+            # 3. META_FOREIGN_KEY-Beziehung (falls nicht vorhanden)
+            cursor.execute(f"""
+                SELECT FK_ID FROM {fk_tbl}
+                WHERE CHILD_TABLE_ID = ? AND CHILD_COLUMN_ID = ? AND PARENT_TABLE_ID = ? SAMPLE 1
+            """, [target_table_id, fk_col_id, master_id])
+            if cursor.fetchone():
+                logger.debug(f"F6-C: FK-Beziehung {target_table_id}->{master_id} existiert bereits, übersprungen")
+                continue
+
+            cursor.execute(f"SELECT COALESCE(MAX(FK_ID), 0) + 1 FROM {fk_tbl}")
+            new_fk_id = int(cursor.fetchone()[0])
+            fk_name   = f"FK_{fk_col_name}"
+            cursor.execute(f"""
+                INSERT INTO {fk_tbl}
+                    (FK_ID, FK_NAME, CHILD_TABLE_ID, CHILD_COLUMN_ID,
+                     PARENT_TABLE_ID, PARENT_COLUMN_ID,
+                     ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
+            """, [new_fk_id, fk_name, target_table_id, fk_col_id, master_id, master_sk_col_id])
+            conn.commit()
+            logger.info(
+                f"F6-C: FK-Beziehung {fk_name} (fk_id={new_fk_id}) "
+                f"{target_table_id}.{fk_col_name} -> {master_id}.{master_sk_col_name} angelegt"
+            )
+
+        # meta_service-Cache invalidieren, damit Modeler die neuen Spalten/FKs sieht
+        try:
+            from app.services import meta_service
+            for k in list(meta_service._CACHE.keys()):
+                if k.startswith("fk|") or k.startswith("columns_full|"):
+                    meta_service._CACHE.pop(k, None)
+        except Exception:
+            pass
+
     def _populate_target_columns_in_meta(
         self,
         cursor,
@@ -1029,6 +1305,8 @@ class TemplateService:
         core_name: str = '',
         pk_columns: List[str] = None,
         hash_columns: List[str] = None,
+        sk_is_pi: str = 'Y',
+        fk_columns: List[str] = None,
     ) -> int:
         """
         B2: Erstellt META_COLUMN-Einträge für eine neu angelegte Zieltabelle.
@@ -1070,43 +1348,30 @@ class TemplateService:
         inserted = 0
         pk_set   = {c.upper() for c in (pk_columns or [])}
         hash_set = {c.upper() for c in (hash_columns or [])}
+        # Dedup: Spaltennamen die bereits ausgegeben wurden (verhindert Doppel-Spalte,
+        # z.B. wenn die DISC→REUS-Quell-View die SK-Spalte bereits enthält → Error 2803)
+        seen_cols = set()
 
-        # --- 1. SCD2-Technische-Spalten ---
-        scd2_order = [
-            'surrogate_key', 'valid_from', 'valid_to', 'is_current',
-            'record_hash', 'created_timestamp', 'last_updated_timestamp',
-            'created_by', 'last_updated_by',
-        ]
-        for key in scd2_order:
-            cfg = scd2_config.get(key)
-            if not cfg:
-                continue
-
-            if key == 'surrogate_key':
-                pattern  = cfg.get('pattern', '{core_name}_SK')
-                fallback = cfg.get('fallback', 'SURROGATE_KEY')
-                col_name = pattern.replace('{core_name}', core_name.upper()) if core_name else fallback
-            else:
-                col_name = cfg.get('name', key.upper())
-
-            col_type    = cfg.get('type', 'VARCHAR(255)')
-            nullable    = 'N' if not cfg.get('nullable', True) else 'Y'
-            is_pk       = 'Y' if key == 'surrogate_key' else 'N'
-            is_pi       = 'Y' if key == 'surrogate_key' else 'N'  # SK = PRIMARY INDEX
-            is_scd      = 'N' if key == 'surrogate_key' else 'Y'
-            is_audit    = 'Y' if key in ('created_timestamp', 'last_updated_timestamp', 'created_by', 'last_updated_by') else 'N'
-            datatype_id = _get_datatype_id(col_type)
-
+        # Reihenfolge (User-Wunsch): 1. SK  2. Source-Spalten (ID/BK …)  3. FK-Spalten  4. Technische ans Ende
+        # --- 1. SK (Surrogate Key) ---
+        sk_cfg = scd2_config.get('surrogate_key')
+        if sk_cfg:
+            pattern  = sk_cfg.get('pattern', '{core_name}_SK')
+            fallback = sk_cfg.get('fallback', 'SURROGATE_KEY')
+            sk_name  = pattern.replace('{core_name}', core_name.upper()) if core_name else fallback
+            sk_type  = sk_cfg.get('type', 'BIGINT')
+            sk_null  = 'N' if not sk_cfg.get('nullable', True) else 'Y'
             cursor.execute(f"""
                 INSERT INTO {col_tbl}
                     (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
                      DATATYPE_ID, COLUMN_TYPE, NULLABLE,
-                     IS_TECHNICAL_KEY, IS_PI, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
+                     IS_TECHNICAL_KEY, IS_PK, IS_PI, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
                      ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'Y', 'Y', ?, 'N', 'N',
                         CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
-            """, [next_col_id, target_table_id, col_name, col_position,
-                  datatype_id, col_type, nullable, is_pk, is_pi, is_scd, is_audit])
+            """, [next_col_id, target_table_id, sk_name, col_position,
+                  _get_datatype_id(sk_type), sk_type, sk_null, sk_is_pi])
+            seen_cols.add(sk_name.upper())
             next_col_id  += 1
             col_position += 1
             inserted     += 1
@@ -1124,6 +1389,10 @@ class TemplateService:
 
         for col_name in select_columns:
             col_upper = col_name.upper()
+            # Dedup: Quellspalte überspringen, wenn Name bereits vergeben (z.B. SK aus der View)
+            if col_upper in seen_cols:
+                logger.debug(f"META_COLUMN: Quellspalte {col_upper} übersprungen (bereits vorhanden)")
+                continue
             src = source_col_map.get(col_upper)
             if src:
                 _, src_dt_id, col_type, col_length, dec_total, dec_frac, nullable, is_bk, charset = src
@@ -1152,6 +1421,60 @@ class TemplateService:
             """, [next_col_id, target_table_id, col_upper, col_position,
                   datatype_id, col_type, col_length, dec_total, dec_frac,
                   nullable or 'Y', final_bk, final_hash, charset])
+            seen_cols.add(col_upper)
+            next_col_id  += 1
+            col_position += 1
+            inserted     += 1
+
+        # --- 3. FK-Spalten ({MASTER_SK}_FK, BIGINT) – F6-Beladung, vor den technischen Spalten ---
+        bigint_dt_id = _get_datatype_id('BIGINT')
+        for fk_col in (fk_columns or []):
+            fk_name = (fk_col or '').strip().upper()
+            if not fk_name or fk_name in seen_cols:
+                continue
+            cursor.execute(f"""
+                INSERT INTO {col_tbl}
+                    (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
+                     DATATYPE_ID, COLUMN_TYPE, NULLABLE, IS_FK,
+                     IS_TECHNICAL_KEY, IS_PK, IS_PI, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
+                     ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
+                VALUES (?, ?, ?, ?, ?, 'BIGINT', 'Y', 'Y', 'N', 'N', 'N', 'N', 'N',
+                        CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
+            """, [next_col_id, target_table_id, fk_name, col_position, bigint_dt_id])
+            seen_cols.add(fk_name)
+            next_col_id  += 1
+            col_position += 1
+            inserted     += 1
+
+        # --- 4. Technische SCD2-Spalten ans Ende ---
+        scd2_order = [
+            'valid_from', 'valid_to', 'is_current',
+            'record_hash', 'created_timestamp', 'last_updated_timestamp',
+            'created_by', 'last_updated_by',
+        ]
+        for key in scd2_order:
+            cfg = scd2_config.get(key)
+            if not cfg:
+                continue
+
+            col_name    = cfg.get('name', key.upper())
+            if col_name.upper() in seen_cols:
+                continue
+            col_type    = cfg.get('type', 'VARCHAR(255)')
+            nullable    = 'N' if not cfg.get('nullable', True) else 'Y'
+            is_audit    = 'Y' if key in ('created_timestamp', 'last_updated_timestamp', 'created_by', 'last_updated_by') else 'N'
+            datatype_id = _get_datatype_id(col_type)
+
+            cursor.execute(f"""
+                INSERT INTO {col_tbl}
+                    (COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
+                     DATATYPE_ID, COLUMN_TYPE, NULLABLE,
+                     IS_TECHNICAL_KEY, IS_PK, IS_PI, IS_SCD_COLUMN, IS_AUDIT_COLUMN,
+                     ERSTERFASSUNGSDATUM, AENDERUNGSDATUM)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'N', 'N', 'N', 'Y', ?,
+                        CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
+            """, [next_col_id, target_table_id, col_name, col_position,
+                  datatype_id, col_type, nullable, is_audit])
             next_col_id  += 1
             col_position += 1
             inserted     += 1
@@ -1168,7 +1491,8 @@ class TemplateService:
         target_table: str,
         source_table_id: int,
         pk_columns: List[str],
-        core_name: str = ''
+        core_name: str = '',
+        fk_columns: List[str] = None
     ):
         """
         Prüft ob Ziel-Tabelle existiert, erstellt sie wenn nicht.
@@ -1178,6 +1502,7 @@ class TemplateService:
         
         Args:
             core_name: Kern-Name der Tabelle (z.B. 'aufenthalt') für SK-Spaltenname
+            fk_columns: Optionale FK-Spalten ({MASTER_SK}_FK, BIGINT) – F6-Beladung
         """
         fqn = f"{target_database}.{target_table}"
         
@@ -1265,15 +1590,22 @@ class TemplateService:
         
         # DDL generieren
         columns_ddl = []
-        
+        # Dedup: bereits ausgegebene Spaltennamen (verhindert Doppel-Spalte in der DDL,
+        # z.B. wenn die DISC→REUS-Quell-View die SK-Spalte bereits enthält → CREATE TABLE schlägt fehl)
+        seen_ddl_cols = set()
+
         # SK-Spalte (erste Spalte)
         sk_config = scd2_config.get('surrogate_key', {})
         sk_name, sk_def = build_column_def('surrogate_key', sk_config)
         columns_ddl.append(sk_def)
+        seen_ddl_cols.add(sk_name.upper())
         
         # Source-Spalten
         for row in source_columns:
             col_name = row[0].strip().upper()
+            # Dedup: Quellspalte überspringen, wenn Name bereits vergeben (z.B. SK aus der View)
+            if col_name in seen_ddl_cols:
+                continue
             col_type = row[1] if row[1] else None
             col_length = row[2] if len(row) > 2 else None
             dec_total = row[3] if len(row) > 3 else None
@@ -1281,6 +1613,14 @@ class TemplateService:
 
             td_type = td_typecode_to_ddl(col_type, col_length, dec_total, dec_frac)
             columns_ddl.append(f"{col_name} {td_type}")
+            seen_ddl_cols.add(col_name)
+        
+        # F6-Beladung: FK-Spalten ({MASTER_SK}_FK, BIGINT) nach den Source-Spalten
+        for fk_col in (fk_columns or []):
+            fk_name = (fk_col or '').strip().upper()
+            if fk_name and fk_name not in seen_ddl_cols:
+                columns_ddl.append(f"{fk_name} BIGINT")
+                seen_ddl_cols.add(fk_name)
         
         # SCD2-Spalten am Ende (aus Config)
         scd2_order = ['record_hash', 'valid_from', 'valid_to', 'is_current', 
@@ -1292,7 +1632,10 @@ class TemplateService:
             col_config = scd2_config.get(col_key, {})
             col_name, col_def = build_column_def(col_key, col_config)
             scd2_names[col_key] = col_name
+            if col_name.upper() in seen_ddl_cols:
+                continue
             columns_ddl.append(col_def)
+            seen_ddl_cols.add(col_name.upper())
         
         # =================================================================
         # PRIMARY INDEX aus Config (nicht PRIMARY KEY!)
@@ -1327,6 +1670,10 @@ class TemplateService:
         except Exception as e:
             logger.error(f"Fehler beim Erstellen der Ziel-Tabelle {fqn}: {e}\nDDL: {ddl}")
             # Kein raise - Job wurde bereits erstellt
+
+        # Fix D: generierte DDL zurückgeben, damit der Create-Target-Step auch dann
+        # angelegt werden kann, wenn die physische Tabelle (noch) nicht existiert.
+        return ddl.strip()
     
     def _write_job_folder_artifacts(
         self,
@@ -1424,6 +1771,7 @@ class TemplateService:
         target_table: str,
         key_database: str,
         key_table_name: str,
+        target_ddl: Optional[str] = None,
     ):
         """
         F5-B: Fügt zwei DDL_CREATE-Steps am Anfang des Jobs ein.
@@ -1431,7 +1779,9 @@ class TemplateService:
         - order -2: Create Target Table
         - order -1: Create SK Table
 
-        Verwendet die DDL aus dbc.TablesV (Tabelle wurde kurz zuvor erstellt).
+        Fix D: Für die Ziel-Tabelle wird bevorzugt die beim Job-Erstellen generierte DDL
+        (target_ddl) verwendet, damit der Step auch dann existiert, wenn die physische
+        Tabelle (noch) nicht angelegt wurde. Fallback: DDL aus dbc.TablesV.
         Orchestrator ignoriert Error 3803 (Tabelle bereits vorhanden) für DDL_CREATE-Steps.
         """
         try:
@@ -1445,19 +1795,25 @@ class TemplateService:
             # --- Zieltabelle ---
             if target_database and target_table:
                 fqn = f"{target_database}.{target_table}"
-                try:
-                    cursor.execute(f"""
-                        SELECT RequestText FROM dbc.TablesV
-                        WHERE DatabaseName = '{target_database}'
-                        AND TableName = '{target_table}'
-                        AND TableKind = 'T'
-                    """)
-                    row = cursor.fetchone()
-                    ddl = row[0].strip() if row else None
-                except Exception:
-                    ddl = None
+                # Fix D: generierte DDL bevorzugen
+                if target_ddl:
+                    ddl = target_ddl.strip()
+                else:
+                    try:
+                        cursor.execute(f"""
+                            SELECT RequestText FROM dbc.TablesV
+                            WHERE DatabaseName = '{target_database}'
+                            AND TableName = '{target_table}'
+                            AND TableKind = 'T'
+                        """)
+                        row = cursor.fetchone()
+                        ddl = row[0].strip() if row else None
+                    except Exception:
+                        ddl = None
 
                 if ddl:
+                    # Doppelte Semikolons vermeiden
+                    ddl_sql = ddl if ddl.rstrip().endswith(';') else ddl + ';'
                     cursor.execute("""
                         INSERT INTO MDP01_META.META_ETL_JOB_STEP (
                             ETL_JOB_STEP_ID, ETL_JOB_ID, STEP_NAME, STEP_ORDER,
@@ -1466,7 +1822,7 @@ class TemplateService:
                             RETRY_COUNT, TIMEOUT_SECONDS
                         ) VALUES (?, ?, 'Create Target Table (DDL)', -2,
                                   'DDL_CREATE', NULL, ?, 'Y', 'N', 'Y', 1, 120)
-                    """, [next_id, job_id, ddl + ';'])
+                    """, [next_id, job_id, ddl_sql])
                     next_id += 1
                     steps_inserted += 1
                     logger.info(f"DDL-Step 'Create Target Table' für Job {job_id} eingefügt ({fqn})")

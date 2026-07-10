@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 28
+
+DROP TABLE MDP01_DISCOVERABLE_LAYER.UZMS01_TAAS_GESCHAEFT_HISTORY;

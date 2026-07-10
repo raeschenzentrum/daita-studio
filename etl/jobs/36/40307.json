@@ -1,0 +1,12 @@
+{
+  "STAGING_TABLE": "temp_v_part_person_staging",
+  "TARGET_DATABASE": "MDP01_REUSABLE_LAYER",
+  "TARGET_TABLE": "PART_PERSON",
+  "BUSINESS_KEY_JOIN": "stg.PERSON_ID = hist.PERSON_ID",
+  "BUSINESS_KEY_NULL_CHECK": "hist.PERSON_ID IS NULL",
+  "PRIMARY_INDEX_COLS": "PERSON_ID",
+  "NEW_RECORDS_TABLE": "temp_v_part_person_new",
+  "IST_AKTUELL_COL": "REUS_IST_AKTUELL",
+  "IST_AKTUELL_VAL": "J",
+  "fk_definitions": []
+}

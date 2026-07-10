@@ -28,17 +28,17 @@
 
 INSERT INTO ${TARGET_DATABASE}.${TARGET_TABLE}
 (
-    -- Surrogate Key (aus KEY-Tabelle, NICHT aus Quelle!)
+    -- Own Surrogate Key (aus KEY-Tabelle)
     ${SK_COLUMN},
-    
+${FK_INSERT_COLUMNS}
     -- Business Columns
     ${INSERT_COLUMNS},
-    
+
     -- SCD Type 2 Fields
     VALID_FROM,
     VALID_TO,
     IS_CURRENT,
-    
+
     -- DWH Technical Fields
     RECORD_HASH,
     CREATED_TIMESTAMP,
@@ -47,17 +47,17 @@ INSERT INTO ${TARGET_DATABASE}.${TARGET_TABLE}
     LAST_UPDATED_BY
 )
 SELECT
-    -- SK aus KEY-Tabelle per JOIN (COALESCE auf -1 falls nicht gefunden)
+    -- Own SK aus KEY-Tabelle per JOIN
     COALESCE(k.SURROGATE_KEY, -1) AS ${SK_COLUMN},
-    
+${FK_SK_COLUMNS}
     -- Business Columns
     ${SELECT_COLUMNS},
-    
+
     -- SCD Type 2 Fields
     CURRENT_TIMESTAMP(6) AS VALID_FROM,
     TIMESTAMP '9999-12-31 23:59:59.999999' AS VALID_TO,
     'Y' AS IS_CURRENT,
-    
+
     -- DWH Technical Fields
     ${HASH_EXPRESSION} AS RECORD_HASH,
     CURRENT_TIMESTAMP(6) AS CREATED_TIMESTAMP,
@@ -67,11 +67,7 @@ SELECT
 
 FROM ${NEW_RECORDS_TABLE} src
 
--- JOIN auf KEY-Tabelle um Surrogate Key zu holen
 LEFT JOIN ${KEY_DATABASE}.${KEY_TABLE} k
     ON ${NATURAL_KEY_EXPRESSION_SRC} = k.NATURAL_KEY_VALUE
-   AND k.NATURAL_KEY_DOMAIN = '${DOMAIN}';
-
--- Hinweis: LEFT JOIN + COALESCE(-1) statt INNER JOIN, damit Records
--- auch ohne Key geladen werden (mit Default-SK -1/UNKNOWN).
--- Dies verhindert Datenverlust bei fehlender Key-Generierung.
+   AND k.NATURAL_KEY_DOMAIN = '${DOMAIN}'
+${FK_JOINS};

@@ -1,0 +1,20 @@
+{
+  "STAGING_TABLE": "temp_v_case_erledig_zusatz_staging",
+  "TARGET_DATABASE": "MDP01_REUSABLE_LAYER",
+  "TARGET_TABLE": "CASE_ERLEDIG_ZUSATZ",
+  "BUSINESS_KEY_JOIN": "stg.ERLEDIG_ZUSATZ_ID = hist.ERLEDIG_ZUSATZ_ID",
+  "PRIMARY_INDEX_COLS": "ERLEDIG_ZUSATZ_ID",
+  "CHANGED_RECORDS_TABLE": "temp_v_case_erledig_zusatz_changed",
+  "TABLE_ALIAS": "stg",
+  "IST_AKTUELL_COL": "IS_CURRENT",
+  "IST_AKTUELL_VAL": "Y",
+  "hash_columns": [
+    "ERLEDIGUNG_ID",
+    "ERLEDIGUNG_SK",
+    "ASYL_ERLED_ZUS_CD",
+    "EREIGNIS_DAT",
+    "STAT_DAT",
+    "SACHBEARBEITER_UID"
+  ],
+  "fk_definitions": []
+}

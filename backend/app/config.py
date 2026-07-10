@@ -52,6 +52,7 @@ PATHS = {
     "tpt_log":       _install_root / _paths_config.get('tpt_log', 'log/tpt'),
     "sql_templates": _install_root / _paths_config.get('sql_templates', 'ddl/sql_templates'),
     "sql_output":    _install_root / _paths_config.get('sql_output', 'sql/generated'),
+    "export_layers": _install_root / _paths_config.get('export_layers', 'sql/export_layers'),
     "etl_jobs":      _install_root / _paths_config.get('etl_jobs', 'etl/jobs'),
     "log":           _install_root / _paths_config.get('log', 'log'),
     "diagrams":      _install_root / _paths_config.get('diagrams', 'diagrams'),

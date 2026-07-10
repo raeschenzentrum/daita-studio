@@ -1,0 +1,19 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taas_verfahren_bem_staging",
+  "KEY_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "KEY_TABLE": "KEY_UZMS01_TAAS_VERFAHREN_BEM",
+  "NATURAL_KEY_COL": "VERFAHREN_BEM_ID",
+  "NATURAL_KEY_EXPRESSION_STG": "CAST(stg.VERFAHREN_BEM_ID AS VARCHAR(255))",
+  "DOMAIN": "ZEMIS",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_VERFAHREN_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAS_VERFAHREN_HISTORY",
+      "parent_sk_column": "UZMS01_TAAS_VERFAHREN_SK",
+      "parent_bk_column": "VERFAHREN_ID",
+      "natural_key_expr": "CAST(src.VERFAHREN_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

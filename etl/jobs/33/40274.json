@@ -1,0 +1,13 @@
+{
+  "SOURCE_DATABASE": "MDP01_RAW_LAYER",
+  "SOURCE_TABLE": "UZMS01_TARF_ASYL_ERLEDIG_TX",
+  "STAGING_TABLE": "temp_uzms01_tarf_asyl_erledig_tx_staging",
+  "BUSINESS_KEY": "KEYCD, LANG_CD",
+  "SELECT_COLUMNS": "KEYCD, LANG_CD, TXT",
+  "select_columns": [
+    "KEYCD",
+    "LANG_CD",
+    "TXT"
+  ],
+  "fk_definitions": []
+}

@@ -1,0 +1,15 @@
+{
+  "SOURCE_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "SOURCE_TABLE": "V_CODE_ASYL_ERLEDIG",
+  "STAGING_TABLE": "temp_v_code_asyl_erledig_staging",
+  "BUSINESS_KEY": "ASYL_ERLEDIG_CD",
+  "select_columns": [
+    "CODE_ASYL_ERLEDIG_SK",
+    "ASYL_ERLEDIG_CD",
+    "BEZEICHNUNG_DE",
+    "BEZEICHNUNG_FR",
+    "BEZEICHNUNG_IT",
+    "BEZEICHNUNG_EN"
+  ],
+  "fk_definitions": []
+}

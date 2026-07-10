@@ -1,0 +1,20 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taas_verfahren_staging",
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TAAS_VERFAHREN_HISTORY",
+  "BUSINESS_KEY_JOIN": "stg.VERFAHREN_ID = hist.VERFAHREN_ID",
+  "BUSINESS_KEY_NULL_CHECK": "hist.VERFAHREN_ID IS NULL",
+  "PRIMARY_INDEX_COLS": "VERFAHREN_ID",
+  "NEW_RECORDS_TABLE": "temp_uzms01_taas_verfahren_new",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAA_PERSON_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAA_PERSON_HISTORY",
+      "parent_sk_column": "UZMS01_TAAA_PERSON_SK",
+      "parent_bk_column": "PERSON_ID",
+      "natural_key_expr": "CAST(src.PERSON_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

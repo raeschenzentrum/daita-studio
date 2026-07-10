@@ -9,8 +9,8 @@
     <script src="components/api.js"></script>
     <script src="components/nav-header.js"></script>
     <script src="components/job-detail.js?v=6"></script>
-    <script src="components/column-selector.js?v=6"></script>
-    <script src="components/etl-wizard.js?v=7"></script>
+    <script src="components/column-selector.js?v=9"></script>
+    <script src="components/etl-wizard.js?v=14"></script>
     <script src="components/table-bottom-panel.js"></script>
     <style>
         body { margin: 0; background: var(--bg-color, #f0f2f5); }
@@ -211,6 +211,7 @@
             <div class="flow-toolbar">
                 <h2>⟳ ETL Flow</h2>
                 <button class="btn-sm" id="btn-refresh">↺ Neu laden</button>
+                <button class="btn-sm" id="btn-layer-export">📦 Layer-Export</button>
                 <button class="btn-new-etl" id="btn-new-etl">＋ Neuer ETL-Job</button>
             </div>
             <div class="flow-error" id="flow-error" style="display:none"></div>
@@ -247,6 +248,59 @@
     <!-- ── Bottom-Panel (TableBottomPanel-Komponente) ───────────── -->
     <div id="flow-bottom-panel"></div>
 
+</div>
+
+<!-- ── Layer-Export Modal (F10) ─────────────────────────────────── -->
+<div id="lx-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#fff; width:90%; max-width:520px; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,0.25); overflow:hidden;">
+        <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid #eee;">
+            <strong style="font-size:1.02em;">📦 Layer-Bulk-Export</strong>
+            <button id="lx-close" style="border:none; background:none; font-size:1.3em; cursor:pointer; color:#888;">✕</button>
+        </div>
+        <div style="padding:18px; display:flex; flex-direction:column; gap:16px;">
+            <div style="font-size:0.88em; color:#666;">
+                Erzeugt pro ETL-Job ein SQL-Script (FK-Reihenfolge, CREATE-Steps inaktiv,
+                DELETE im Initial Load aktiv) plus optional Tabellen-DDLs und Quell-View-DDLs
+                als ZIP.
+            </div>
+
+            <fieldset style="border:1px solid #ddd; border-radius:6px; padding:10px 14px;">
+                <legend style="font-size:0.82em; color:#444;">Transitionen</legend>
+                <label style="display:block; margin:4px 0; cursor:pointer;">
+                    <input type="checkbox" id="lx-raw-disc" checked> RAW → DISC
+                </label>
+                <label style="display:block; margin:4px 0; cursor:pointer;">
+                    <input type="checkbox" id="lx-disc-reus" checked> DISC → REUS
+                </label>
+            </fieldset>
+
+            <fieldset style="border:1px solid #ddd; border-radius:6px; padding:10px 14px;">
+                <legend style="font-size:0.82em; color:#444;">Inhalt</legend>
+                <label style="display:block; margin:4px 0; cursor:pointer;">
+                    <input type="checkbox" id="lx-incl-ddl" checked> Tabellen-DDLs (DISC/REUS)
+                </label>
+                <label style="display:block; margin:4px 0; cursor:pointer;">
+                    <input type="checkbox" id="lx-incl-views" checked> Quell-View-DDLs (REUS)
+                </label>
+            </fieldset>
+
+            <fieldset style="border:1px solid #ddd; border-radius:6px; padding:10px 14px;">
+                <legend style="font-size:0.82em; color:#444;">Modus</legend>
+                <label style="display:block; margin:4px 0; cursor:pointer;">
+                    <input type="radio" name="lx-mode" value="initial_load" checked> Initial Load (DELETE aktiv)
+                </label>
+                <label style="display:block; margin:4px 0; cursor:pointer;">
+                    <input type="radio" name="lx-mode" value="delta"> Delta (DELETE übersprungen)
+                </label>
+            </fieldset>
+
+            <div id="lx-status" style="font-size:0.86em; color:#667eea; min-height:18px;"></div>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; padding:14px 18px; border-top:1px solid #eee;">
+            <button class="btn-sm" id="lx-cancel">Abbrechen</button>
+            <button class="btn-new-etl" id="lx-run">⬇ ZIP erzeugen</button>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -588,9 +642,76 @@ function openWizardGeneral() {
     ETLWizard.openModal({});
 }
 
+// ── Layer-Export (F10) ─────────────────────────────────────────────
+function openLayerExport() {
+    document.getElementById('lx-status').textContent = '';
+    document.getElementById('lx-overlay').style.display = 'flex';
+}
+function closeLayerExport() {
+    document.getElementById('lx-overlay').style.display = 'none';
+}
+async function runLayerExport() {
+    const transitions = [];
+    if (document.getElementById('lx-raw-disc').checked)  transitions.push('raw_to_disc');
+    if (document.getElementById('lx-disc-reus').checked) transitions.push('disc_to_reus');
+
+    const status = document.getElementById('lx-status');
+    if (transitions.length === 0) {
+        status.textContent = '⚠️ Mindestens eine Transition wählen.';
+        return;
+    }
+
+    const payload = {
+        transitions,
+        include_ddl:   document.getElementById('lx-incl-ddl').checked,
+        include_views: document.getElementById('lx-incl-views').checked,
+        mode:          document.querySelector('input[name="lx-mode"]:checked').value,
+    };
+
+    const btn = document.getElementById('lx-run');
+    btn.disabled = true;
+    status.textContent = '⏳ Export wird erzeugt …';
+
+    try {
+        const resp = await window.api.etl.exportLayer(payload);
+        if (!resp.ok) {
+            let detail = `HTTP ${resp.status}`;
+            try { detail = (await resp.json()).detail || detail; } catch (_) {}
+            throw new Error(detail);
+        }
+
+        const count = resp.headers.get('X-Export-File-Count');
+        const blob  = await resp.blob();
+
+        let filename = 'layer_export.zip';
+        const cd = resp.headers.get('Content-Disposition') || '';
+        const m = cd.match(/filename="?([^"]+)"?/);
+        if (m) filename = m[1];
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+
+        status.textContent = `✅ ${count || '?'} Dateien exportiert: ${filename}`;
+    } catch (err) {
+        status.textContent = `❌ Fehler: ${err.message}`;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 // ── Events ────────────────────────────────────────────────────────
 document.getElementById('btn-refresh').addEventListener('click', load);
 document.getElementById('btn-new-etl').addEventListener('click', openWizardGeneral);
+document.getElementById('btn-layer-export').addEventListener('click', openLayerExport);
+document.getElementById('lx-close').addEventListener('click', closeLayerExport);
+document.getElementById('lx-cancel').addEventListener('click', closeLayerExport);
+document.getElementById('lx-run').addEventListener('click', runLayerExport);
+document.getElementById('lx-overlay').addEventListener('click', (e) => {
+    if (e.target.id === 'lx-overlay') closeLayerExport();
+});
 document.getElementById('side-close').addEventListener('click', closeSide);
 
 document.addEventListener('studio:job-created', () => load());

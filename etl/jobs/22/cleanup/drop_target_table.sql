@@ -1,4 +1,0 @@
--- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
--- Job ID: 22
-
-DROP TABLE MDP01_DISCOVERABLE_LAYER.UZMS01_TAAS_ERLEDIGUNG;

@@ -1,4 +1,0 @@
--- ACHTUNG: Löscht SK-Tabelle inkl. aller Surrogate Keys!
--- Job ID: 22
-
-DROP TABLE MDP01_DISCOVERABLE_LAYER.KEY_UZMS01_TAAS_ERLEDIGUNG;

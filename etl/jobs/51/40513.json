@@ -1,0 +1,17 @@
+{
+  "SOURCE_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "SOURCE_TABLE": "V_CASE_VERFAHREN_BEMERKUNG",
+  "STAGING_TABLE": "temp_v_case_verfahren_bemerkung_staging",
+  "BUSINESS_KEY": "VERFAHREN_BEMERKUNG_ID",
+  "select_columns": [
+    "CASE_VERFAHREN_BEMERKUNG_SK",
+    "VERFAHREN_BEMERKUNG_ID",
+    "VERFAHREN_ID",
+    "VERFAHREN_SK",
+    "ASYL_VERF_BEM_CD",
+    "EREIGNIS_DAT",
+    "STAT_DAT",
+    "SACHBEARBEITER_UID"
+  ],
+  "fk_definitions": []
+}

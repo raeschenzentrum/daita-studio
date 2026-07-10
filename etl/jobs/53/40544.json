@@ -1,0 +1,12 @@
+{
+  "STAGING_TABLE": "temp_v_code_asyl_erledig_staging",
+  "TARGET_DATABASE": "MDP01_REUSABLE_LAYER",
+  "TARGET_TABLE": "CODE_ASYL_ERLEDIG",
+  "BUSINESS_KEY_JOIN": "stg.ASYL_ERLEDIG_CD = hist.ASYL_ERLEDIG_CD",
+  "BUSINESS_KEY_NULL_CHECK": "hist.ASYL_ERLEDIG_CD IS NULL",
+  "PRIMARY_INDEX_COLS": "ASYL_ERLEDIG_CD",
+  "NEW_RECORDS_TABLE": "temp_v_code_asyl_erledig_new",
+  "IST_AKTUELL_COL": "IS_CURRENT",
+  "IST_AKTUELL_VAL": "Y",
+  "fk_definitions": []
+}

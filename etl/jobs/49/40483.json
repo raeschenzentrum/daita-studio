@@ -1,0 +1,17 @@
+{
+  "SOURCE_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "SOURCE_TABLE": "V_CASE_ERLEDIG_ZUSATZ",
+  "STAGING_TABLE": "temp_v_case_erledig_zusatz_staging",
+  "BUSINESS_KEY": "ERLEDIG_ZUSATZ_ID",
+  "select_columns": [
+    "CASE_ERLEDIG_ZUSATZ_SK",
+    "ERLEDIG_ZUSATZ_ID",
+    "ERLEDIGUNG_ID",
+    "ERLEDIGUNG_SK",
+    "ASYL_ERLED_ZUS_CD",
+    "EREIGNIS_DAT",
+    "STAT_DAT",
+    "SACHBEARBEITER_UID"
+  ],
+  "fk_definitions": []
+}

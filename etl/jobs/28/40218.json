@@ -1,0 +1,15 @@
+{
+  "target_database": "MDP01_DISCOVERABLE_LAYER",
+  "target_table": "UZMS01_TAAS_GESCHAEFT_HISTORY",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_VERFAHREN_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAS_VERFAHREN_HISTORY",
+      "parent_sk_column": "UZMS01_TAAS_VERFAHREN_SK",
+      "parent_bk_column": "VERFAHREN_ID",
+      "natural_key_expr": "CAST(src.VERFAHREN_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

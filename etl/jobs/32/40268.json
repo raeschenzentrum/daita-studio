@@ -1,0 +1,48 @@
+{
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TAAS_VERFAHREN_BEM_HISTORY",
+  "NEW_RECORDS_TABLE": "temp_uzms01_taas_verfahren_bem_new",
+  "INSERT_COLUMNS": [
+    "VERFAHREN_BEM_ID",
+    "VERFAHREN_ID",
+    "ASYL_VERF_BEM_CD",
+    "EREIGNIS_DAT",
+    "STAT_DAT",
+    "SB_UID",
+    "CTL_CRE_UID",
+    "CTL_CRE_DAT",
+    "CTL_MOD_UID",
+    "CTL_MOD_DAT",
+    "VERFAHREN_BEM_TCN"
+  ],
+  "HASH_COLUMNS": "VERFAHREN_ID, ASYL_VERF_BEM_CD, EREIGNIS_DAT, STAT_DAT, SB_UID, CTL_CRE_UID, CTL_CRE_DAT, CTL_MOD_UID, CTL_MOD_DAT, VERFAHREN_BEM_TCN",
+  "TABLE_ALIAS": "src",
+  "KEY_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "KEY_TABLE": "KEY_UZMS01_TAAS_VERFAHREN_BEM",
+  "NATURAL_KEY_EXPRESSION_SRC": "CAST(src.VERFAHREN_BEM_ID AS VARCHAR(255))",
+  "DOMAIN": "ZEMIS",
+  "SK_COLUMN": "UZMS01_TAAS_VERFAHREN_BEM_SK",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_VERFAHREN_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAS_VERFAHREN_HISTORY",
+      "parent_sk_column": "UZMS01_TAAS_VERFAHREN_SK",
+      "parent_bk_column": "VERFAHREN_ID",
+      "natural_key_expr": "CAST(src.VERFAHREN_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ],
+  "hash_columns": [
+    "VERFAHREN_ID",
+    "ASYL_VERF_BEM_CD",
+    "EREIGNIS_DAT",
+    "STAT_DAT",
+    "SB_UID",
+    "CTL_CRE_UID",
+    "CTL_CRE_DAT",
+    "CTL_MOD_UID",
+    "CTL_MOD_DAT",
+    "VERFAHREN_BEM_TCN"
+  ]
+}

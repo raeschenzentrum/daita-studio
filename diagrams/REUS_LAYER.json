@@ -1,0 +1,78 @@
+{
+  "name": "REUS_LAYER",
+  "cells": [
+    {
+      "table_id": 127,
+      "table_name": "CASE_ERLEDIGUNG",
+      "position": {
+        "x": 920,
+        "y": 910
+      }
+    },
+    {
+      "table_id": 110,
+      "table_name": "PART_PERSON",
+      "position": {
+        "x": 450,
+        "y": 60
+      }
+    },
+    {
+      "table_id": 121,
+      "table_name": "PART_IDENTITAET",
+      "position": {
+        "x": 920,
+        "y": 50
+      }
+    },
+    {
+      "table_id": 125,
+      "table_name": "CASE_VERFAHREN",
+      "position": {
+        "x": 450,
+        "y": 480
+      }
+    },
+    {
+      "table_id": 133,
+      "table_name": "CASE_VERFAHREN_BEMERKUNG",
+      "position": {
+        "x": 30,
+        "y": 600
+      }
+    },
+    {
+      "table_id": 126,
+      "table_name": "CASE_GESCHAEFT",
+      "position": {
+        "x": 460,
+        "y": 910
+      }
+    },
+    {
+      "table_id": 129,
+      "table_name": "CASE_GESCHAEFTSSCHRITT",
+      "position": {
+        "x": 40,
+        "y": 980
+      }
+    },
+    {
+      "table_id": 134,
+      "table_name": "CODE_ASYLGS_ART",
+      "position": {
+        "x": 1390,
+        "y": 350
+      }
+    },
+    {
+      "table_id": 135,
+      "table_name": "CODE_ASYL_ERLEDIG",
+      "position": {
+        "x": 1390,
+        "y": 630
+      }
+    }
+  ],
+  "saved_at": "2026-06-30T10:43:11.818Z"
+}

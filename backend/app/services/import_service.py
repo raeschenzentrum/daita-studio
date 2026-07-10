@@ -5,6 +5,7 @@ Importiert physische Tabellen aus dem Teradata Data Dictionary in das
 META-Schema des daita-modelers.
 """
 
+import re
 from collections import defaultdict
 
 import teradatasql
@@ -71,6 +72,73 @@ def _connect():
         password=DB_CONFIG["password"],
         database=DB_CONFIG["database"],
     )
+
+
+def _safe_ident(s: str) -> str:
+    """Validiert einen SQL-Identifier (nur [A-Za-z0-9_]). HELP COLUMN ist nicht
+    parametrisierbar – diese Prüfung verhindert SQL-Injection."""
+    s = (s or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_]+", s):
+        raise ValueError(f"Ungültiger Identifier: {s!r}")
+    return s
+
+
+def _help_column_types(cur, db_name: str, table_name: str) -> dict:
+    """
+    Liest Spalten-Typen via HELP COLUMN db.table.* .
+
+    Hintergrund: DBC.ColumnsV liefert für VIEWS keine Typen (ColumnType=NULL).
+    HELP COLUMN dagegen liefert die echten Typcodes (I8, CV, …). Die Zeichen-
+    länge steht im Feld 'Format' als X(n); 'Max Length' ist die Byte-Länge
+    (bei Unicode = 2×Zeichen).
+
+    Gibt {COLUMN_NAME_UPPER: {code, length, dec_total, dec_frac, char_type,
+    nullable}} zurück. length = Zeichenlänge.
+    """
+    db  = _safe_ident(db_name)
+    tbl = _safe_ident(table_name)
+
+    cur.execute(f"HELP COLUMN {db}.{tbl}.*")
+    rows = cur.fetchall()
+    desc = [d[0] for d in cur.description]
+
+    def _i(name):
+        return desc.index(name) if name in desc else None
+
+    i_name = _i("Column Name")
+    i_type = _i("Type")
+    i_fmt  = _i("Format")
+    i_maxl = _i("Max Length")
+    i_dect = _i("Decimal Total Digits")
+    i_decf = _i("Decimal Fractional Digits")
+    i_char = _i("Char Type")
+    i_null = _i("Nullable")
+
+    out: dict = {}
+    for r in rows:
+        name = str(r[i_name]).strip().upper()
+        code = str(r[i_type]).strip() if r[i_type] is not None else ""
+        char_type = r[i_char] if i_char is not None else None
+
+        # Zeichenlänge bevorzugt aus Format 'X(n)', sonst Max Length (Byte → Zeichen)
+        length = None
+        if i_fmt is not None and r[i_fmt] is not None:
+            m = re.search(r"X\((\d+)\)", str(r[i_fmt]))
+            if m:
+                length = int(m.group(1))
+        if length is None and i_maxl is not None and r[i_maxl] is not None:
+            raw_len = int(r[i_maxl])
+            length = raw_len // 2 if str(char_type or "").strip() == "2" else raw_len
+
+        out[name] = {
+            "code":      code,
+            "length":    length,
+            "dec_total": r[i_dect] if i_dect is not None else None,
+            "dec_frac":  r[i_decf] if i_decf is not None else None,
+            "char_type": char_type,
+            "nullable":  str(r[i_null]).strip() if i_null is not None and r[i_null] is not None else "Y",
+        }
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +265,17 @@ def import_table(db_name: str, table_name: str, layer_id: int = 1) -> dict:
                 )
                 dbc_cols = cur.fetchall()
 
+                # B2 (nur Views): DBC.ColumnsV liefert für Views keine Typen.
+                # Echte Typen via HELP COLUMN nachladen und unten überschreiben.
+                help_map: dict = {}
+                if str(table_kind).strip().upper() == "V":
+                    try:
+                        help_map = _help_column_types(cur, db_name, table_name)
+                    except Exception as e:
+                        help_map = {}
+                        # Nicht abbrechen – Fallback bleibt DBC.ColumnsV (NULL-Typen)
+                        print(f"[import] HELP COLUMN für View {db_name}.{table_name} fehlgeschlagen: {e}")
+
                 # 7. Nächste COLUMN_ID
                 cur.execute(f"SELECT COALESCE(MAX(column_id), 0) FROM {col_tbl}")
                 next_col_id = int(cur.fetchone()[0]) + 1
@@ -205,6 +284,19 @@ def import_table(db_name: str, table_name: str, layer_id: int = 1) -> dict:
                 for col in dbc_cols:
                     col_name, col_pos, col_type, col_len, dec_total, dec_frac, \
                         nullable, default_val, col_comment, char_type = col
+
+                    # B2 (nur Views): Typ/Länge/Decimal aus HELP COLUMN übernehmen
+                    if help_map:
+                        h = help_map.get(str(col_name).strip().upper())
+                        if h:
+                            col_type  = h["code"]      or col_type
+                            col_len   = h["length"]    if h["length"]    is not None else col_len
+                            dec_total = h["dec_total"] if h["dec_total"] is not None else dec_total
+                            dec_frac  = h["dec_frac"]  if h["dec_frac"]  is not None else dec_frac
+                            char_type = h["char_type"] if h["char_type"] is not None else char_type
+                            if not str(nullable or "").strip():
+                                nullable = h["nullable"]
+
                     _CHARSET_MAP = {'L': 'LATIN', 'U': 'UNICODE'}
                     charset_val = _CHARSET_MAP.get(str(char_type or '').strip())
 
@@ -342,6 +434,102 @@ def import_table(db_name: str, table_name: str, layer_id: int = 1) -> dict:
                     "indexes_imported": idx_imported,
                 }
 
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def refresh_view_column_types(table_id: int) -> dict:
+    """
+    Aktualisiert COLUMN_TYPE / LENGTH / DECIMAL_* einer bereits importierten VIEW
+    anhand von HELP COLUMN (B2, nur Views).
+
+    Hintergrund: DBC.ColumnsV liefert für Views keine Typen → beim ursprünglichen
+    Import wurden NULL-Typen gespeichert, was bei der Ziel-Tabellen-DDL zu
+    VARCHAR(255)-Fallback und damit zu Typ-Konvertierungsfehlern führt.
+
+    Nur für TABLE_KIND='V'. Normale Tabellen werden nicht verändert.
+    Gibt zurück: {table_id, table_name, db_name, updated} oder {error: ...}
+    """
+    tbl     = f"{META_SCHEMA}.{META_TABLES['tables']}"
+    col_tbl = f"{META_SCHEMA}.{META_TABLES['columns']}"
+    meta_db = f"{META_SCHEMA}.{META_TABLES['database']}"
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT t.table_name, t.table_kind, d.database_name
+                    FROM {tbl} t
+                    JOIN {meta_db} d ON t.database_id = d.database_id
+                    WHERE t.table_id = ?
+                    """,
+                    (table_id,)
+                )
+                row = cur.fetchone()
+                if not row:
+                    return {"error": f"Tabelle id {table_id} nicht in META_TABLE"}
+                table_name = str(row[0])
+                table_kind = str(row[1] or "").strip().upper()
+                db_name    = str(row[2])
+
+                # META TABLE_KIND kann bei Alt-Importen leer/NULL sein → echten
+                # Typ aus DBC.TablesV nachschlagen.
+                if table_kind not in ("V", "T", "O"):
+                    cur.execute(
+                        "SELECT TRIM(TableKind) FROM DBC.TablesV "
+                        "WHERE TRIM(DatabaseName) = TRIM(?) AND TRIM(TableName) = TRIM(?)",
+                        (db_name.strip(), table_name.strip())
+                    )
+                    k = cur.fetchone()
+                    if k and k[0]:
+                        table_kind = str(k[0]).strip().upper()
+
+                if table_kind != "V":
+                    return {"error": f"table_id {table_id} ist keine View (kind={table_kind!r})"}
+
+                help_map = _help_column_types(cur, db_name, table_name)
+                if not help_map:
+                    return {"error": "HELP COLUMN lieferte keine Spalten"}
+
+                cur.execute(
+                    f"SELECT column_id, column_name FROM {col_tbl} WHERE table_id = ?",
+                    (table_id,)
+                )
+                meta_cols = cur.fetchall()
+
+                updated = 0
+                skipped = 0
+                for cid, cname in meta_cols:
+                    h = help_map.get(str(cname).strip().upper())
+                    if not h:
+                        skipped += 1
+                        continue
+                    type_str = _type_str(h["code"], h["length"], h["dec_total"], h["dec_frac"])
+                    cur.execute(
+                        f"""
+                        UPDATE {col_tbl}
+                        SET column_type = ?, column_length = ?,
+                            decimal_total_digits = ?, decimal_fractional_digits = ?,
+                            aenderungsdatum = CURRENT_TIMESTAMP(6)
+                        WHERE column_id = ?
+                        """,
+                        (
+                            type_str,
+                            int(h["length"])    if h["length"]    is not None else None,
+                            int(h["dec_total"]) if h["dec_total"] is not None else None,
+                            int(h["dec_frac"])  if h["dec_frac"]  is not None else None,
+                            int(cid),
+                        )
+                    )
+                    updated += 1
+                conn.commit()
+                return {
+                    "table_id":   table_id,
+                    "table_name": table_name,
+                    "db_name":    db_name,
+                    "updated":    updated,
+                    "skipped":    skipped,
+                }
     except Exception as e:
         return {"error": str(e)}
 

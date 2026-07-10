@@ -141,6 +141,23 @@ class SQLTemplateEngine:
             if isinstance(insert_cols, list):
                 params['INSERT_COLUMNS'] = self._build_insert_columns(insert_cols)
 
+        # FK_DEFINITIONS → FK_SK_COLUMNS, FK_INSERT_COLUMNS, FK_JOINS
+        # Format: [{"sk_column": "GESCHAEFT_SK", "key_table": "KEY_TAAS_GESCHAEFT",
+        #           "key_database": "MDP01_DISCOVERABLE_LAYER",
+        #           "natural_key_expr": "CAST(src.GESCHAEFT_ID AS VARCHAR(255))",
+        #           "domain": "UZMS01"}]
+        fk_defs = params_lower.get('fk_definitions')
+        if fk_defs and isinstance(fk_defs, list) and len(fk_defs) > 0:
+            fk_sk_cols, fk_insert_cols, fk_joins = self._build_fk_expressions(fk_defs)
+            params['FK_SK_COLUMNS']     = fk_sk_cols
+            params['FK_INSERT_COLUMNS'] = fk_insert_cols
+            params['FK_JOINS']          = fk_joins
+        else:
+            # Kein FK: leere Strings → Template verhält sich wie ohne FK
+            params['FK_SK_COLUMNS']     = ''
+            params['FK_INSERT_COLUMNS'] = ''
+            params['FK_JOINS']          = ''
+
         return params
     
     def _substitute_parameters(self, template: str, parameters: Dict[str, str]) -> str:
@@ -307,6 +324,64 @@ class SQLTemplateEngine:
         
         return ",\n        ".join(select_items)
     
+    def _build_fk_expressions(self, fk_definitions: List[dict]):
+        """
+        Generiert FK-SK SELECT-Ausdrücke, INSERT-Spalten und LEFT JOINs aus FK_DEFINITIONS.
+
+        Args:
+            fk_definitions: Liste von FK-Definitionen:
+                [
+                  {
+                    "sk_column":        "GESCHAEFT_SK",
+                    "key_table":        "KEY_TAAS_GESCHAEFT",
+                    "key_database":     "MDP01_DISCOVERABLE_LAYER",
+                    "natural_key_expr": "CAST(src.GESCHAEFT_ID AS VARCHAR(255))",
+                    "domain":           "UZMS01"
+                  }
+                ]
+
+        Returns:
+            Tuple (fk_sk_columns_str, fk_insert_columns_str, fk_joins_str)
+        """
+        sk_cols    = []
+        insert_cols = []
+        joins      = []
+
+        for i, fk in enumerate(fk_definitions, start=1):
+            alias    = f"fk{i}"
+            sk_col   = fk['sk_column']
+            key_db   = fk['key_database']
+            key_tbl  = fk['key_table']
+            nk_expr  = fk['natural_key_expr']
+
+            # F6: Master-Modus – FK referenziert die SK einer Master-/Dimensionstabelle
+            #     (Join über deren Business Key). Kein KEY-Tabellen-Schema/Domain nötig.
+            if fk.get('master_mode'):
+                parent_sk = fk['parent_sk_column']
+                parent_bk = fk['parent_bk_column']
+                sk_cols.append(f"    COALESCE({alias}.{parent_sk}, -1) AS {sk_col},")
+                insert_cols.append(f"    {sk_col},")
+                joins.append(
+                    f"LEFT JOIN {key_db}.{key_tbl} {alias}\n"
+                    f"    ON CAST({alias}.{parent_bk} AS VARCHAR(255)) = {nk_expr}"
+                )
+            else:
+                # KEY-Tabellen-Modus (NATURAL_KEY_VALUE / NATURAL_KEY_DOMAIN / SURROGATE_KEY)
+                domain   = fk['domain']
+                sk_cols.append(f"    COALESCE({alias}.SURROGATE_KEY, -1) AS {sk_col},")
+                insert_cols.append(f"    {sk_col},")
+                joins.append(
+                    f"LEFT JOIN {key_db}.{key_tbl} {alias}\n"
+                    f"    ON {nk_expr} = {alias}.NATURAL_KEY_VALUE\n"
+                    f"   AND {alias}.NATURAL_KEY_DOMAIN = '{domain}'"
+                )
+
+        fk_sk_str     = ("\n".join(sk_cols) + "\n") if sk_cols else ""
+        fk_insert_str = ("\n".join(insert_cols) + "\n") if insert_cols else ""
+        fk_joins_str  = "\n".join(joins) if joins else ""
+
+        return fk_sk_str, fk_insert_str, fk_joins_str
+
     def _build_insert_columns(self, columns: List[str]) -> str:
         """
         Baut Spalten-Liste für INSERT Statement.

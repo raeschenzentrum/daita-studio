@@ -32,7 +32,7 @@ def td_typecode_to_ddl(
         DDL-Typ-String (z.B. 'BIGINT', 'VARCHAR(200)', 'DECIMAL(18,4)')
     """
     if not col_type:
-        return 'VARCHAR(255)'
+        return 'VARCHAR(255) CHARACTER SET UNICODE'
 
     t = col_type.strip().upper()
 
@@ -169,9 +169,15 @@ def td_typecode_to_ddl(
         'TIMESTAMP(', 'TIME(', 'PERIOD(', 'INTERVAL ',
     )
     if any(t.startswith(p) for p in _ddl_prefixes):
-        return col_type.strip()
+        out = col_type.strip()
+        # Architektur-Prinzip: Character-Typen IMMER UNICODE (nie LATIN).
+        # Views liefern bereits lesbare Typen (VARCHAR(8)) ohne CHARACTER SET →
+        # sonst würde Teradata beim CREATE TABLE den Session-Default (LATIN) nehmen.
+        if t.startswith(('VARCHAR(', 'CHAR(', 'NVARCHAR(')) and 'CHARACTER SET' not in t:
+            out += ' CHARACTER SET UNICODE'
+        return out
 
     # -------------------------------------------------------------------------
     # Fallback
     # -------------------------------------------------------------------------
-    return 'VARCHAR(255)'
+    return 'VARCHAR(255) CHARACTER SET UNICODE'

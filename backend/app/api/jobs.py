@@ -203,8 +203,8 @@ async def delete_preview(
                 "required": False,
                 "default_selected": False,
                 "sql_preview": (
-                    f"DELETE FROM MDP01_META.META_TABLE\nWHERE TABLE_NAME = '{target_table}';"
-                ) if target_table else None,
+                    f"DELETE FROM MDP01_META.META_TABLE\nWHERE TABLE_ID = {job.target_table_id};"  # per ID, nicht Name!
+                ) if job.target_table_id else None,
             },
             {
                 "key": "drop_meta_columns",
@@ -213,11 +213,8 @@ async def delete_preview(
                 "required": False,
                 "default_selected": False,
                 "sql_preview": (
-                    f"DELETE FROM MDP01_META.META_COLUMN\nWHERE TABLE_ID = (\n"
-                    f"    SELECT TABLE_ID FROM MDP01_META.META_TABLE\n"
-                    f"    WHERE TABLE_NAME = '{target_table}'\n"
-                    f");"
-                ) if target_table else None,
+                    f"DELETE FROM MDP01_META.META_COLUMN\nWHERE TABLE_ID = {job.target_table_id};"
+                ) if job.target_table_id else None,
             },
         ]
 
@@ -292,28 +289,28 @@ async def delete_job(
                             logger.warning(f"SK-Tabelle löschen fehlgeschlagen: {e}")
 
                 if opts.drop_meta_table or opts.drop_meta_columns:
-                    tgt = params_combined.get("TARGET_TABLE")
-                    if tgt:
-                        try:
-                            cursor.execute(
-                                "SELECT TABLE_ID FROM MDP01_META.META_TABLE WHERE TABLE_NAME = ? SAMPLE 1",
-                                [tgt]
-                            )
-                            row = cursor.fetchone()
-                            if row:
-                                tbl_id = row[0]
-                                if opts.drop_meta_columns:
-                                    cursor.execute(
-                                        "DELETE FROM MDP01_META.META_COLUMN WHERE TABLE_ID = ?", [tbl_id]
-                                    )
-                                if opts.drop_meta_table:
-                                    cursor.execute(
-                                        "DELETE FROM MDP01_META.META_TABLE WHERE TABLE_ID = ?", [tbl_id]
-                                    )
-                                conn.commit()
-                                logger.info(f"META-Einträge für {tgt} gelöscht")
-                        except Exception as e:
-                            logger.warning(f"META-Einträge löschen fehlgeschlagen: {e}")
+                    # TARGET_TABLE_ID direkt aus META_ETL_JOB holen – NICHT per Namen suchen!
+                    # (Name-Suche würde Source+Target mit gleichem Namen beide treffen)
+                    try:
+                        cursor.execute(
+                            "SELECT TARGET_TABLE_ID FROM MDP01_META.META_ETL_JOB WHERE ETL_JOB_ID = ?",
+                            [job_id]
+                        )
+                        id_row = cursor.fetchone()
+                        tbl_id = id_row[0] if id_row else None
+                        if tbl_id:
+                            if opts.drop_meta_columns:
+                                cursor.execute(
+                                    "DELETE FROM MDP01_META.META_COLUMN WHERE TABLE_ID = ?", [tbl_id]
+                                )
+                            if opts.drop_meta_table:
+                                cursor.execute(
+                                    "DELETE FROM MDP01_META.META_TABLE WHERE TABLE_ID = ?", [tbl_id]
+                                )
+                            conn.commit()
+                            logger.info(f"META-Einträge für TABLE_ID={tbl_id} (Job {job_id}) gelöscht")
+                    except Exception as e:
+                        logger.warning(f"META-Einträge löschen fehlgeschlagen: {e}")
             finally:
                 cursor.close()
                 conn.close()

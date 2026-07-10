@@ -1,0 +1,9 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taaa_person_staging",
+  "KEY_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "KEY_TABLE": "KEY_UZMS01_TAAA_PERSON",
+  "NATURAL_KEY_COL": "PERSON_ID",
+  "NATURAL_KEY_EXPRESSION_STG": "CAST(stg.PERSON_ID AS VARCHAR(255))",
+  "DOMAIN": "ZEMIS",
+  "fk_definitions": []
+}

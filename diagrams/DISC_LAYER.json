@@ -1,0 +1,22 @@
+{
+  "name": "DISC_LAYER",
+  "cells": [
+    {
+      "table_id": 93,
+      "table_name": "UZMS01_TAAA_PERSON",
+      "position": {
+        "x": 141,
+        "y": 102
+      }
+    },
+    {
+      "table_id": 94,
+      "table_name": "UZMS01_TAAA_IDENTITAET",
+      "position": {
+        "x": 710,
+        "y": 80
+      }
+    }
+  ],
+  "saved_at": "2026-06-15T05:57:16.411Z"
+}

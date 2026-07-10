@@ -102,7 +102,237 @@ Die daita-modeler-Services werden als neue Router in das bestehende daita-studio
 
 ---
 
-### F1 – Feature: Flow UX – Job-Erstellung, Steps & Template-Architektur
+### F10 – Feature: Layer-Bulk-SQL-Export wiederverwendbar + in GUI
+
+**Ausgangslage:**
+Einmalig wurden pro ETL-Job (RAW→DISC, DISC→REUS) SQL-Scripts erzeugt – analog zum
+„SQL Export"-Button im Job-Detail, aber als Batch über alle Jobs einer Transition,
+FK-sortiert/nummeriert, mit inaktiven CREATE-TABLE-Steps und aktivem DELETE (Initial Load),
+plus DDLs (DISC + REUS) und REUS-Quell-View-DDLs.
+
+**Artefakte (bereits vorhanden):**
+- Generierte Scripts + Generator + Anleitung: `sql/export_layers/`
+  - `raw_to_disc/`, `disc_to_reus/`, `ddl/disc/`, `ddl/reus/`, `views/`
+  - `generate_export.py`, `_meta/*.json`, `AUSFUEHRUNG.md`
+- **Umsetzungsplan: [`sql/export_layers/PLAN_GUI_INTEGRATION.md`](sql/export_layers/PLAN_GUI_INTEGRATION.md)**
+
+**Ziel:** Aus dem Einmal-Skript einen wiederholbaren, GUI-gesteuerten `LayerExportService`
+machen (Backend liest live aus `MDP01_META`/`dbc`, REST-Endpoint `POST /api/export/layer`,
+Button „Layer-Export" im Frontend). Details, Phasen A–D und Alt→Neu-Mapping im Plan.
+
+**Hinweis:** DB-Zugang ist vorhanden (`cfg/database.yml`, Schema `MDP01_META`) – der Service
+nutzt die bestehende `etl_service._get_connection()`.
+
+→ **Nächster Schritt: Plan umsetzen (Phase A – Backend-Kern), gemäß `PLAN_GUI_INTEGRATION.md`.**
+
+---
+
+### F7 – Bug/Feature: SK-Spalte im ETL-Wizard template-abhängig über Flag `USE_SK`
+
+**Beobachtung (User):**
+Template "RAW To DISC SCD2 (FK)" gewählt → in Schritt 2 (Spalten) erscheint der
+Technik-Block mit der SK-Spalte (`{CORE}_SK 🔑 PK`) nicht (sichtbar).
+
+**Anforderung (User – finale Vorgabe):**
+- SK-Anzeige **template-abhängig** über ein **Boolean-Flag `USE_SK`** im Template-Datensatz.
+- **Niemals** über den Template-**Namen** erkennen.
+- **SK ist unabhängig von SCD2** – also KEIN `historization_type`/`IS_SCD2`,
+  sondern eigenes Flag `USE_SK` (ein Template kann SK nutzen, ohne SCD2 zu sein, und umgekehrt).
+
+**Ursachenanalyse (read-only, bestätigt):**
+1. `etl-wizard.js` `_renderStep2` (~Z. 548) prüft
+   `isScd2 = (tpl?.historization_type || tpl?.template_name || '').includes('SCD2')`.
+   → `META_ETL_JOB_TEMPLATE` hat **kein** passendes Flag (DB-Check: 25 Spalten,
+   nur `JOB_TYPE`), `historization_type` existiert nicht. Erkennung hängt am Namen → fragil.
+2. `this._form.template_id` wird nur im `change`-Handler des Dropdowns gesetzt
+   (~Z. 443). Bei vorbelegtem Template ohne `change`-Event bleibt es `null`
+   → `find()` = `undefined` → Block fehlt.
+3. Platzierung: Block steht **nach** der langen Spaltentabelle (~Z. 564) → ggf. Scroll nötig.
+
+**Umsetzungsplan (nach OK):**
+1. **DDL:** `ALTER TABLE MDP01_META.META_ETL_JOB_TEMPLATE ADD USE_SK CHAR(1) DEFAULT 'N';`
+   danach `conn.commit()`. (CHAR(1), GROSSBUCHSTABEN, Werte 'Y'/'N').
+2. **Bestandsdaten:** Templates mit SK auf `USE_SK='Y'` setzen
+   (mind. 20001 RAW_TO_DISC_SCD2_FK; weitere nach Klärung mit User).
+3. **Backend** `template_service.py`: `JobTemplate`-Model um `use_sk: Optional[str]='N'`,
+   `get_job_templates`-SELECT um `USE_SK` erweitern.
+4. **Frontend** `etl-wizard.js`: Anzeige des SK-/Technik-Blocks an
+   `tpl?.use_sk === 'Y'` koppeln (kein Namens-Fallback). `template_id` beim Öffnen
+   sicher initialisieren. Block oberhalb der Spaltentabelle platzieren.
+
+**Betroffene Stellen:**
+- `MDP01_META.META_ETL_JOB_TEMPLATE` – neue Spalte `USE_SK`
+- `backend/app/services/template_service.py` – `JobTemplate`-Model + `get_job_templates`
+- `frontend/components/etl-wizard.js` – `_renderStep2` (Flag-Logik, Platzierung), Dropdown-Init
+
+**Status:** ✅ Umgesetzt
+
+**Umsetzung:**
+- DDL: `MDP01_META.META_ETL_JOB_TEMPLATE` um `USE_SK CHAR(1) DEFAULT 'N'` erweitert.
+- Bestandsdaten: nur TEMPLATE_ID=20001 (`RAW_TO_DISC_SCD2_FK`) → `USE_SK='Y'`, alle anderen `'N'`.
+- Backend: `JobTemplate.use_sk` ergänzt, `get_job_templates`-SELECT um `USE_SK` erweitert
+  (API liefert `use_sk` verifiziert: nur 20001 = Y).
+- Frontend (`etl-wizard.js`, v=11): SK-/Technik-Block in Step 2 + Step 3 nun an
+  `tpl?.use_sk === 'Y'` gekoppelt (kein Namens-/`historization_type`-Fallback mehr).
+  Block in Step 2 **oberhalb** der Spaltentabelle platziert (immer sichtbar).
+  SK-bezogene Parameter (SK_COLUMN, KEY_TABLE, Tech-Spalten) in Step 3 ebenfalls flag-abhängig.
+
+**Nachtrag (User-Wunsch): SK als echte Zeile in der Spaltentabelle**
+- `column-selector.js` (v=7) um `techRows`-Option erweitert: fixe, **nicht editierbare**
+  Zeilen werden oben in der Tabelle gerendert (lila, PK/PI/Laden disabled angehakt),
+  fließen NICHT in `getSelection()` ein.
+- `etl-wizard.js` (v=12): bei `USE_SK='Y'` wird die SK-Spalte als `techRow`
+  (`{CORE}_SK`, BIGINT, PK+PI+Laden) als erste Zeile der Spaltentabelle angezeigt.
+  Oberer Badge-Block zeigt nur noch die übrigen Tech-Spalten (VALID_FROM, … RECORD_HASH).
+
+---
+
+### F6 – Feature: FK-Surrogate-Keys vereinfachen + im Modeler/META abbilden
+
+**Kontext (User-Anforderungen aus mehreren Prompts):**
+Aktuell muss man im ETL-Wizard im FK-Block fünf Felder manuell ausfüllen
+(SK-Spaltenname, Key-Database, Key-Tabelle, Natural-Key-Expression, Domain).
+Das ist zu umständlich und die erzeugten FK-Spalten/-Flags landen weder in
+`META_COLUMN` noch in `META_FOREIGN_KEY`, also zeigt der Modeler sie nicht.
+
+**Zielbild:**
+
+#### F6-A – FK-Eingabe radikal vereinfachen (nur Mastertabelle wählen)
+- Im Wizard wird **nur die Mastertabelle** (Parent / KEY-Tabelle) ausgewählt.
+- Anhand der Mastertabelle ermittelt das Backend automatisch:
+  - PK/SK der Mastertabelle (aus `META_COLUMN`, `IS_PK`/`IS_TECHNICAL_KEY`)
+  - Key-Database, Key-Tabellenname, Domain
+- Die FK-Spalte in der Zieltabelle wird automatisch benannt:
+  `{MASTER_SK}_FK`, z.B. `PERSON_SK` (Master) → `PERSON_SK_FK` (Ziel).
+- Einzig evtl. nötige manuelle Eingabe: Join-/Natural-Key-Mapping (Quellspalte),
+  falls nicht automatisch ableitbar.
+
+#### F6-B – FK-Spalte in META_COLUMN schreiben
+- Beim Job-Erstellen wird die FK-Spalte `{MASTER_SK}_FK` als zusätzliche Spalte
+  in `META_COLUMN` der Zieltabelle angelegt (Typ BIGINT, `IS_FK='Y'`).
+
+#### F6-C – FK-Beziehung in META_FOREIGN_KEY schreiben
+- FKs werden in `MDP01_META.META_FOREIGN_KEY` verwaltet (nicht nur als Spalten-Flag).
+- Beim Job-Erstellen wird ein FK-Eintrag angelegt:
+  `child_table_id` = Zieltabelle, `child_column_id` = `{MASTER_SK}_FK`,
+  `parent_table_id` = Mastertabelle, `parent_column_id` = Master-SK.
+- Dadurch zeigt der Modeler die FK-Spalte korrekt (Join in `get_columns_full` greift bereits auf `META_FOREIGN_KEY`).
+
+**Betroffene Stellen:**
+- `frontend/components/etl-wizard.js` – FK-Block (`_renderFkBlock`)
+- `backend/app/services/template_service.py` – `_populate_target_columns_in_meta`, Job-Erstellung
+- `backend/app/services/template_engine.py` – `_build_fk_expressions`
+- `backend/app/services/meta_service.py` – `create_foreign_key` (vorhanden)
+
+**Hinweis:** Template `RAW_TO_DISC_SCD2_FK` (TEMPLATE_ID=20001) ist bereits angelegt.
+
+**Status:** � Umgesetzt (Test durch User ausstehend)
+
+**Umsetzung (Stand jetzt):**
+- F6-A: Neuer Wizard-Block „Foreign Keys über Master-Tabelle" (`_renderFkMasterBlock` in `etl-wizard.js`, v=10).
+  Master-Tabelle per Dropdown wählbar; alter 5-Felder-FK-Block bleibt sichtbar, seine Werte werden
+  aber **nicht mehr** ins Payload übernommen (`fk_definitions: []`). Auswahl → `parameters.fk_master_table_ids`.
+- F6-B/C: Neue Backend-Methode `_create_fk_from_master_tables` in `template_service.py`,
+  aufgerufen in `create_job_from_template` (auch bei bestehender Zieltabelle).
+  Ermittelt Master-SK (`IS_PK`/`IS_TECHNICAL_KEY`), legt FK-Spalte `{MASTER_SK}_FK` (BIGINT, `IS_FK='Y'`)
+  in `META_COLUMN` an und schreibt `META_FOREIGN_KEY`-Beziehung. Idempotent; invalidiert meta_service-Cache.
+
+**Nachtrag (User-Wunsch): FK-Spalte als Zeile in der Spaltentabelle + Beladung**
+(column-selector v=9, etl-wizard v=14, template_service/template_engine)
+- **FK-Zeile sichtbar:** Pro gewählter Master-Tabelle erscheint `{MASTER_SK}_FK` (BIGINT, Badge 🔗, grün,
+  „Laden" angehakt) als fixe Zeile oben in der Spaltentabelle – analog zur SK-Zeile.
+  Tech-Zeilen via `_buildTechRows()`/`_refreshTechRows()` + `ColumnSelector.setTechRows()`.
+- **Quellspalten-Mapping (b):** Im Master-Block wird je Master eine **Quellspalte** per Dropdown
+  dem Master-BK zugeordnet. Payload: `parameters.fk_master_mappings = [{table_id, source_column, master_sk, master_bk, ...}]`.
+- **Beladung (SK-Lookup):** `template_service._build_fk_defs_from_mappings` leitet daraus
+  `fk_definitions` im **Master-Modus** ab. `template_engine._build_fk_expressions` erzeugt damit
+  `FK_SK_COLUMNS` (`COALESCE(fkN.{MASTER_SK}, -1) AS {MASTER_SK}_FK`), `FK_INSERT_COLUMNS` und
+  `FK_JOINS` (`LEFT JOIN {db}.{master} fkN ON CAST(fkN.{MASTER_BK} AS VARCHAR(255)) = CAST(src.{QUELLSPALTE} AS VARCHAR(255))`).
+- **Physische DDL:** `_ensure_target_table_exists(..., fk_columns=...)` legt die FK-Spalten als `BIGINT` an.
+- Hinweis: Master-Modus nutzt KEINE KEY-Tabellen-Domain (Join über Business Key der Master-/Dimensionstabelle,
+  konsistent zur `META_FOREIGN_KEY`-Beziehung Parent=Master-SK).
+
+
+---
+
+### F8 – Fix: DISC_TO_REUS_SCD2 erzeugte nur Create-Table-Steps ✅ Erledigt
+
+**Symptom:** Beim Anlegen eines neuen Jobs aus Template `DISC_TO_REUS_SCD2` (TEMPLATE_ID 10002)
+wurden NUR die beiden code-generierten DDL_CREATE-Steps (Create Target / Create SK) erzeugt –
+keine SCD2-Logik (Delete, Staging, Identify, Close, Insert, Statistics).
+
+**Ursache:** `META_ETL_JOB_STEP_TEMPLATE` hatte **0 Zeilen** für TEMPLATE_ID 10002.
+`get_step_templates(10002)` lieferte eine leere Liste → die Step-Schleife in
+`create_job_from_template` erzeugte nichts; nur `_insert_ddl_steps` (code-getrieben) blieb.
+Der alte Job `LOAD_REUS_PART_PERSON` funktioniert weiter, weil seine Steps bereits in
+`META_ETL_JOB_STEP` materialisiert sind.
+
+**Fix (Methodik wie RAW_TO_DISC_SCD2_FK / Tpl 20001 – alle SQL-Files im eigenen JobTemplate-Verzeichnis):**
+- **8 Step-Templates** für TEMPLATE_ID 10002 in `META_ETL_JOB_STEP_TEMPLATE` wiederhergestellt
+  (Struktur aus dem laufenden Job rekonstruiert), Pfade **prefix-frei** – Code hängt `DISC_TO_REUS_SCD2/` an.
+  Reihenfolge: Delete(1) → Staging(4) → Identify New(7) → Identify Changed(8) → Close Old(9) →
+  Insert New(10) → Insert Changed(11) → Statistics(12).
+- **DEFAULT_PARAMETERS-Keys** an den **aktuellen** `${...}`-Platzhaltern der SQL-Files ausgerichtet
+  (Whitelist-Mechanismus in `template_service.py` ~Z.763). REUS-Konstanten (`GUELTIGVON_COL`,
+  `GUELTIGBIS_COL`, `IST_AKTUELL_COL`/`_VAL`/`_GESCHLOSSEN`) + `TABLE_ALIAS` als Defaults;
+  übrige Werte werden beim Anlegen aus `generated_values`/Wizard überschrieben.
+- **3 SQL-Files** im JobTemplate-Verzeichnis `etl/sql_templates/DISC_TO_REUS_SCD2/` ergänzt:
+  - `delete/delete_target_table.sql` (generisch, identisch zu Top-Level)
+  - `staging/create_staging_table.sql` (generisch, identisch zu Top-Level)
+  - `scd_type2/insert_changed_versions_from_staging.sql` (NEU: Variante mit `${CHANGED_RECORDS_TABLE}`,
+    da `generated_values.NEW_RECORDS_TABLE` fix auf `_new` zeigt – Step „Insert Changed" braucht `_changed`).
+- **Verifikation:** `get_step_templates(10002)` → 8 Steps, alle prefixed Dateien vorhanden;
+  Render-Test aller 8 Templates mit repräsentativen Parametern → keine ungelösten `${}`.
+
+**Offen / separat (nicht Teil dieses Fixes):** Säuberung der noch nicht aufgeräumten Template-Verzeichnisse
+(Top-Level-Generika `common/delete/keys/scd_type2/staging/reusable`, sowie `RAW_TO_DISC_SCD2` / `_TMP`).
+
+
+---
+
+
+### F9 – Fix: DISC_TO_REUS_SCD2 End-to-End (SK-Dedup, SCD2-Namen, DDL-Step, View-Typen) ✅ Erledigt
+
+**Symptome (mehrstufig, beim Anlegen + Ausführen eines DISC_TO_REUS_SCD2-Jobs):**
+1. `[Error 2803]` Secondary-Index-Uniqueness in `META_COLUMN` beim Anlegen.
+2. `[Error 3807]` Zieltabelle existiert nicht beim Ausführen; kein „Create Target Table"-Step.
+3. `[Error 3754]` Precision/Konvertierungsfehler beim JOIN `stg.X = hist.X`.
+
+**Ursachen:**
+1. Die DISC→REUS-Quell-View enthält die SK-Spalte (`<core>_SK`) bereits → SK wurde doppelt in
+   `META_COLUMN` und in der CREATE-TABLE-DDL erzeugt.
+2. Der Create-Target-Step wurde aus `dbc.TablesV` zurückgelesen → fehlte, sobald das physische
+   CREATE TABLE (wegen 1.) fehlschlug.
+3. `dbc.ColumnsV` liefert für **Views** keine Typen (`ColumnType=NULL`) → `td_typecode_to_ddl(None)`
+   erzeugte für alle fachlichen Spalten `VARCHAR(255)`. Die Staging-Tabelle (`CREATE … AS SELECT`)
+   erbt dagegen die echten Typen → Typ-Mismatch im JOIN.
+
+**Fixes:**
+- **Dedup** in `_populate_target_columns_in_meta` + `_ensure_target_table_exists`
+  (`seen_cols`/`seen_ddl_cols`): SK zuerst, Quell-/FK-/SCD2-Spalten überspringen wenn Name vergeben.
+- **C-b – SCD2-Spaltennamen/Werte aus Config:** `cfg/parameter_rules.yml` →
+  `scd2_technical_columns.is_current` um `current_value: "Y"` + `closed_value: "N"` ergänzt.
+  `template_service` befüllt `GUELTIGVON_COL`/`GUELTIGBIS_COL`/`IST_AKTUELL_COL`/`IST_AKTUELL_VAL`/
+  `IST_AKTUELL_GESCHLOSSEN` zentral aus der Config (→ `VALID_FROM`/`VALID_TO`/`IS_CURRENT`, kein `REUS_`-Präfix).
+  Identisch zu RAW→DISC.
+- **D – Create-Target-Step aus generierter DDL:** `_ensure_target_table_exists` gibt die generierte
+  DDL zurück; `_insert_ddl_steps` nutzt sie bevorzugt als `SQL_INLINE` (Fallback: `dbc.TablesV`).
+  Der Step existiert dadurch immer, auch wenn die physische Tabelle (noch) nicht angelegt wurde.
+- **B2 (nur Views) – echte Typen via `HELP COLUMN`:** `import_service`
+  - `_help_column_types()` liest Typcode + Zeichenlänge (`Format X(n)`; `Max Length` ist Byte-Länge)
+    mit `_safe_ident()`-Validierung (SQL-Injection-Schutz, `HELP COLUMN` ist nicht parametrisierbar).
+  - `import_table` übernimmt für `TABLE_KIND='V'` die Typen aus `HELP COLUMN`; Tabellen unverändert (`dbc.ColumnsV`).
+  - Neue Funktion `refresh_view_column_types(table_id)` aktualisiert bestehende View-METAs
+    (bei leerem META-`TABLE_KIND` Fallback über `dbc.TablesV`).
+
+**Verifikation:** View-META 74 (`V_PART_PERSON`, 15 Spalten) + 109 (`V_PART_IDENTITAET`, 40 Spalten)
+mit korrekten Typen (`BIGINT`/`INTEGER`/`BYTEINT`/`VARCHAR(n)`/`TIMESTAMP(6)`). Neuer Job legt Zieltabelle
+mit korrekten Typen an; **vollständiger SCD2-Lauf lädt Daten erfolgreich ins REUS-Target**.
+
+
+---
+
+
 
 **Konzept:** `docs/FLOW_UX_KONZEPT.md`
 

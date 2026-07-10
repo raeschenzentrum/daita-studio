@@ -165,6 +165,13 @@
 
         // ---- Dashboard ----
         dashboard:  ()                      => get('/etl/dashboard/stats'),
+
+        // ---- Layer-Bulk-Export (F10) – liefert die rohe Response (ZIP-Blob) ----
+        exportLayer: (body)                 => fetch(_baseUrl() + '/etl/export/layer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        }),
     };
 
     // ----------------------------------------------------------------

@@ -1,0 +1,25 @@
+{
+  "SOURCE_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "SOURCE_TABLE": "V_CASE_VERFAHREN",
+  "STAGING_TABLE": "temp_v_case_verfahren_staging",
+  "BUSINESS_KEY": "VERFAHREN_ID",
+  "select_columns": [
+    "CASE_VERFAHREN_SK",
+    "VERFAHREN_ID",
+    "PERSON_ID",
+    "PERSON_SK",
+    "EROEFFNUNG_DAT",
+    "EROEFF_NATION_CD",
+    "VERFAHREN_ART_CD",
+    "VU_KANTON_CD",
+    "KOMPLETT_JN",
+    "ABGESCHLOSSEN_JN",
+    "INAKTIVIERT_JN",
+    "INAKTIVIERUNG_DAT",
+    "INAKTIVIERT_ZEMIS_NR",
+    "INAKTIVIERUNG_BENUTZER",
+    "AUPER_PERS_NR_ALT",
+    "AUPER_ALIAS_NR_ALT"
+  ],
+  "fk_definitions": []
+}

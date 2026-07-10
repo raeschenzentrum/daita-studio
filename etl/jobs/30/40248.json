@@ -1,0 +1,15 @@
+{
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TAAS_ERLEDIG_ZUSATZ_HISTORY",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_ERLEDIGUNG_SK_FK",
+      "key_database": "MDP01_DISCOVERABLE_LAYER",
+      "key_table": "UZMS01_TAAS_ERLEDIGUNG_HISTORY",
+      "parent_sk_column": "UZMS01_TAAS_ERLEDIGUNG_SK",
+      "parent_bk_column": "ERLEDIGUNG_ID",
+      "natural_key_expr": "CAST(src.ERLEDIGUNG_ID AS VARCHAR(255))",
+      "master_mode": true
+    }
+  ]
+}

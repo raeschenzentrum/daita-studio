@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 34
+
+DROP TABLE MDP01_DISCOVERABLE_LAYER.UZMS01_TARF_ASYLGS_ART_TX_HISTORY;

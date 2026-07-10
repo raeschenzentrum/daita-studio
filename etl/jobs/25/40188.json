@@ -1,0 +1,10 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taaa_person_staging",
+  "TARGET_DATABASE": "MDP01_DISCOVERABLE_LAYER",
+  "TARGET_TABLE": "UZMS01_TAAA_PERSON_HISTORY",
+  "BUSINESS_KEY_JOIN": "stg.PERSON_ID = hist.PERSON_ID",
+  "BUSINESS_KEY_NULL_CHECK": "hist.PERSON_ID IS NULL",
+  "PRIMARY_INDEX_COLS": "PERSON_ID",
+  "NEW_RECORDS_TABLE": "temp_uzms01_taaa_person_new",
+  "fk_definitions": []
+}

@@ -32,6 +32,9 @@ paths:
   # SQL generiert
   sql_output: 'sql/generated'
 
+  # Layer-Bulk-Export (Job-Scripts, DDLs, Views) -- F10
+  export_layers: 'sql/export_layers'
+
   # Logs
   log: 'log'
 

@@ -28,7 +28,8 @@ Erkenntnisse aus dem Kundenprojekt, die das **Framework** betreffen (z. B. neue 
 ## Arbeitsumgebung
 
 - Repos liegen in einem **Linux-Remote-Container** (Zugriff per SSH vom Mac des Users); Code-Remotes auf GitHub (`raeschenzentrum/…`), private/Kunden-Repos im Homelab-Gitea (`192.168.113.121:3000/raes/…`).
-- Teradata-Zugriff im Tooling via **MCP-Teradata**. Teradata-Theorie-Referenzen: `../daita-docs/teradata-referenz/`.
+- Teradata-Zugriff im Tooling via **MCP-Teradata**.
+- **Doku-Vault `../daita-docs/`** (Wegweiser: `daita-docs/README.md`): Teradata-Theorie in `10_wissen/teradata/`, DWH-/ETL-Patterns in `10_wissen/patterns/`. Beim Umsetzen von Kundenprojekt-Erkenntnissen zuerst die **Projekt-Entscheidungen und Standards** prüfen: `20_projekt_mdp01/adr/` (ADRs) und `20_projekt_mdp01/konventionen/` (z. B. Namenskonvention, Datatype-Guidelines).
 
 ## Konventionen
 

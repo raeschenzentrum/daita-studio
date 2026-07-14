@@ -18,7 +18,7 @@
 
 Die **kundenspezifischen Artefakte** (generierte SQL-Exporte, DWH-Erkenntnisdokument, Qualitätslisten/Reporting) liegen **nicht** hier, sondern im Schwester-Repo **`../mdp01-lakehouse/`**:
 
-- `mdp01-lakehouse/docs/ERKENNTNISSE_MVP_ETL.md` — Erkenntnisse aus dem MVP, Zielbild Zeitstempel/Historisierung, offene Entscheidungen. **Vor Architektur-Arbeit am Kundenprojekt lesen.**
+- `../daita-docs/20_projekt_mdp01/ERKENNTNISSE_MVP_ETL.md` — Erkenntnisse aus dem MVP, Zielbild Zeitstempel/Historisierung, offene Entscheidungen. **Vor Architektur-Arbeit am Kundenprojekt lesen.**
 - `mdp01-lakehouse/docs/AUSFUEHRUNG.md` — Ausführung der generierten Skripte
 - `mdp01-lakehouse/sql/export_layers/` — die Generate
 - `mdp01-lakehouse/reporting/` — Qualitätsliste QL1 (SQL + R)

@@ -1,0 +1,70 @@
+{
+  "name": "CONS_LAYER",
+  "cells": [
+    {
+      "table_id": 136,
+      "table_name": "V_DIM_DATUM",
+      "position": {
+        "x": 100,
+        "y": 30
+      }
+    },
+    {
+      "table_id": 137,
+      "table_name": "V_DIM_ERLEDIG_ART",
+      "position": {
+        "x": 630,
+        "y": 70
+      }
+    },
+    {
+      "table_id": 139,
+      "table_name": "V_DIM_PERSON",
+      "position": {
+        "x": 360,
+        "y": 450
+      }
+    },
+    {
+      "table_id": 138,
+      "table_name": "V_DIM_GESCHAEFT",
+      "position": {
+        "x": 620,
+        "y": 280
+      }
+    },
+    {
+      "table_id": 140,
+      "table_name": "V_DIM_VERFAHREN",
+      "position": {
+        "x": 330,
+        "y": 160
+      }
+    },
+    {
+      "table_id": 141,
+      "table_name": "V_FACT_ERLEDIGUNG",
+      "position": {
+        "x": 50,
+        "y": 290
+      }
+    },
+    {
+      "table_id": 142,
+      "table_name": "V_FACT_GESCHAEFTSSCHRITT",
+      "position": {
+        "x": 860,
+        "y": 120
+      }
+    },
+    {
+      "table_id": 143,
+      "table_name": "V_FACT_GESCHAEFT_STATUS",
+      "position": {
+        "x": 690,
+        "y": 510
+      }
+    }
+  ],
+  "saved_at": "2026-07-16T09:17:58.753Z"
+}

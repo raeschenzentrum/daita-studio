@@ -34,6 +34,7 @@ from .api import templates as templates_router
 from .api import modeler as modeler_router
 from .api import diagrams as diagrams_router
 from .api import import_td as import_router
+from .api import lineage_flow as lineage_flow_router
 
 # FastAPI App
 app = FastAPI(
@@ -61,6 +62,7 @@ app.include_router(templates_router.router)  # Templates (AF-006)
 app.include_router(modeler_router.router)
 app.include_router(diagrams_router.router)
 app.include_router(import_router.router)
+app.include_router(lineage_flow_router.router)  # Lineage-Flow (Dataflow-Graph, Phase 1)
 
 # Services
 lineage_service = LineageService()

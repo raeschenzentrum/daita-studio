@@ -304,6 +304,16 @@
     };
 
     // ----------------------------------------------------------------
+    // lineage-flow  – /api/lineage/*  (Dataflow-Graph, Phase 1: ETL-Kanten)
+    // ----------------------------------------------------------------
+    api.lineageFlow = {
+        /** Herkunftsgraph (upstream) eines Objekts: { root_table_id, nodes, edges } */
+        dataflow:   (tableId, depth) => get(`/lineage/dataflow/${tableId}`, depth ? { depth } : null),
+        /** View-DDL eines Objekts: { table_id, db_name, table_name, ddl } */
+        viewDdl:    (tableId)        => get(`/lineage/view/${tableId}/ddl`),
+    };
+
+    // ----------------------------------------------------------------
     // health  – /
     // ----------------------------------------------------------------
     api.health = () => _fetch('/'.replace('/api', ''), { headers: {} });

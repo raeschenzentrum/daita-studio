@@ -25,6 +25,7 @@
         { key: 'modeler', label: 'Modeler', icon: '⬡', href: 'modeler.html' },
         { key: 'jobs',    label: 'Jobs',    icon: '⚙', href: 'jobs.html' },
         { key: 'lineage', label: 'Lineage', icon: '↗', href: 'lineage.html' },
+        { key: 'dataflow',label: 'Dataflow',icon: '⤳', href: 'lineage-flow.html' },
         { key: 'sources', label: 'Sources', icon: '⇄', href: 'sources.html' },
     ];
 

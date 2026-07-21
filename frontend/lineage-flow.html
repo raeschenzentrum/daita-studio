@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>daita-studio – Dataflow / Lineage</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="components/api.js"></script>
+    <script src="components/nav-header.js"></script>
+    <script src="components/job-detail.js?v=6"></script>
+    <script src="components/lineage-graph.js?v=3"></script>
+    <style>
+        body { margin: 0; background: var(--bg-color, #f0f2f5); }
+        .flow-page { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .flow-body { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+        .flow-area { flex: 1; overflow: auto; padding: 24px; }
+        .flow-side {
+            width: 440px; flex-shrink: 0; background: #fff;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.09);
+            display: flex; flex-direction: column; transition: width 0.25s;
+        }
+        .flow-side.hidden { width: 0; overflow: hidden; }
+        .side-header {
+            background: linear-gradient(135deg, #667eea, #764ba2); color: #fff;
+            padding: 14px 16px; display: flex; align-items: center;
+            justify-content: space-between; flex-shrink: 0;
+        }
+        .side-header-title { font-weight: 700; font-size: 0.95em; }
+        .side-close { background: none; border: none; cursor: pointer; color: #fff;
+            font-size: 1.2em; line-height: 1; opacity: 0.85; }
+        .side-close:hover { opacity: 1; }
+        .side-body { flex: 1; overflow-y: auto; }
+
+        .flow-toolbar {
+            display: flex; align-items: center; gap: 12px;
+            margin-bottom: 16px; flex-wrap: wrap;
+        }
+        .flow-toolbar h2 { margin: 0; font-size: 1.05em; font-weight: 700; color: #333; }
+        .df-field { display: flex; flex-direction: column; gap: 2px; }
+        .df-field label { font-size: 0.68em; color: #999; text-transform: uppercase; letter-spacing: 0.03em; }
+        .df-field select, .df-field input {
+            padding: 5px 8px; border: 1px solid #ccc; border-radius: 6px;
+            font-size: 0.86em; background: #fff; min-width: 150px;
+        }
+        .df-field input { min-width: 64px; width: 70px; }
+        .btn-sm {
+            padding: 6px 14px; border-radius: 6px; cursor: pointer;
+            font-size: 0.84em; border: 1px solid #667eea;
+            background: transparent; color: #667eea; align-self: flex-end;
+        }
+        .btn-sm:hover { background: #667eea; color: #fff; }
+        .flow-error {
+            padding: 10px 14px; background: #fff5f5; border: 1px solid #f5c6cb;
+            border-radius: 6px; color: #c0392b; font-size: 0.87em; margin-bottom: 14px;
+        }
+        .df-graph {
+            background: #fff; border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 12px; min-height: 300px;
+        }
+        .lg-ddl {
+            margin: 0; padding: 16px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 0.8em; line-height: 1.45;
+            white-space: pre-wrap; word-break: break-word; color: #2b2b2b;
+        }
+    </style>
+</head>
+<body>
+<div class="flow-page">
+
+    <studio-nav active="dataflow"></studio-nav>
+
+    <div class="flow-body">
+        <div class="flow-area">
+
+            <div class="flow-toolbar">
+                <h2>⤳ Dataflow / Lineage</h2>
+                <div class="df-field">
+                    <label for="df-layer">Layer</label>
+                    <select id="df-layer"><option value="">– lädt –</option></select>
+                </div>
+                <div class="df-field">
+                    <label for="df-object">Objekt (Tabelle / View)</label>
+                    <select id="df-object"><option value="">– Layer wählen –</option></select>
+                </div>
+                <div class="df-field">
+                    <label for="df-depth">Tiefe</label>
+                    <input type="number" id="df-depth" value="12" min="1" max="50">
+                </div>
+                <button class="btn-sm" id="df-reload">↺ Neu laden</button>
+            </div>
+
+            <div class="flow-error" id="df-error" style="display:none"></div>
+
+            <div class="df-graph" id="df-graph">
+                <div style="padding:30px;text-align:center;color:#999;">
+                    Wähle links ein Objekt, um seine Herkunft (Upstream) anzuzeigen.
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Side-Panel: Job-Detail bei Klick auf eine ETL-Kante -->
+        <div class="flow-side hidden" id="flow-side">
+            <div class="side-header">
+                <span class="side-header-title" id="side-title">Job-Detail</span>
+                <button class="side-close" id="side-close" title="Schließen">✕</button>
+            </div>
+            <div class="side-body" id="side-body"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const elLayer  = document.getElementById('df-layer');
+const elObject = document.getElementById('df-object');
+const elDepth  = document.getElementById('df-depth');
+const elReload = document.getElementById('df-reload');
+const elError  = document.getElementById('df-error');
+const elGraph  = document.getElementById('df-graph');
+const elSide   = document.getElementById('flow-side');
+const elSideTitle = document.getElementById('side-title');
+const elSideBody  = document.getElementById('side-body');
+
+let _jobDetail = null;
+let _currentTableId = null;
+
+function showErr(msg) {
+    elError.textContent = msg;
+    elError.style.display = msg ? 'block' : 'none';
+}
+
+const graph = new LineageGraph(elGraph, {
+    onNodeClick: (node) => {
+        if (node && node.table_id != null && !node.is_external) {
+            selectObject(node.table_id, node.layer_id);
+        }
+    },
+    onEdgeClick: (edge) => {
+        if (!edge) return;
+        if (edge.edge_type === 'ETL' && edge.etl_job_id != null) openJob(edge.etl_job_id);
+        else if (edge.edge_type === 'VIEW') openViewDdl(edge.to_table_id);
+    },
+});
+
+// ── Layer laden ─────────────────────────────────────────────────────
+async function initLayers() {
+    try {
+        const layers = (await api.etl.layers()) || [];
+        layers.sort((a, b) => (a.layer_sequence ?? 0) - (b.layer_sequence ?? 0));
+        elLayer.innerHTML = `<option value="">– wählen –</option>` +
+            layers.map(l => `<option value="${l.layer_id}">${escapeHtml(l.layer_code || l.layer_name)}</option>`).join('');
+    } catch (e) {
+        showErr('Layer konnten nicht geladen werden: ' + e.message);
+    }
+}
+
+// ── Objekte eines Layers laden ──────────────────────────────────────
+async function loadObjects(layerId, preselectTableId) {
+    elObject.innerHTML = `<option value="">– lädt –</option>`;
+    try {
+        const tables = (await api.modeler.tables.list({ layer_id: layerId })) || [];
+        tables.sort((a, b) => String(a.table_name).localeCompare(String(b.table_name)));
+        elObject.innerHTML = `<option value="">– Objekt wählen –</option>` +
+            tables.map(t => {
+                const kind = t.table_type === 'V' ? 'View' : 'Tab';
+                return `<option value="${t.table_id}">${escapeHtml(t.table_name)} · ${kind}</option>`;
+            }).join('');
+        if (preselectTableId != null) elObject.value = String(preselectTableId);
+    } catch (e) {
+        showErr('Objekte konnten nicht geladen werden: ' + e.message);
+    }
+}
+
+// ── Objekt auswählen + Graph laden ──────────────────────────────────
+async function selectObject(tableId, layerId) {
+    showErr('');
+    _currentTableId = tableId;
+    if (layerId != null && String(elLayer.value) !== String(layerId)) {
+        elLayer.value = String(layerId);
+        await loadObjects(layerId, tableId);
+    } else {
+        elObject.value = String(tableId);
+    }
+    await graph.load(tableId, Number(elDepth.value) || 12);
+}
+
+// ── Job-Detail-Panel ────────────────────────────────────────────────
+async function openJob(jobId) {
+    try {
+        const job = await api.etl.jobs.get(jobId);
+        elSideTitle.textContent = job?.job_name || ('Job ' + jobId);
+        elSide.classList.remove('hidden');
+        if (!_jobDetail) _jobDetail = new JobDetail(elSideBody);
+        _jobDetail.load(jobId);
+    } catch (e) {
+        showErr('Job konnte nicht geladen werden: ' + e.message);
+    }
+}
+
+async function openViewDdl(tableId) {
+    try {
+        const res = await api.lineageFlow.viewDdl(tableId);
+        elSideTitle.textContent = res?.table_name ? ('View: ' + res.table_name) : 'View-DDL';
+        elSide.classList.remove('hidden');
+        if (_jobDetail) { _jobDetail.clear?.(); _jobDetail = null; }
+        const ddl = (res?.ddl || '').replace(/\r/g, '\n');
+        if (ddl) {
+            const pre = document.createElement('pre');
+            pre.className = 'lg-ddl';
+            pre.textContent = ddl;
+            elSideBody.innerHTML = '';
+            elSideBody.appendChild(pre);
+        } else {
+            elSideBody.innerHTML = '<div style="padding:16px;color:#999;">Keine View-DDL gefunden (Objekt ist evtl. keine View).</div>';
+        }
+    } catch (e) {
+        showErr('View-DDL konnte nicht geladen werden: ' + e.message);
+    }
+}
+
+function closeSide() {
+    elSide.classList.add('hidden');
+    if (_jobDetail) { _jobDetail.clear?.(); _jobDetail = null; }
+}
+
+function escapeHtml(v) {
+    return String(v ?? '').replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ── Events ──────────────────────────────────────────────────────────
+elLayer.addEventListener('change', () => {
+    if (elLayer.value) loadObjects(Number(elLayer.value));
+    else elObject.innerHTML = `<option value="">– Layer wählen –</option>`;
+});
+elObject.addEventListener('change', () => {
+    if (elObject.value) selectObject(Number(elObject.value), Number(elLayer.value) || null);
+});
+elReload.addEventListener('click', () => {
+    if (_currentTableId != null) graph.load(_currentTableId, Number(elDepth.value) || 12);
+});
+document.getElementById('side-close').addEventListener('click', closeSide);
+
+// ── Init (optional ?table_id=…) ─────────────────────────────────────
+(async () => {
+    await initLayers();
+    const p = new URLSearchParams(window.location.search);
+    const tid = p.get('table_id');
+    if (tid) {
+        // Layer des Objekts ermitteln, dann laden
+        try {
+            const t = await api.modeler.tables.get(Number(tid));
+            await selectObject(Number(tid), t?.layer_id ?? null);
+        } catch {
+            await graph.load(Number(tid), Number(elDepth.value) || 12);
+        }
+    }
+})();
+
+})();
+</script>
+</body>
+</html>

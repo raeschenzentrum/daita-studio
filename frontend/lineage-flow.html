@@ -9,7 +9,7 @@
     <script src="components/api.js"></script>
     <script src="components/nav-header.js"></script>
     <script src="components/job-detail.js?v=6"></script>
-    <script src="components/lineage-graph.js?v=3"></script>
+    <script src="components/lineage-graph.js?v=4"></script>
     <style>
         body { margin: 0; background: var(--bg-color, #f0f2f5); }
         .flow-page { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -50,6 +50,13 @@
             background: transparent; color: #667eea; align-self: flex-end;
         }
         .btn-sm:hover { background: #667eea; color: #fff; }
+        .df-dir { display: flex; border: 1px solid #667eea; border-radius: 6px; overflow: hidden; }
+        .df-dir-btn {
+            border: none; background: #fff; color: #667eea; cursor: pointer;
+            padding: 5px 10px; font-size: 0.82em; white-space: nowrap;
+        }
+        .df-dir-btn + .df-dir-btn { border-left: 1px solid #cdd3f5; }
+        .df-dir-btn.active { background: #667eea; color: #fff; }
         .flow-error {
             padding: 10px 14px; background: #fff5f5; border: 1px solid #f5c6cb;
             border-radius: 6px; color: #c0392b; font-size: 0.87em; margin-bottom: 14px;
@@ -64,6 +71,19 @@
             font-size: 0.8em; line-height: 1.45;
             white-space: pre-wrap; word-break: break-word; color: #2b2b2b;
         }
+        .lg-vd { padding: 12px; }
+        .lg-vd-sec { margin-bottom: 10px; }
+        .lg-cm { width: 100%; border-collapse: collapse; font-size: 0.78em; }
+        .lg-cm th, .lg-cm td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+        .lg-cm th { color: #888; font-weight: 700; position: sticky; top: 0; background: #fff; }
+        .lg-cm-target { font-weight: 700; color: #2b2b2b; white-space: nowrap; }
+        .lg-cm-src { color: #555; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+        .lg-cm-tt { font-size: 0.85em; padding: 1px 6px; border-radius: 8px; background: #eef0fb; color: #667eea; white-space: nowrap; }
+        .lg-cm-tt.tt-DIRECT   { background:#e8f5e9; color:#2e9e57; }
+        .lg-cm-tt.tt-CAST     { background:#e7f0fd; color:#2f6fc9; }
+        .lg-cm-tt.tt-CASE     { background:#fdf3e7; color:#c9832b; }
+        .lg-cm-tt.tt-COMPUTED { background:#f3eefb; color:#8659c9; }
+        .lg-vd-ddl summary { cursor: pointer; padding: 8px 12px; color: #667eea; font-weight: 600; font-size: 0.85em; }
     </style>
 </head>
 <body>
@@ -87,6 +107,13 @@
                 <div class="df-field">
                     <label for="df-depth">Tiefe</label>
                     <input type="number" id="df-depth" value="12" min="1" max="50">
+                </div>
+                <div class="df-field">
+                    <label>Richtung</label>
+                    <div class="df-dir" id="df-dir">
+                        <button type="button" class="df-dir-btn active" data-dir="upstream">← Herkunft</button>
+                        <button type="button" class="df-dir-btn" data-dir="downstream">Verwendung →</button>
+                    </div>
                 </div>
                 <button class="btn-sm" id="df-reload">↺ Neu laden</button>
             </div>
@@ -128,6 +155,7 @@ const elSideBody  = document.getElementById('side-body');
 
 let _jobDetail = null;
 let _currentTableId = null;
+let _direction = 'upstream';
 
 function showErr(msg) {
     elError.textContent = msg;
@@ -186,7 +214,7 @@ async function selectObject(tableId, layerId) {
     } else {
         elObject.value = String(tableId);
     }
-    await graph.load(tableId, Number(elDepth.value) || 12);
+    await graph.load(tableId, Number(elDepth.value) || 12, _direction);
 }
 
 // ── Job-Detail-Panel ────────────────────────────────────────────────
@@ -208,16 +236,46 @@ async function openViewDdl(tableId) {
         elSideTitle.textContent = res?.table_name ? ('View: ' + res.table_name) : 'View-DDL';
         elSide.classList.remove('hidden');
         if (_jobDetail) { _jobDetail.clear?.(); _jobDetail = null; }
+
         const ddl = (res?.ddl || '').replace(/\r/g, '\n');
-        if (ddl) {
-            const pre = document.createElement('pre');
-            pre.className = 'lg-ddl';
-            pre.textContent = ddl;
-            elSideBody.innerHTML = '';
-            elSideBody.appendChild(pre);
-        } else {
+        const cols = Array.isArray(res?.columns) ? res.columns : [];
+
+        if (!ddl && !cols.length) {
             elSideBody.innerHTML = '<div style="padding:16px;color:#999;">Keine View-DDL gefunden (Objekt ist evtl. keine View).</div>';
+            return;
         }
+
+        const TT = { DIRECT:'direkt', CAST:'CAST', CASE:'CASE', COMPUTED:'berechnet', ALL_COLUMNS:'*' };
+        const shortT = (t) => t ? String(t).split('.').pop() : '?';
+
+        const rows = cols.map(c => {
+            const src = (c.sources && c.sources.length)
+                ? c.sources.map(x => `${escapeHtml(shortT(x.table))}.${escapeHtml(x.column)}`).join('<br>')
+                : '<span style="color:#bbb">—</span>';
+            const tt = TT[c.transform_type] || c.transform_type || '';
+            return `<tr>
+                <td class="lg-cm-target">${escapeHtml(c.target_column)}</td>
+                <td class="lg-cm-src">${src}</td>
+                <td><span class="lg-cm-tt tt-${escapeHtml(c.transform_type || '')}">${escapeHtml(tt)}</span></td>
+            </tr>`;
+        }).join('');
+
+        const colTable = cols.length ? `
+            <table class="lg-cm">
+                <thead><tr><th>Zielspalte</th><th>Quelle (Tabelle.Spalte)</th><th>Transf.</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>` : '<div style="padding:12px;color:#999;">Kein Spalten-Mapping ermittelbar (evtl. SELECT *).</div>';
+
+        elSideBody.innerHTML = `
+            <div class="lg-vd">
+                <div class="lg-vd-sec">${colTable}</div>
+                <details class="lg-vd-ddl">
+                    <summary>View-DDL anzeigen</summary>
+                    <pre class="lg-ddl"></pre>
+                </details>
+            </div>`;
+        const pre = elSideBody.querySelector('.lg-ddl');
+        if (pre) pre.textContent = ddl;
     } catch (e) {
         showErr('View-DDL konnte nicht geladen werden: ' + e.message);
     }
@@ -242,7 +300,15 @@ elObject.addEventListener('change', () => {
     if (elObject.value) selectObject(Number(elObject.value), Number(elLayer.value) || null);
 });
 elReload.addEventListener('click', () => {
-    if (_currentTableId != null) graph.load(_currentTableId, Number(elDepth.value) || 12);
+    if (_currentTableId != null) graph.load(_currentTableId, Number(elDepth.value) || 12, _direction);
+});
+document.getElementById('df-dir').addEventListener('click', (e) => {
+    const btn = e.target.closest('.df-dir-btn');
+    if (!btn) return;
+    _direction = btn.dataset.dir;
+    document.querySelectorAll('#df-dir .df-dir-btn').forEach(b =>
+        b.classList.toggle('active', b === btn));
+    if (_currentTableId != null) graph.load(_currentTableId, Number(elDepth.value) || 12, _direction);
 });
 document.getElementById('side-close').addEventListener('click', closeSide);
 
@@ -257,7 +323,7 @@ document.getElementById('side-close').addEventListener('click', closeSide);
             const t = await api.modeler.tables.get(Number(tid));
             await selectObject(Number(tid), t?.layer_id ?? null);
         } catch {
-            await graph.load(Number(tid), Number(elDepth.value) || 12);
+            await graph.load(Number(tid), Number(elDepth.value) || 12, _direction);
         }
     }
 })();

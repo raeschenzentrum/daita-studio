@@ -121,13 +121,13 @@
             return this._layers;
         }
 
-        /** Herkunftsgraph für ein Objekt laden und rendern. */
-        async load(tableId, depth) {
-            this._el.innerHTML = `<div class="lg-empty">⏳ Lade Herkunft …</div>`;
+        /** Datenfluss-Graph für ein Objekt laden und rendern. */
+        async load(tableId, depth, direction) {
+            this._el.innerHTML = `<div class="lg-empty">⏳ Lade Datenfluss …</div>`;
             let data;
             try {
                 await this._ensureLayers();
-                data = await api.lineageFlow.dataflow(tableId, depth);
+                data = await api.lineageFlow.dataflow(tableId, depth, direction);
             } catch (e) {
                 this._el.innerHTML = `<div class="lg-empty">Fehler: ${esc(e.message)}</div>`;
                 return;

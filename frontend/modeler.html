@@ -266,6 +266,32 @@
             background: transparent; border-radius: 6px; cursor: pointer; font-size: 0.85em;
         }
         .btn-secondary:hover { background: var(--bg-color, #f5f5f5); }
+
+        /* ── Layer-Leiste (Flow-Stil) ──────────────────────── */
+        #mdl-layerbar {
+            display: flex; gap: 8px; align-items: stretch; flex-shrink: 0;
+            padding: 10px 14px; background: #f7f8fc;
+            border-bottom: 1px solid var(--border-color, #e5e5e5);
+            overflow-x: auto;
+        }
+        #mdl-layerbar:empty { display: none; }
+        .mdl-lnode {
+            background: #fff; border: 2px solid transparent; border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08); padding: 8px 16px;
+            min-width: 110px; cursor: pointer; text-align: center;
+            transition: border-color .15s, box-shadow .15s; flex-shrink: 0;
+        }
+        .mdl-lnode:hover { box-shadow: 0 4px 14px rgba(102,126,234,0.22); }
+        .mdl-lnode.active { border-color: #667eea; box-shadow: 0 4px 14px rgba(102,126,234,0.3); }
+        .mdl-lnode-icon  { font-size: 1.5em; line-height: 1; }
+        .mdl-lnode-code  { font-weight: 800; font-size: 0.85em; color: #333; margin-top: 2px; }
+        .mdl-lnode.active .mdl-lnode-code { color: #667eea; }
+        .mdl-lnode-count { font-size: 0.7em; color: #999; margin-top: 1px; }
+        .mdl-auto-chk {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-size: 0.82em; color: #555; cursor: pointer;
+            margin-left: auto; white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -281,6 +307,9 @@
     <button id="btn-save-diagram" title="Ctrl+S">💾 Speichern</button>
     <button id="btn-load-diagram">📂 Laden</button>
     <button id="btn-export-svg">⬇ SVG</button>
+    <label class="mdl-auto-chk" title="Beim Klick auf einen Layer direkt das gespeicherte Layer-Diagramm laden">
+        <input type="checkbox" id="chk-auto-diagram" checked> Diagramm direkt öffnen
+    </label>
 </div>
 
 <div id="app-main-row">
@@ -323,6 +352,8 @@
 
   <!-- ERD Canvas -->
   <main id="canvas-wrap">
+    <!-- Layer-Leiste (Flow-Stil): Layer wählen → Datenmodell des Layers -->
+    <div id="mdl-layerbar"></div>
     <div id="canvas-toolbar">
       <button id="btn-zoom-in"  title="+">＋</button>
       <button id="btn-zoom-out" title="-">－</button>
@@ -454,6 +485,7 @@ async function loadTableList() {
       return;
     }
     renderLayerChips();
+    renderLayerBar();
     renderTableList(filteredTables());
     // FKs vorladen
     window.api.modeler.fk.list().then(data => {
@@ -507,6 +539,56 @@ function updateChips() {
     const lid = c.dataset.layerId !== undefined ? Number(c.dataset.layerId) : null;
     c.classList.toggle('active', lid === _activeLayerId);
   });
+  updateLayerBar();
+}
+
+// ── Layer-Leiste (Flow-Stil) + Layer-Diagramm ─────────────────────
+const MDL_LAYER_ICONS = { SRC:'🗄️', RAW:'📦', DISC:'🔍', REUS:'♻️', CONS:'📊', META:'🏷️' };
+
+function renderLayerBar() {
+  const el = document.getElementById('mdl-layerbar');
+  if (!el) return;
+  const ids = [...new Set(_allTables.map(t => t.layer_id))].sort((a, b) => a - b);
+  el.innerHTML = '';
+  ids.forEach(lid => {
+    const code = LAYER_NAMES[lid] ?? `L${lid}`;
+    const count = _allTables.filter(t => t.layer_id === lid).length;
+    const node = document.createElement('div');
+    node.className = 'mdl-lnode' + (_activeLayerId === lid ? ' active' : '');
+    node.dataset.layerId = lid;
+    node.innerHTML =
+      `<div class="mdl-lnode-icon">${MDL_LAYER_ICONS[code] || '📁'}</div>` +
+      `<div class="mdl-lnode-code">${escHtml(code)}</div>` +
+      `<div class="mdl-lnode-count">${count} Objekte</div>`;
+    node.addEventListener('click', () => {
+      _activeLayerId = lid;
+      updateChips();
+      renderTableList(filteredTables());
+      if (document.getElementById('chk-auto-diagram')?.checked) openLayerDiagram(code);
+    });
+    el.appendChild(node);
+  });
+}
+
+function updateLayerBar() {
+  document.querySelectorAll('.mdl-lnode').forEach(n => {
+    n.classList.toggle('active', Number(n.dataset.layerId) === _activeLayerId);
+  });
+}
+
+async function openLayerDiagram(layerCode) {
+  if (!layerCode) return;
+  const name = `${layerCode}_LAYER`;
+  const data = await window.api.diagrams.load(name).catch(() => null);
+  if (!data) {
+    alert(`Kein gespeichertes Diagramm "${name}" gefunden.`);
+    return;
+  }
+  const tableMap = {};
+  _allTables.forEach(t => { tableMap[t.table_id] = t; });
+  document.getElementById('diagram-name').value = data.name || name;
+  await ERD.loadLayout(data.cells || [], tableMap);
+  ERD.refreshLinks(_allFKs);
 }
 
 function renderTableList(tables) {

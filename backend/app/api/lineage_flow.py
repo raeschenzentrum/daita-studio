@@ -20,15 +20,20 @@ router = APIRouter(prefix="/api/lineage", tags=["lineage-flow"])
 def get_dataflow(
     table_id: int,
     depth: int = Query(12, ge=1, le=50, description="Maximale Traversierungstiefe"),
+    direction: str = Query(
+        "upstream",
+        pattern="^(upstream|downstream|both)$",
+        description="upstream = Herkunft, downstream = Verwendung, both = beides",
+    ),
 ):
     """
-    Herkunftsgraph (upstream) eines Objekts als ``{root_table_id, nodes, edges}``.
+    Datenfluss-Graph eines Objekts als ``{root_table_id, direction, nodes, edges}``.
 
     Folgt materialisierten ETL-Strecken (``META_ETL_JOB``) **und**
-    View-Abhängigkeiten (View-DDL via sqlglot).
+    View-Abhängigkeiten (View-DDL via sqlglot), je nach ``direction``.
     """
     try:
-        return lineage_flow_service.build_dataflow(table_id, depth)
+        return lineage_flow_service.build_dataflow(table_id, depth, direction)
     except Exception as e:
         logger.error(f"Error building dataflow for table {table_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,0 +1,6 @@
+[3, "REUSABLE Layer", "REUS", 3, "Subject Areas in 3rd NF nach Inmon", "3rd NF (Inmon)", {"__dt__": "2026-01-14T17:19:31.930000"}, {"__dt__": "2026-01-14T17:19:31.930000"}, "SYSTEM", "SYSTEM"]
+[-1, "Source System", "SRC", -1, "Externe Quellsysteme aus denen geladen wird", "External Source", {"__dt__": "2026-03-20T07:18:54.120000"}, {"__dt__": "2026-03-20T07:18:54.120000"}, "SYSTEM", "SYSTEM"]
+[1, "RAW Layer", "RAW", 1, "1:1 Abbildung der Quellsysteme (CDC)", "1:1 CDC", {"__dt__": "2026-01-14T17:19:31.650000"}, {"__dt__": "2026-01-14T17:19:31.650000"}, "SYSTEM", "SYSTEM"]
+[4, "CONSUMABLE Layer", "CONS", 4, "Data Mart Areas in Star/Snowflake Schema", "Star/Snowflake (Kimball)", {"__dt__": "2026-01-14T17:19:32.170000"}, {"__dt__": "2026-01-14T17:19:32.170000"}, "SYSTEM", "SYSTEM"]
+[20, "Metadata Layer", "META", 20, "Metadaten-Schicht für ETL-Steuerung und Dokumentation", "Metadata Repository", {"__dt__": "2026-03-20T07:18:54.210000"}, {"__dt__": "2026-03-20T07:18:54.210000"}, "SYSTEM", "SYSTEM"]
+[2, "DISCOVERABLE Layer", "DISC", 2, "Historisierte Daten mit SCD Type 2", "SCD Type 2", {"__dt__": "2026-01-14T17:19:31.760000"}, {"__dt__": "2026-01-14T17:19:31.760000"}, "SYSTEM", "SYSTEM"]

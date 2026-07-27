@@ -1,0 +1,2 @@
+[1, "Subject Area", "SUBJECT", 3, "Geschäftsobjekt-orientierte Strukturierung im REUSABLE Layer (3rd NF nach Inmon)", {"__dt__": "2026-01-14T17:19:34.560000"}, {"__dt__": "2026-01-14T17:19:34.560000"}]
+[2, "Data Mart Area", "DATAMART", 4, "Reporting-orientierte Strukturierung im CONSUMABLE Layer (Star/Snowflake nach Kimball)", {"__dt__": "2026-01-14T17:19:34.650000"}, {"__dt__": "2026-01-14T17:19:34.650000"}]

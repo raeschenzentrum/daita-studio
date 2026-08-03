@@ -36,6 +36,11 @@ from .api import diagrams as diagrams_router
 from .api import import_td as import_router
 from .api import lineage_flow as lineage_flow_router
 
+# Auth / RBAC
+from .auth import router as auth_router
+from .auth.dependencies import module_guard
+from fastapi import Depends
+
 # FastAPI App
 app = FastAPI(
     title="daita-studio API",
@@ -44,25 +49,36 @@ app = FastAPI(
 )
 
 # CORS Middleware
+# Hinweis: Authentifizierung erfolgt per Bearer-Token im Authorization-Header
+# (nicht per Cookie), daher ist allow_credentials=False korrekt und sicher.
+# allow_origins=["*"] ist damit unbedenklich – der Schutz liegt im Token.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In Production: Spezifische Origins
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Auth-Router (Login/Benutzerverwaltung) – NICHT durch rbac_guard geschützt,
+# da /login öffentlich sein muss und die übrigen Routen eigene Guards haben.
+app.include_router(auth_router.router)
+
+# Alle fachlichen Router mit ihrem modul-spezifischen RBAC-Guard absichern.
+# Die benötigte Mindestrolle je Aktion (view/edit/delete) kommt aus der
+# Matrix in cfg/config.yml (auth.modules) – pro Modul einstellbar.
+
 # Include Routers
-app.include_router(etl_router.router)
-app.include_router(metadata_router.router)
-app.include_router(source_router.router, prefix="/api")
-app.include_router(jobs_router.router)  # Job Management (AF-001 bis AF-005)
-app.include_router(templates_router.router)  # Templates (AF-006)
+app.include_router(etl_router.router, dependencies=[Depends(module_guard("etl"))])
+app.include_router(metadata_router.router, dependencies=[Depends(module_guard("metadata"))])
+app.include_router(source_router.router, prefix="/api", dependencies=[Depends(module_guard("sources"))])
+app.include_router(jobs_router.router, dependencies=[Depends(module_guard("etl"))])  # Job Management (AF-001 bis AF-005)
+app.include_router(templates_router.router, dependencies=[Depends(module_guard("etl"))])  # Templates (AF-006)
 # Modeler-Router (B1)
-app.include_router(modeler_router.router)
-app.include_router(diagrams_router.router)
-app.include_router(import_router.router)
-app.include_router(lineage_flow_router.router)  # Lineage-Flow (Dataflow-Graph, Phase 1)
+app.include_router(modeler_router.router, dependencies=[Depends(module_guard("modeler"))])
+app.include_router(diagrams_router.router, dependencies=[Depends(module_guard("modeler"))])
+app.include_router(import_router.router, dependencies=[Depends(module_guard("modeler"))])
+app.include_router(lineage_flow_router.router, dependencies=[Depends(module_guard("lineage"))])  # Lineage-Flow (Dataflow-Graph, Phase 1)
 
 # Services
 lineage_service = LineageService()

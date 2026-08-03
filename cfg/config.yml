@@ -49,3 +49,67 @@ paths:
 # ==========================================================================
 logging:
   level: 'INFO'
+
+# ==========================================================================
+# Auth / RBAC
+# ==========================================================================
+# token_secret:  Geheimer Schlüssel zum Signieren der Login-Tokens.
+#                UNBEDINGT auf dem Zielsystem auf einen langen Zufallswert
+#                ändern (z.B. `python -c "import secrets; print(secrets.token_hex(32))"`).
+#                Leer lassen -> beim Start wird ein flüchtiges Secret erzeugt
+#                (Nutzer müssen sich nach jedem Neustart neu anmelden).
+# token_ttl_hours: Gültigkeitsdauer eines Tokens in Stunden.
+auth:
+  token_secret: '6ad0a8b3f99c72a0ffe885df1df845c9c32cad00e85543e82b443368c9dc87e1'
+  token_ttl_hours: 8
+
+  # ------------------------------------------------------------------------
+  # Rechte-Matrix je Modul (Modul x Aktion -> benoetigte Mindestrolle)
+  # ------------------------------------------------------------------------
+  # Rollen (aufsteigend):  Viewer < Editor < Admin
+  # Aktionen:
+  #   view   = ansehen  (HTTP GET/HEAD)
+  #   edit   = anlegen/aendern (HTTP POST/PUT/PATCH)
+  #   delete = loeschen (HTTP DELETE)
+  #
+  # Beispiel "nur ansehen": Setzt man fuer ein Modul  edit: Admin, duerfen
+  # Editoren dieses Modul nur noch ANSEHEN, aber nicht mehr bearbeiten.
+  #
+  # Nicht aufgefuehrte Module/Aktionen erben von 'default' (siehe unten).
+  # ------------------------------------------------------------------------
+  modules:
+    # Datenmodelle (Modeler, Diagramme, Import/Reverse-Engineering)
+    modeler:
+      view:   Viewer
+      edit:   Editor
+      delete: Admin
+
+    # Jobs / ETL (ETL-Orchestrator, Job-Management, Templates)
+    etl:
+      view:   Viewer
+      edit:   Editor
+      delete: Admin
+
+    # Lineage / Dataflow
+    lineage:
+      view:   Viewer
+      edit:   Editor
+      delete: Admin
+
+    # Metadaten
+    metadata:
+      view:   Viewer
+      edit:   Editor
+      delete: Admin
+
+    # Quellsysteme (Sources / TPT)
+    sources:
+      view:   Viewer
+      edit:   Editor
+      delete: Admin
+
+  # Fallback fuer alles, was oben nicht explizit gesetzt ist
+  default:
+    view:   Viewer
+    edit:   Editor
+    delete: Admin

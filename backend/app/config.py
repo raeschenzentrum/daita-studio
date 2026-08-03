@@ -75,6 +75,35 @@ METADATA_CONFIG = _database.get('metadata', {})
 LOGGING_CONFIG   = _config.get('logging', {})
 
 # =============================================================================
+# Auth / RBAC Config (aus config.yml → auth:)
+# =============================================================================
+_auth_config = _config.get('auth', {})
+TOKEN_TTL_HOURS = _auth_config.get('token_ttl_hours', 8)
+
+# ---------------------------------------------------------------------------
+# Rechte-Matrix je Modul (Modul × Aktion → Mindestrolle)
+# Aktionen: view (GET/HEAD), edit (POST/PUT/PATCH), delete (DELETE)
+# Wird in cfg/config.yml unter auth.modules gepflegt; auth.default greift,
+# wenn ein Modul (oder eine Aktion) dort nicht gesetzt ist.
+# ---------------------------------------------------------------------------
+_DEFAULT_PERM = {"view": "Viewer", "edit": "Editor", "delete": "Admin"}
+AUTH_MODULE_PERMS = _auth_config.get('modules', {}) or {}
+AUTH_DEFAULT_PERM = {**_DEFAULT_PERM, **(_auth_config.get('default', {}) or {})}
+
+# Secret zum Signieren der Tokens. Wenn nicht in config.yml gesetzt, wird beim
+# Start ein Zufalls-Secret erzeugt (Folge: nach jedem Neustart müssen sich
+# Nutzer neu anmelden). Für stabile Tokens ein festes Secret in config.yml
+# hinterlegen (auth.token_secret).
+import secrets as _secrets
+TOKEN_SECRET = _auth_config.get('token_secret') or _secrets.token_hex(32)
+if not _auth_config.get('token_secret'):
+    import logging as _logging
+    _logging.getLogger(__name__).warning(
+        "auth.token_secret ist nicht gesetzt - es wird ein flüchtiges "
+        "Zufalls-Secret verwendet. Für stabile Logins in cfg/config.yml setzen."
+    )
+
+# =============================================================================
 # Database Config (aus database.yml)
 # =============================================================================
 TERADATA_CONFIG = _database.get('teradata', {})

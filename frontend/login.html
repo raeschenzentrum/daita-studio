@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anmelden · daita-studio</title>
+    <script src="config.js"></script>
+    <script src="components/auth.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; min-height: 100vh; display: flex;
+            align-items: center; justify-content: center;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .login-card {
+            background: #fff; border-radius: 14px; padding: 36px 34px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+            width: 340px; max-width: 92vw;
+        }
+        .login-brand { text-align: center; margin-bottom: 22px; }
+        .login-brand .icon { font-size: 2.4em; }
+        .login-brand h1 { margin: 6px 0 0; font-size: 1.4em; color: #333; }
+        .login-brand p { margin: 4px 0 0; font-size: 0.82em; color: #888; }
+        label { display: block; font-size: 0.8em; color: #555; margin: 14px 0 4px; }
+        input {
+            width: 100%; padding: 10px 12px; border: 1px solid #d5d8e0;
+            border-radius: 8px; font-size: 0.95em; outline: none;
+        }
+        input:focus { border-color: #667eea; }
+        button.submit {
+            width: 100%; margin-top: 22px; padding: 11px;
+            background: #667eea; color: #fff; border: none; border-radius: 8px;
+            font-size: 1em; font-weight: 600; cursor: pointer;
+        }
+        button.submit:hover { background: #5568d3; }
+        button.submit:disabled { opacity: 0.6; cursor: default; }
+        .error {
+            margin-top: 14px; padding: 9px 12px; border-radius: 8px;
+            background: #fde8e8; color: #c0392b; font-size: 0.85em;
+            display: none;
+        }
+        .error.show { display: block; }
+    </style>
+</head>
+<body>
+    <form class="login-card" id="login-form">
+        <div class="login-brand">
+            <div class="icon">🎨</div>
+            <h1>daita-studio</h1>
+            <p>Bitte anmelden</p>
+        </div>
+
+        <label for="username">Benutzername</label>
+        <input type="text" id="username" name="username" autocomplete="username" autofocus required>
+
+        <label for="password">Passwort</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+        <button type="submit" class="submit" id="submit-btn">Anmelden</button>
+        <div class="error" id="error-box"></div>
+    </form>
+
+    <script>
+        (() => {
+            'use strict';
+            const form = document.getElementById('login-form');
+            const btn = document.getElementById('submit-btn');
+            const errBox = document.getElementById('error-box');
+
+            function base() {
+                const cfg = window.METADAITA_CONFIG;
+                return (cfg && cfg.backend_url) || `http://${window.location.hostname}:9021`;
+            }
+            function showError(msg) {
+                errBox.textContent = msg;
+                errBox.classList.add('show');
+            }
+            function nextTarget() {
+                const p = new URLSearchParams(window.location.search).get('next');
+                return (p && !p.includes('login.html')) ? p : 'index.html';
+            }
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                errBox.classList.remove('show');
+                btn.disabled = true;
+                btn.textContent = 'Anmelden…';
+                try {
+                    const resp = await fetch(base() + '/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username: form.username.value.trim(),
+                            password: form.password.value,
+                        }),
+                    });
+                    if (!resp.ok) {
+                        let msg = 'Anmeldung fehlgeschlagen';
+                        try { const j = await resp.json(); msg = j.detail || msg; } catch (_) {}
+                        showError(msg);
+                        return;
+                    }
+                    const data = await resp.json();
+                    window.studioAuth.setSession(data.access_token, {
+                        username: data.username,
+                        role: data.role,
+                    });
+                    window.location.replace(nextTarget());
+                } catch (err) {
+                    showError('Backend nicht erreichbar: ' + err.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Anmelden';
+                }
+            });
+        })();
+    </script>
+</body>
+</html>

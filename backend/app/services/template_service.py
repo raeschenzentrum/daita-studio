@@ -19,7 +19,7 @@ import yaml
 from pydantic import BaseModel
 
 from .type_utils import td_typecode_to_ddl
-from ..config import PATHS, get_active_teradata_config, META_SCHEMA
+from ..config import PATHS, get_active_teradata_config, get_etl_jobs_path, META_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +149,139 @@ class TemplateService:
             connect_timeout=active_cfg.get('connect_timeout', 10000)
         )
     
+    def _layers_config(self, cursor, layer_id_to_name: Dict[int, str]) -> Dict[str, dict]:
+        """Layer-Config aus parameter_rules.yml, Datenbank je Layer aus META_DATABASE
+        des aktiven Environments (parameter_rules.yml bleibt Fallback).
+
+        Nur Layer mit genau einer Datenbank werden übernommen; sonst ist die
+        Zuordnung nicht eindeutig.
+        """
+        layers = {name: dict(cfg or {}) for name, cfg in (self.param_rules.get('layers', {}) or {}).items()}
+        try:
+            cursor.execute(f"""
+                SELECT LAYER_ID, MIN(DATABASE_NAME), COUNT(*)
+                FROM {META_SCHEMA}.META_DATABASE
+                WHERE LAYER_ID IN ({', '.join(str(i) for i in layer_id_to_name)})
+                GROUP BY LAYER_ID
+            """)
+            for layer_id, db_name, anzahl in cursor.fetchall():
+                if anzahl == 1 and db_name:
+                    layers.setdefault(layer_id_to_name[layer_id], {})['database'] = db_name.strip()
+                else:
+                    logger.warning(f"META_DATABASE: Layer {layer_id} hat {anzahl} Datenbanken - "
+                                   f"Datenbank aus parameter_rules.yml")
+        except Exception as e:
+            logger.warning(f"Layer-Datenbanken aus META_DATABASE nicht lesbar - parameter_rules.yml: {e}")
+        return layers
+
+    @staticmethod
+    def _scd2_column_names_params(scd2_config: dict) -> Dict[str, str]:
+        """Namen der Hash- und Audit-Spalten aus scd2_technical_columns als Parameter."""
+        def name(key: str, default: str) -> str:
+            cfg = scd2_config.get(key, {})
+            return cfg.get('name', default) if isinstance(cfg, dict) else (cfg or default)
+        return {
+            'RECORD_HASH_COL': name('record_hash', 'RECORD_HASH'),
+            'CREATED_TS_COL':  name('created_timestamp', 'CREATED_TIMESTAMP'),
+            'UPDATED_TS_COL':  name('last_updated_timestamp', 'LAST_UPDATED_TIMESTAMP'),
+            'CREATED_BY_COL':  name('created_by', 'CREATED_BY'),
+            'UPDATED_BY_COL':  name('last_updated_by', 'LAST_UPDATED_BY'),
+        }
+
+    @staticmethod
+    def _raw_delta_target_cfg(raw_delta: dict) -> Dict[str, dict]:
+        """Zielspalten des Delta-Sets (Ladelauf, Lösch-Kennzeichen) mit Defaults."""
+        tc = raw_delta.get('target_columns', {}) or {}
+        load_id = {'name': 'DWH_LOAD_ID', 'type': 'BIGINT', **(tc.get('load_id') or {})}
+        deleted = {'name': 'DWH_DELETED_IN_SOURCE', 'type': 'CHAR(1) CHARACTER SET UNICODE',
+                   'default': "'N'", 'deleted_value': 'Y', 'not_deleted_value': 'N',
+                   **(tc.get('deleted_in_source') or {})}
+        return {'load_id': load_id, 'deleted_in_source': deleted}
+
+    def _raw_delta_target_columns(self, raw_delta: dict) -> List[tuple]:
+        """[(name, DDL-Definition)] der Zielspalten des Delta-Sets."""
+        cols = []
+        for cfg in self._raw_delta_target_cfg(raw_delta).values():
+            parts = [cfg['name'], cfg['type']]
+            if cfg.get('nullable') is False:
+                parts.append('NOT NULL')
+            if cfg.get('default'):
+                parts.append(f"DEFAULT {cfg['default']}")
+            cols.append((cfg['name'], ' '.join(parts)))
+        return cols
+
+    def _raw_delta_params(self, raw_delta: dict, job_id: int, source_table_id: int,
+                          pk_columns: List[str], staging_prefix: str, source_table: str) -> Dict[str, str]:
+        """Parameter für das Delta-Set aus cfg/parameter_rules.yml → raw_delta.
+
+        LOAD_WATERMARK ist ein SQL-Ausdruck auf die Ladestand-Tabelle der Meta-DB,
+        damit jeder Lauf den zuletzt bestätigten Stand liest (kein Laufzeitparameter nötig).
+        """
+        if not raw_delta:
+            return {}
+        ct = raw_delta.get('change_type_values', {}) or {}
+        target_cfg = self._raw_delta_target_cfg(raw_delta)
+        meta_db = str(META_SCHEMA)
+        state_table = raw_delta.get('load_state_table', 'META_ETL_LOAD_STATE')
+        return {
+            'LOAD_ID_COL':      raw_delta.get('load_id_column', ''),
+            'SNAPSHOT_COL':     raw_delta.get('snapshot_column', ''),
+            'CHANGE_TYPE_COL':  raw_delta.get('change_type_column', ''),
+            'CT_INSERT':        ct.get('insert', 'INSERTED'),
+            'CT_UPDATE':        ct.get('update', 'UPDATED'),
+            'CT_DELETE':        ct.get('delete', 'DELETED'),
+            'OPEN_VALID_TO':    raw_delta.get('open_valid_to', '9999-12-31 23:59:59.999999'),
+            'MAX_LOAD_ID':      str(raw_delta.get('max_load_id', 9223372036854775807)),
+            'DWH_LOAD_ID_COL':  target_cfg['load_id']['name'],
+            'DELETED_COL':      target_cfg['deleted_in_source']['name'],
+            'DELETED_VAL':      target_cfg['deleted_in_source']['deleted_value'],
+            'NOT_DELETED_VAL':  target_cfg['deleted_in_source']['not_deleted_value'],
+            'META_DATABASE':    meta_db,
+            'LOAD_STATE_TABLE': state_table,
+            'ETL_JOB_ID':       str(job_id),
+            'SOURCE_TABLE_ID':  str(source_table_id),
+            'LOAD_WATERMARK':   (f"(SELECT COALESCE(MAX(LAST_LOAD_ID), 0) FROM {meta_db}.{state_table} "
+                                 f"WHERE ETL_JOB_ID = {job_id})"),
+            'VERSIONS_TABLE':   f"{staging_prefix}{source_table.lower()}_versions" if source_table else '',
+            'BUSINESS_KEY_STG':  ', '.join(f'stg.{c}' for c in pk_columns),
+            'BUSINESS_KEY_HIST': ', '.join(f'hist.{c}' for c in pk_columns),
+            'BUSINESS_KEY_JOIN_TGT': ' AND '.join(f'tgt.{c} = f.{c}' for c in pk_columns),
+            'BUSINESS_KEY_JOIN_PREV': ' AND '.join(f'stg.{c} = prev.{c}' for c in pk_columns),
+        }
+
+    def _check_delta_fk_mode(self, request) -> None:
+        """Delta-Set: FK-Definitionen im Master-Modus ablehnen (siehe create_job_from_template)."""
+        step_templates = self.get_step_templates(template_id=request.template_id)
+        if not any(st.default_parameters and 'LOAD_WATERMARK' in st.default_parameters
+                   for st in step_templates):
+            return
+        params = request.parameters or {}
+        fk_defs = params.get('fk_definitions') or params.get('FK_DEFINITIONS') or []
+        if params.get('fk_master_mappings') or params.get('FK_MASTER_MAPPINGS') \
+                or any(isinstance(d, dict) and d.get('master_mode') for d in fk_defs):
+            raise ValueError(
+                "Dieses Template-Set (Delta) braucht FK-Definitionen im KEY-Modus "
+                "(key_table/domain/natural_key_expr). Der Master-Modus joint die Parent-History "
+                "und liefert bei mehreren Parent-Versionen mehrere Zeilen je Satz."
+            )
+
+    @staticmethod
+    def _add_missing_columns(cursor, conn, database: str, table: str, columns: List[tuple]) -> None:
+        """Ergänzt fehlende Spalten [(name, definition)] einer bestehenden Tabelle per ALTER TABLE."""
+        if not columns:
+            return
+        cursor.execute(
+            "SELECT TRIM(ColumnName) FROM dbc.ColumnsV WHERE DatabaseName = ? AND TableName = ?",
+            [database, table],
+        )
+        existing = {r[0].upper() for r in cursor.fetchall()}
+        for name, definition in columns:
+            if name.upper() in existing:
+                continue
+            cursor.execute(f"ALTER TABLE {database}.{table} ADD {definition}")
+            conn.commit()
+            logger.info(f"Spalte {name} in {database}.{table} ergänzt")
+
     def _load_scd2_column_names(self) -> Dict[str, str]:
         """
         Lädt SCD2-Spaltennamen aus Config (cfg/parameter_rules.yml).
@@ -470,7 +603,12 @@ class TemplateService:
             template = self.get_job_template(request.template_id)
             if not template:
                 raise ValueError(f"Template {request.template_id} nicht gefunden")
-            
+
+            # Delta-Set: Parent-SKs nur aus KEY-Tabellen. Der Master-Modus joint die
+            # Parent-History und liefert bei mehreren Parent-Versionen mehrere Zeilen.
+            # Vor dem Anlegen des Jobs prüfen, damit kein halber Job entsteht.
+            self._check_delta_fk_mode(request)
+
             # 2. Source Layer ID ermitteln
             cursor.execute(f"""
                 SELECT LAYER_ID FROM {META_SCHEMA}.META_TABLE 
@@ -583,7 +721,7 @@ class TemplateService:
             
             # 5. Step-Templates kopieren
             step_templates = self.get_step_templates(template_id=request.template_id)
-            
+
             # =================================================================
             # Parameter-Generierung: FRISCH aus User-Input + Config-Regeln
             # Template-Parameter-WERTE werden ignoriert! Nur Struktur zählt.
@@ -652,16 +790,33 @@ class TemplateService:
             pk_columns = get_param_ci(request.parameters, 'primary_key_columns', pk_from_meta)
             hash_columns = get_param_ci(request.parameters, 'hash_columns', all_source_columns)  # Default: alle Spalten hashen
             select_columns = get_param_ci(request.parameters, 'select_columns', all_source_columns)
+
+            # RAW-Technikspalten (Ladelauf, Snapshot-Zeit, Änderungsart) sind keine Fachspalten:
+            # nie laden, nie hashen (cfg/parameter_rules.yml → raw_delta)
+            raw_delta = self.param_rules.get('raw_delta', {}) or {}
+            raw_tech_cols = {str(raw_delta.get(k, '')).upper()
+                             for k in ('load_id_column', 'snapshot_column', 'change_type_column')} - {''}
+            if raw_tech_cols:
+                if isinstance(hash_columns, list):
+                    hash_columns = [c for c in hash_columns if str(c).upper() not in raw_tech_cols]
+                if isinstance(select_columns, list):
+                    select_columns = [c for c in select_columns if str(c).upper() not in raw_tech_cols]
+
+            # Delta-Set (z.B. RAW_TO_DISC_SCD2_DELTA): erkennbar am Parameter LOAD_WATERMARK
+            is_delta_set = any(
+                st.default_parameters and 'LOAD_WATERMARK' in st.default_parameters
+                for st in step_templates
+            )
             
             # Core-Name aus Source-Tabelle (oder Target als Fallback)
             core_name = extract_core_name(new_source) if new_source else extract_core_name(new_target)
             
             # Layer-Config laden (basierend auf target_layer_id)
-            layers_config = self.param_rules.get('layers', {})
-            staging_config = self.param_rules.get('staging', {})
-            
-            # Layer-Name ermitteln (ID -> Name Mapping)
+            # Layer-ID -> Name Mapping
             layer_id_to_name = {1: 'raw', 2: 'discoverable', 3: 'reusable', 4: 'consumable'}
+            layers_config = self._layers_config(cursor, layer_id_to_name)
+            staging_config = self.param_rules.get('staging', {})
+
             target_layer_name = layer_id_to_name.get(target_layer_id, 'discoverable')
             target_layer_config = layers_config.get(target_layer_name, {})
             
@@ -739,8 +894,21 @@ class TemplateService:
                 'IST_AKTUELL_COL': ist_aktuell_col,
                 'IST_AKTUELL_VAL': ist_aktuell_val,
                 'IST_AKTUELL_GESCHLOSSEN': ist_aktuell_geschlossen,
+                # Weitere SCD2-/Audit-Spaltennamen aus Config (für Templates ohne feste Namen)
+                **self._scd2_column_names_params(scd2_config),
             }
-            
+
+            # Delta-Parameter (RAW_TO_DISC_SCD2_DELTA); für andere Sets wirkungslos,
+            # weil der DEFAULT_PARAMETERS-Filter unten nur angeforderte Keys übernimmt
+            generated_values.update(self._raw_delta_params(
+                raw_delta=raw_delta,
+                job_id=job_id,
+                source_table_id=request.source_table_id,
+                pk_columns=pk_columns if isinstance(pk_columns, list) else [],
+                staging_prefix=staging_prefix,
+                source_table=new_source,
+            ))
+
             logger.debug(f"Parameter-Generierung: source={new_source}, core_name={core_name}, pk_columns={pk_columns}, select_columns={len(select_columns)} Spalten")
 
             # F6-Beladung: fk_definitions aus Master-Mappings ableiten (Master-Modus).
@@ -844,7 +1012,7 @@ class TemplateService:
                     if s_params:
                         try:
                             params_dict = json.loads(s_params) if isinstance(s_params, str) else s_params
-                            write_step_parameters(job_id, int(s_id), params_dict, PATHS["etl_jobs"])
+                            write_step_parameters(job_id, int(s_id), params_dict, get_etl_jobs_path())
                         except Exception as e:
                             logger.warning(f"Parameter-JSON für Step {s_id} nicht geschrieben: {e}")
             except Exception as e:
@@ -865,6 +1033,7 @@ class TemplateService:
                     pk_columns if isinstance(pk_columns, list) else [],
                     core_name=core_name,
                     fk_columns=fk_column_names,
+                    extra_columns=self._raw_delta_target_columns(raw_delta) if is_delta_set else None,
                 )
 
             # B2a: IS_BUSINESS_KEY in Source-META_COLUMN setzen (falls noch nicht gesetzt)
@@ -1488,30 +1657,34 @@ class TemplateService:
         source_table_id: int,
         pk_columns: List[str],
         core_name: str = '',
-        fk_columns: List[str] = None
+        fk_columns: List[str] = None,
+        extra_columns: List[tuple] = None,
     ):
         """
         Prüft ob Ziel-Tabelle existiert, erstellt sie wenn nicht.
-        
+
         Ziel-Tabelle = Source-Spalten + SCD2-Spalten (aus Config: cfg/parameter_rules.yml)
         DDL-Optionen (SET/MULTISET, PRIMARY INDEX) ebenfalls aus Config.
-        
+
         Args:
             core_name: Kern-Name der Tabelle (z.B. 'aufenthalt') für SK-Spaltenname
             fk_columns: Optionale FK-Spalten ({MASTER_SK}_FK, BIGINT) – F6-Beladung
+            extra_columns: Optionale Zusatzspalten [(name, definition)], z.B. für das
+                Delta-Set; bei bestehender Tabelle per ALTER TABLE ergänzt
         """
         fqn = f"{target_database}.{target_table}"
-        
+
         # Prüfen ob Tabelle existiert
         try:
             cursor.execute(f"""
-                SELECT 1 FROM dbc.TablesV 
-                WHERE DatabaseName = '{target_database}' 
+                SELECT 1 FROM dbc.TablesV
+                WHERE DatabaseName = '{target_database}'
                 AND TableName = '{target_table}'
                 AND TableKind = 'T'
             """)
             if cursor.fetchone():
                 logger.debug(f"Ziel-Tabelle {fqn} existiert bereits")
+                self._add_missing_columns(cursor, conn, target_database, target_table, extra_columns)
                 return
         except Exception as e:
             logger.warning(f"Fehler beim Prüfen der Ziel-Tabelle: {e}")
@@ -1632,7 +1805,13 @@ class TemplateService:
                 continue
             columns_ddl.append(col_def)
             seen_ddl_cols.add(col_name.upper())
-        
+
+        # Zusatzspalten (z.B. Delta-Set: Ladelauf, Lösch-Kennzeichen)
+        for col_name, col_def in (extra_columns or []):
+            if col_name.upper() not in seen_ddl_cols:
+                columns_ddl.append(col_def)
+                seen_ddl_cols.add(col_name.upper())
+
         # =================================================================
         # PRIMARY INDEX aus Config (nicht PRIMARY KEY!)
         # =================================================================
@@ -1671,6 +1850,21 @@ class TemplateService:
         # angelegt werden kann, wenn die physische Tabelle (noch) nicht existiert.
         return ddl.strip()
     
+    @staticmethod
+    def _current_table_ddl(cursor, database: str, table: str):
+        """Aktuelle CREATE-DDL einer Tabelle als (ddl,) oder None.
+
+        SHOW TABLE statt dbc.TablesV.RequestText: RequestText ist die letzte
+        DDL-Anweisung auf der Tabelle (nach ALTER TABLE also das ALTER).
+        """
+        try:
+            cursor.execute(f"SHOW TABLE {database}.{table}")
+            rows = cursor.fetchall()
+        except Exception:
+            return None
+        ddl = "".join(r[0] for r in rows).replace("\r", "\n").strip().rstrip(";")
+        return (ddl,) if ddl else None
+
     def _write_job_folder_artifacts(
         self,
         job_id: int,
@@ -1694,7 +1888,7 @@ class TemplateService:
                 └── drop_sk_table.sql
         """
         try:
-            job_dir = Path(PATHS["etl_jobs"]) / str(job_id)
+            job_dir = Path(get_etl_jobs_path()) / str(job_id)
             cleanup_dir = job_dir / "cleanup"
             job_dir.mkdir(parents=True, exist_ok=True)
             cleanup_dir.mkdir(parents=True, exist_ok=True)
@@ -1703,13 +1897,7 @@ class TemplateService:
             if target_table and target_database:
                 fqn = f"{target_database}.{target_table}"
                 try:
-                    cursor.execute(f"""
-                        SELECT RequestText FROM dbc.TablesV
-                        WHERE DatabaseName = '{target_database}'
-                        AND TableName = '{target_table}'
-                        AND TableKind = 'T'
-                    """)
-                    row = cursor.fetchone()
+                    row = self._current_table_ddl(cursor, target_database, target_table)
                     if row and row[0]:
                         ddl_text = row[0].strip()
                     else:
@@ -1730,13 +1918,7 @@ class TemplateService:
             if key_table_name and key_database:
                 sk_fqn = f"{key_database}.{key_table_name}"
                 try:
-                    cursor.execute(f"""
-                        SELECT RequestText FROM dbc.TablesV
-                        WHERE DatabaseName = '{key_database}'
-                        AND TableName = '{key_table_name}'
-                        AND TableKind = 'T'
-                    """)
-                    row = cursor.fetchone()
+                    row = self._current_table_ddl(cursor, key_database, key_table_name)
                     if row and row[0]:
                         sk_ddl = row[0].strip()
                     else:
@@ -1781,11 +1963,9 @@ class TemplateService:
         Orchestrator ignoriert Error 3803 (Tabelle bereits vorhanden) für DDL_CREATE-Steps.
         """
         try:
-            cursor.execute(
-                f"SELECT COALESCE(MAX(ETL_JOB_STEP_ID), 0) + 1 FROM {META_SCHEMA}.META_ETL_JOB_STEP"
-            )
-            next_id = cursor.fetchone()[0]
-
+            # ETL_JOB_STEP_ID vergibt die Identity-Spalte. Kein eigener MAX+1-Wert:
+            # bei GENERATED BY DEFAULT würde er übernommen und mit späteren
+            # Identity-Werten kollidieren.
             steps_inserted = 0
 
             # --- Zieltabelle ---
@@ -1796,13 +1976,7 @@ class TemplateService:
                     ddl = target_ddl.strip()
                 else:
                     try:
-                        cursor.execute(f"""
-                            SELECT RequestText FROM dbc.TablesV
-                            WHERE DatabaseName = '{target_database}'
-                            AND TableName = '{target_table}'
-                            AND TableKind = 'T'
-                        """)
-                        row = cursor.fetchone()
+                        row = self._current_table_ddl(cursor, target_database, target_table)
                         ddl = row[0].strip() if row else None
                     except Exception:
                         ddl = None
@@ -1812,14 +1986,13 @@ class TemplateService:
                     ddl_sql = ddl if ddl.rstrip().endswith(';') else ddl + ';'
                     cursor.execute(f"""
                         INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP (
-                            ETL_JOB_STEP_ID, ETL_JOB_ID, STEP_NAME, STEP_ORDER,
+                            ETL_JOB_ID, STEP_NAME, STEP_ORDER,
                             STEP_CATEGORY, SQL_TEMPLATE_PATH, SQL_INLINE,
                             IS_CRITICAL, ROLLBACK_ON_ERROR, IS_ACTIVE,
                             RETRY_COUNT, TIMEOUT_SECONDS
-                        ) VALUES (?, ?, 'Create Target Table (DDL)', -2,
+                        ) VALUES (?, 'Create Target Table (DDL)', -2,
                                   'DDL_CREATE', NULL, ?, 'Y', 'N', 'Y', 1, 120)
-                    """, [next_id, job_id, ddl_sql])
-                    next_id += 1
+                    """, [job_id, ddl_sql])
                     steps_inserted += 1
                     logger.info(f"DDL-Step 'Create Target Table' für Job {job_id} eingefügt ({fqn})")
 
@@ -1827,13 +2000,7 @@ class TemplateService:
             if key_database and key_table_name:
                 sk_fqn = f"{key_database}.{key_table_name}"
                 try:
-                    cursor.execute(f"""
-                        SELECT RequestText FROM dbc.TablesV
-                        WHERE DatabaseName = '{key_database}'
-                        AND TableName = '{key_table_name}'
-                        AND TableKind = 'T'
-                    """)
-                    row = cursor.fetchone()
+                    row = self._current_table_ddl(cursor, key_database, key_table_name)
                     sk_ddl = row[0].strip() if row else None
                 except Exception:
                     sk_ddl = None
@@ -1841,13 +2008,13 @@ class TemplateService:
                 if sk_ddl:
                     cursor.execute(f"""
                         INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP (
-                            ETL_JOB_STEP_ID, ETL_JOB_ID, STEP_NAME, STEP_ORDER,
+                            ETL_JOB_ID, STEP_NAME, STEP_ORDER,
                             STEP_CATEGORY, SQL_TEMPLATE_PATH, SQL_INLINE,
                             IS_CRITICAL, ROLLBACK_ON_ERROR, IS_ACTIVE,
                             RETRY_COUNT, TIMEOUT_SECONDS
-                        ) VALUES (?, ?, 'Create SK Table (DDL)', -1,
+                        ) VALUES (?, 'Create SK Table (DDL)', -1,
                                   'DDL_CREATE', NULL, ?, 'Y', 'N', 'Y', 1, 120)
-                    """, [next_id, job_id, sk_ddl + ';'])
+                    """, [job_id, sk_ddl + ';'])
                     steps_inserted += 1
                     logger.info(f"DDL-Step 'Create SK Table' für Job {job_id} eingefügt ({sk_fqn})")
 
@@ -2528,20 +2695,16 @@ class TemplateService:
                 conn = self._get_connection()
                 cursor = conn.cursor()
 
-            # Nächste freie Template-ID
-            cursor.execute(f"SELECT COALESCE(MAX(TEMPLATE_ID), 0) + 1 FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE")
-            new_template_id = cursor.fetchone()[0]
-
+            # TEMPLATE_ID vergibt die Identity-Spalte (kein eigener MAX+1-Wert, siehe _insert_ddl_steps)
             cursor.execute(f"""
                 INSERT INTO {META_SCHEMA}.META_ETL_JOB_TEMPLATE (
-                    TEMPLATE_ID, TEMPLATE_NAME, TEMPLATE_CODE, JOB_TYPE,
+                    TEMPLATE_NAME, TEMPLATE_CODE, JOB_TYPE,
                     SOURCE_LAYER_ID, TARGET_LAYER_ID,
                     DEFAULT_PRIMARY_KEY_COLUMNS, DEFAULT_HASH_COLUMNS,
                     DEFAULT_VALID_FROM_COLUMN, DEFAULT_VALID_TO_COLUMN,
                     DEFAULT_IS_CURRENT_COLUMN, CATEGORY, BESCHREIBUNG
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
-                new_template_id,
                 template_name,
                 template_code,
                 job_tpl_data.get("job_type", "CUSTOM"),
@@ -2555,6 +2718,11 @@ class TemplateService:
                 job_tpl_data.get("category"),
                 job_tpl_data.get("beschreibung")
             ])
+            cursor.execute(
+                f"SELECT TEMPLATE_ID FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE WHERE TEMPLATE_CODE = ?",
+                [template_code],
+            )
+            new_template_id = cursor.fetchone()[0]
             conn.commit()
 
             # Step-Templates einfügen

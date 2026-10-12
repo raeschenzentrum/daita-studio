@@ -26,7 +26,7 @@ from ..services.job_management import (
 )
 from ..services.etl_service import ETLService, get_etl_service
 from ..models.etl_models import ETLJobWithDetails
-from ..config import PATHS
+from ..config import PATHS, get_etl_jobs_path
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,7 @@ async def delete_preview(
             raise HTTPException(status_code=404, detail=f"Job {job_id} nicht gefunden")
 
         steps = etl_service.get_job_steps(job_id)
-        job_dir = Path(PATHS["etl_jobs"]) / str(job_id)
+        job_dir = get_etl_jobs_path() / str(job_id)
 
         def read_cleanup(filename: str) -> Optional[str]:
             p = job_dir / "cleanup" / filename
@@ -250,7 +250,7 @@ async def delete_job(
         opts = request or DeleteJobRequest()
 
         # Job-Folder löschen (optional, default True)
-        job_dir = Path(PATHS["etl_jobs"]) / str(job_id)
+        job_dir = get_etl_jobs_path() / str(job_id)
         if opts.drop_job_folder and job_dir.exists():
             shutil.rmtree(job_dir)
             logger.info(f"Job-Folder gelöscht: {job_dir}")
@@ -436,7 +436,7 @@ async def migrate_params_to_files(
     Idempotent: Überschreibt keine bereits vorhandenen Datei-Parameter.
     """
     import json as _json
-    from ..config import PATHS
+    from ..config import PATHS, get_etl_jobs_path
     from ..services.template_engine import write_step_parameters
 
     conn = etl_service._get_connection()
@@ -456,7 +456,7 @@ async def migrate_params_to_files(
     finally:
         conn.close()
 
-    etl_jobs_path = PATHS["etl_jobs"]
+    etl_jobs_path = get_etl_jobs_path()
 
     for step_id, job_id, db_params in rows:
         json_file = etl_jobs_path / str(job_id) / f"{step_id}.json"

@@ -26,7 +26,7 @@ except ImportError:
     print("ERROR: teradatasql not installed. Run: pip install teradatasql")
     sys.exit(1)
 
-from ..config import get_active_teradata_config, META_SCHEMA
+from ..config import get_active_teradata_config, get_etl_jobs_path, META_SCHEMA
 
 # Template Engine (lokal aus services/)
 try:
@@ -397,7 +397,7 @@ class MetadataETLOrchestrator:
             step_id = row[0]
             db_params = row[9]
             # F4-A: Datei hat Priorität über DB-Spalte
-            params = resolve_step_parameters(job_id, step_id, db_params, self._etl_jobs_path)
+            params = resolve_step_parameters(job_id, step_id, db_params, get_etl_jobs_path(self._etl_jobs_path))
             steps.append(ETLJobStep(
                 etl_job_step_id=step_id,
                 etl_job_id=row[1],

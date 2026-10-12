@@ -267,7 +267,7 @@ class ETLService:
         """Gibt alle Steps für einen Job zurück.
         F4-A: Parameter werden file-first aus etl/jobs/{job_id}/{step_id}.json geladen."""
         from .template_engine import resolve_step_parameters
-        from ..config import PATHS
+        from ..config import get_etl_jobs_path
 
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -286,7 +286,7 @@ class ETLService:
         for row in cursor.fetchall():
             step_id = row[0]
             db_params = row[9]
-            params = resolve_step_parameters(job_id, step_id, db_params, PATHS["etl_jobs"])
+            params = resolve_step_parameters(job_id, step_id, db_params, get_etl_jobs_path())
             steps.append(ETLJobStep(
                 etl_job_step_id=step_id, etl_job_id=row[1], step_name=row[2],
                 step_order=row[3], step_category=row[4], sql_template_path=row[5],
@@ -303,7 +303,7 @@ class ETLService:
         """F4-B: Aktualisiert die Parameter eines ETL Job Steps.
         Dual-write: JSON-Datei + DB-Spalte (Fallback-Kompatibilität)."""
         from .template_engine import write_step_parameters
-        from ..config import PATHS
+        from ..config import get_etl_jobs_path
         import json as _json
 
         # job_id für Dateipfad aus DB lesen
@@ -318,7 +318,7 @@ class ETLService:
             if row:
                 job_id = int(row[0])
                 params = _json.loads(parameters_json) if isinstance(parameters_json, str) else parameters_json
-                write_step_parameters(job_id, step_id, params, PATHS["etl_jobs"])
+                write_step_parameters(job_id, step_id, params, get_etl_jobs_path())
 
             cursor.execute(f"""
                 UPDATE {META_SCHEMA}.META_ETL_JOB_STEP

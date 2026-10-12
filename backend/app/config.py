@@ -10,7 +10,7 @@ import json
 import os
 import yaml
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 from .models import LLMConnection
 
 # =============================================================================
@@ -240,6 +240,15 @@ def get_active_teradata_config() -> dict:
         "password": env.get("password", TERADATA_CONFIG.get("password", "")),
         "connect_timeout": env.get("connect_timeout", TERADATA_CONFIG.get("connect_timeout", 10000)),
     }
+
+
+def get_etl_jobs_path(base: Optional[Path] = None) -> Path:
+    """Verzeichnis der Step-Parameter-Dateien (etl/jobs/{env_id}/) des aktiven Environments.
+
+    Job- und Step-IDs sind nur innerhalb einer Meta-DB eindeutig (geklonte
+    Umgebungen haben dieselben IDs), daher ein Unterordner je Environment.
+    """
+    return Path(base or PATHS["etl_jobs"]) / get_active_env_id()
 
 
 # =============================================================================

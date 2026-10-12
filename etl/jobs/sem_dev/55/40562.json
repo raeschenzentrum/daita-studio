@@ -1,0 +1,17 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taaa_identitaet_staging",
+  "KEY_DATABASE": "SEM_DEV_DIS_BASE",
+  "KEY_TABLE": "KEY_UZMS01_TAAA_IDENTITAET",
+  "NATURAL_KEY_COL": "IDENTITAET_ID",
+  "NATURAL_KEY_EXPRESSION_STG": "CAST(stg.IDENTITAET_ID AS VARCHAR(255))",
+  "DOMAIN": "ZEMIS",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAA_PERSON_SK_FK",
+      "key_database": "SEM_DEV_DIS_BASE",
+      "key_table": "KEY_UZMS01_TAAA_PERSON",
+      "natural_key_expr": "CAST(src.PERSON_ID AS VARCHAR(255))",
+      "domain": "ZEMIS"
+    }
+  ]
+}

@@ -208,3 +208,36 @@ target_table_ddl:
     columns:
       - "{sk_column}"
       - "{valid_from}"
+
+# ==========================================================================
+# RAW-Deltas (Template-Set RAW_TO_DISC_SCD2_DELTA)
+# ==========================================================================
+# Technikspalten der RAW-Tabellen: Ladelauf, Snapshot-Zeit, Änderungsart.
+# Sie werden nie geladen oder gehasht (gilt für alle Template-Sets).
+# Das Delta-Set historisiert die Versionen in Ladereihenfolge:
+#   VALID_FROM = Snapshot-Zeit, VALID_TO = Snapshot-Zeit der Folgezeile
+#   (halboffen), offen = open_valid_to.
+raw_delta:
+  load_id_column: "LADE_ID"
+  snapshot_column: "SNAPSHOT_DT"
+  change_type_column: "CHANGETYPE"
+  change_type_values:
+    insert: "INSERTED"
+    update: "UPDATED"
+    delete: "DELETED"
+  open_valid_to: "9999-12-31 23:59:59.999999"
+  # Obergrenze für den Ladelauf (Step-Parameter MAX_LOAD_ID; für Tests/Nachholläufe senken)
+  max_load_id: 9223372036854775807
+  # Ladestand je Job in der Meta-DB (wird im letzten Step fortgeschrieben)
+  load_state_table: "META_ETL_LOAD_STATE"
+  # Zusatzspalten der Zieltabelle (Namen nach ADR-0015: Präfix DWH_)
+  target_columns:
+    load_id:
+      name: "DWH_LOAD_ID"
+      type: "BIGINT"
+    deleted_in_source:
+      name: "DWH_DELETED_IN_SOURCE"
+      type: "CHAR(1) CHARACTER SET UNICODE"
+      default: "'N'"
+      deleted_value: "Y"
+      not_deleted_value: "N"

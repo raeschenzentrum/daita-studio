@@ -37,6 +37,8 @@ from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 
+from ..config import META_SCHEMA
+
 try:
     import teradatasql
 except ImportError:
@@ -236,7 +238,7 @@ def _get_source_system(
 ) -> SourceSystemInfo:
     """Lädt Source System Info aus META_SOURCE_SYSTEM."""
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT 
             SOURCE_SYSTEM_ID,
             SOURCE_SYSTEM_NAME,
@@ -246,7 +248,7 @@ def _get_source_system(
             DEFAULT_SCHEMA,
             CREDENTIAL_USER_WALLET,
             CREDENTIAL_PASSWORD_WALLET
-        FROM MDP01_META.META_SOURCE_SYSTEM
+        FROM {META_SCHEMA}.META_SOURCE_SYSTEM
         WHERE SOURCE_SYSTEM_ID = ?
           AND IS_ACTIVE = 'Y'
     """, (source_system_id,))

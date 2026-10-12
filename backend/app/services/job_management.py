@@ -18,6 +18,7 @@ import teradatasql
 import yaml
 
 from ..models.etl_models import ETLJob, ETLJobStep, ETLJobWithDetails
+from ..config import get_active_teradata_config, META_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -102,22 +103,17 @@ class JobManagementService:
     
     def __init__(self):
         """Initialisiert Service mit DB-Config"""
-        # Config laden
-        cfg_dir = Path("/home/tdops/ps_toolbox/PS_ROOT/subsystem/metadaita/cfg")
-        database_yml = cfg_dir / "database.yml"
-        
-        with open(database_yml, 'r') as f:
-            db_config = yaml.safe_load(f)
-        
-        self.db_config = db_config.get('teradata', {})
-    
+        # DB-Config wird pro Verbindung dynamisch aus dem aktiven Environment
+        # gelesen (siehe _get_connection) - hier nichts mehr zu tun.
+
     def _get_connection(self) -> teradatasql.TeradataConnection:
-        """Erstellt neue DB Connection"""
+        """Erstellt neue DB Connection (aktives Environment, nicht gecacht)"""
+        active_cfg = get_active_teradata_config()
         conn = teradatasql.connect(
-            host=self.db_config.get('host'),
-            user=self.db_config.get('user'),
-            password=self.db_config.get('password'),
-            connect_timeout=self.db_config.get('connect_timeout', 10000)
+            host=active_cfg.get('host'),
+            user=active_cfg.get('user'),
+            password=active_cfg.get('password'),
+            connect_timeout=active_cfg.get('connect_timeout', 10000)
         )
         # Timezone setzen
         try:
@@ -147,7 +143,7 @@ class JobManagementService:
         cursor = conn.cursor()
         
         # Query: Tabellen mit optionalem Job als TARGET und als SOURCE
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 t.table_id,
                 t.table_name,
@@ -161,18 +157,18 @@ class JobManagementService:
                 j_source.etl_job_id as source_job_id,
                 j_source.job_name as source_job_name,
                 t_downstream.table_name as downstream_target_table
-            FROM MDP01_META.META_TABLE t
-            JOIN MDP01_META.META_DATABASE d ON t.database_id = d.database_id
+            FROM {META_SCHEMA}.META_TABLE t
+            JOIN {META_SCHEMA}.META_DATABASE d ON t.database_id = d.database_id
             -- Job der diese Tabelle befüllt (Tabelle ist TARGET)
-            LEFT JOIN MDP01_META.META_ETL_JOB j_target ON t.table_id = j_target.target_table_id
+            LEFT JOIN {META_SCHEMA}.META_ETL_JOB j_target ON t.table_id = j_target.target_table_id
             LEFT JOIN (
                 SELECT etl_job_id, status,
                        ROW_NUMBER() OVER (PARTITION BY etl_job_id ORDER BY start_time DESC) as rn
-                FROM MDP01_META.META_ETL_JOB_RUN
+                FROM {META_SCHEMA}.META_ETL_JOB_RUN
             ) lr ON j_target.etl_job_id = lr.etl_job_id AND lr.rn = 1
             -- Job der diese Tabelle als Source nutzt (Tabelle wird weitergereicht)
-            LEFT JOIN MDP01_META.META_ETL_JOB j_source ON t.table_id = j_source.source_table_id
-            LEFT JOIN MDP01_META.META_TABLE t_downstream ON j_source.target_table_id = t_downstream.table_id
+            LEFT JOIN {META_SCHEMA}.META_ETL_JOB j_source ON t.table_id = j_source.source_table_id
+            LEFT JOIN {META_SCHEMA}.META_TABLE t_downstream ON j_source.target_table_id = t_downstream.table_id
             WHERE d.layer_id = ?
             ORDER BY d.database_name, t.table_name
         """, (layer_id,))
@@ -217,7 +213,7 @@ class JobManagementService:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 j.etl_job_id,
                 j.job_name,
@@ -231,19 +227,19 @@ class JobManagementService:
                 tt.table_name as target_table_name,
                 COALESCE(sd.layer_id, j.source_layer_id) as source_layer_id,
                 COALESCE(td.layer_id, j.target_layer_id) as target_layer_id,
-                (SELECT COUNT(*) FROM MDP01_META.META_ETL_JOB_STEP s 
+                (SELECT COUNT(*) FROM {META_SCHEMA}.META_ETL_JOB_STEP s 
                  WHERE s.etl_job_id = j.etl_job_id AND s.is_active = 'Y') as step_count,
                 lr.status as last_run_status,
                 lr.start_time as last_run_time
-            FROM MDP01_META.META_ETL_JOB j
-            LEFT JOIN MDP01_META.META_TABLE st ON j.source_table_id = st.table_id
-            LEFT JOIN MDP01_META.META_TABLE tt ON j.target_table_id = tt.table_id
-            LEFT JOIN MDP01_META.META_DATABASE sd ON st.database_id = sd.database_id
-            LEFT JOIN MDP01_META.META_DATABASE td ON tt.database_id = td.database_id
+            FROM {META_SCHEMA}.META_ETL_JOB j
+            LEFT JOIN {META_SCHEMA}.META_TABLE st ON j.source_table_id = st.table_id
+            LEFT JOIN {META_SCHEMA}.META_TABLE tt ON j.target_table_id = tt.table_id
+            LEFT JOIN {META_SCHEMA}.META_DATABASE sd ON st.database_id = sd.database_id
+            LEFT JOIN {META_SCHEMA}.META_DATABASE td ON tt.database_id = td.database_id
             LEFT JOIN (
                 SELECT etl_job_id, status, start_time,
                        ROW_NUMBER() OVER (PARTITION BY etl_job_id ORDER BY start_time DESC) as rn
-                FROM MDP01_META.META_ETL_JOB_RUN
+                FROM {META_SCHEMA}.META_ETL_JOB_RUN
             ) lr ON j.etl_job_id = lr.etl_job_id AND lr.rn = 1
             WHERE COALESCE(sd.layer_id, j.source_layer_id) = ?
               AND COALESCE(td.layer_id, j.target_layer_id) = ?
@@ -290,18 +286,18 @@ class JobManagementService:
         cursor = conn.cursor()
         
         # PRÜFUNG: Job-Name bereits vergeben?
-        cursor.execute("SELECT ETL_JOB_ID FROM MDP01_META.META_ETL_JOB WHERE JOB_NAME = ?", [request.job_name])
+        cursor.execute(f"SELECT ETL_JOB_ID FROM {META_SCHEMA}.META_ETL_JOB WHERE JOB_NAME = ?", [request.job_name])
         existing_job = cursor.fetchone()
         if existing_job:
             conn.close()
             raise ValueError(f"Job mit Namen '{request.job_name}' existiert bereits (ID: {existing_job[0]})")
         
         # Nächste Job-ID ermitteln
-        cursor.execute("SELECT COALESCE(MAX(etl_job_id), 0) + 1 FROM MDP01_META.META_ETL_JOB")
+        cursor.execute(f"SELECT COALESCE(MAX(etl_job_id), 0) + 1 FROM {META_SCHEMA}.META_ETL_JOB")
         new_job_id = cursor.fetchone()[0]
         
-        cursor.execute("""
-            INSERT INTO MDP01_META.META_ETL_JOB (
+        cursor.execute(f"""
+            INSERT INTO {META_SCHEMA}.META_ETL_JOB (
                 etl_job_id, job_name, job_type, source_table_id, target_table_id,
                 is_active, retry_count, timeout_seconds,
                 create_timestamp, last_alter_timestamp
@@ -342,7 +338,7 @@ class JobManagementService:
         params.append(job_id)
         
         cursor.execute(f"""
-            UPDATE MDP01_META.META_ETL_JOB 
+            UPDATE {META_SCHEMA}.META_ETL_JOB 
             SET {', '.join(updates)}
             WHERE etl_job_id = ?
         """, params)
@@ -363,22 +359,22 @@ class JobManagementService:
         cursor = conn.cursor()
         
         # Erst Step-Runs löschen
-        cursor.execute("""
-            DELETE FROM MDP01_META.META_ETL_JOB_STEP_RUN 
+        cursor.execute(f"""
+            DELETE FROM {META_SCHEMA}.META_ETL_JOB_STEP_RUN 
             WHERE etl_job_run_id IN (
-                SELECT etl_job_run_id FROM MDP01_META.META_ETL_JOB_RUN
+                SELECT etl_job_run_id FROM {META_SCHEMA}.META_ETL_JOB_RUN
                 WHERE etl_job_id = ?
             )
         """, (job_id,))
         
         # Dann Job-Runs löschen
-        cursor.execute("DELETE FROM MDP01_META.META_ETL_JOB_RUN WHERE etl_job_id = ?", (job_id,))
+        cursor.execute(f"DELETE FROM {META_SCHEMA}.META_ETL_JOB_RUN WHERE etl_job_id = ?", (job_id,))
         
         # Dann Steps löschen
-        cursor.execute("DELETE FROM MDP01_META.META_ETL_JOB_STEP WHERE etl_job_id = ?", (job_id,))
+        cursor.execute(f"DELETE FROM {META_SCHEMA}.META_ETL_JOB_STEP WHERE etl_job_id = ?", (job_id,))
         
         # Dann Job löschen
-        cursor.execute("DELETE FROM MDP01_META.META_ETL_JOB WHERE etl_job_id = ?", (job_id,))
+        cursor.execute(f"DELETE FROM {META_SCHEMA}.META_ETL_JOB WHERE etl_job_id = ?", (job_id,))
         
         conn.commit()
         conn.close()
@@ -401,14 +397,14 @@ class JobManagementService:
         cursor = conn.cursor()
         
         # Nächste Step-ID ermitteln
-        cursor.execute("SELECT COALESCE(MAX(etl_job_step_id), 0) + 1 FROM MDP01_META.META_ETL_JOB_STEP")
+        cursor.execute(f"SELECT COALESCE(MAX(etl_job_step_id), 0) + 1 FROM {META_SCHEMA}.META_ETL_JOB_STEP")
         new_step_id = cursor.fetchone()[0]
         
         # Parameters als JSON
         params_json = json.dumps(request.parameters) if request.parameters else None
         
-        cursor.execute("""
-            INSERT INTO MDP01_META.META_ETL_JOB_STEP (
+        cursor.execute(f"""
+            INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP (
                 etl_job_step_id, etl_job_id, step_name, step_order, step_category,
                 sql_template_path, sql_inline, parameters,
                 is_active, is_critical, skip_on_empty, rollback_on_error,
@@ -466,7 +462,7 @@ class JobManagementService:
         params.append(step_id)
 
         cursor.execute(f"""
-            UPDATE MDP01_META.META_ETL_JOB_STEP
+            UPDATE {META_SCHEMA}.META_ETL_JOB_STEP
             SET {', '.join(updates)}
             WHERE etl_job_step_id = ?
         """, params)
@@ -483,10 +479,10 @@ class JobManagementService:
         cursor = conn.cursor()
         
         # Erst Step-Runs löschen
-        cursor.execute("DELETE FROM MDP01_META.META_ETL_JOB_STEP_RUN WHERE etl_job_step_id = ?", (step_id,))
+        cursor.execute(f"DELETE FROM {META_SCHEMA}.META_ETL_JOB_STEP_RUN WHERE etl_job_step_id = ?", (step_id,))
         
         # Dann Step löschen
-        cursor.execute("DELETE FROM MDP01_META.META_ETL_JOB_STEP WHERE etl_job_step_id = ?", (step_id,))
+        cursor.execute(f"DELETE FROM {META_SCHEMA}.META_ETL_JOB_STEP WHERE etl_job_step_id = ?", (step_id,))
         
         conn.commit()
         conn.close()
@@ -513,8 +509,8 @@ class JobManagementService:
         cursor = conn.cursor()
         
         # Bestehende Parameters laden
-        cursor.execute("""
-            SELECT parameters FROM MDP01_META.META_ETL_JOB_STEP
+        cursor.execute(f"""
+            SELECT parameters FROM {META_SCHEMA}.META_ETL_JOB_STEP
             WHERE etl_job_step_id = ?
         """, (step_id,))
         
@@ -537,8 +533,8 @@ class JobManagementService:
         ]
         
         # Zurückschreiben
-        cursor.execute("""
-            UPDATE MDP01_META.META_ETL_JOB_STEP
+        cursor.execute(f"""
+            UPDATE {META_SCHEMA}.META_ETL_JOB_STEP
             SET parameters = ?,
                 last_alter_timestamp = CURRENT_TIMESTAMP
             WHERE etl_job_step_id = ?

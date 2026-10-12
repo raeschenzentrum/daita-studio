@@ -29,6 +29,8 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent.parent / "daita-lakehouse-db" / "tools" / "etl"))
     from orchestrator import MetadataETLOrchestrator
 
+from ..config import get_active_teradata_config, META_SCHEMA
+
 from ..models.etl_models import (
     ETLJob, ETLJobWithDetails, ETLJobStep, ETLJobRun, 
     ETLJobRunWithSteps, ETLJobStepRun, ETLJobStepRunWithDetails,
@@ -98,13 +100,14 @@ class ETLService:
         self.orchestrator = MetadataETLOrchestrator(config)  # Pass config dict, not path
     
     def _get_connection(self) -> teradatasql.TeradataConnection:
-        """Erstellt neue DB Connection mit Session Timezone"""
+        """Erstellt neue DB Connection mit Session Timezone (aktives Environment, nicht gecacht)"""
+        active_cfg = get_active_teradata_config()
         # Nur Connection-Parameter, nicht autocommit/transaction_mode/batch_size
         conn_params = {
-            'host': self.db_config.get('host'),
-            'user': self.db_config.get('user'),
-            'password': self.db_config.get('password'),
-            'connect_timeout': self.db_config.get('connect_timeout', 10000),
+            'host': active_cfg.get('host'),
+            'user': active_cfg.get('user'),
+            'password': active_cfg.get('password'),
+            'connect_timeout': active_cfg.get('connect_timeout', 10000),
         }
         conn = teradatasql.connect(**conn_params)
         
@@ -132,7 +135,7 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        query = """
+        query = f"""
         SELECT
             j.etl_job_id,
             j.job_name,
@@ -146,21 +149,21 @@ class ETLService:
             tt.table_name as target_table_name,
             COALESCE(sd.layer_id, j.source_layer_id) as source_layer_id,
             COALESCE(td.layer_id, j.target_layer_id) as target_layer_id,
-            (SELECT COUNT(*) FROM MDP01_META.META_ETL_JOB_STEP s
+            (SELECT COUNT(*) FROM {META_SCHEMA}.META_ETL_JOB_STEP s
              WHERE s.etl_job_id = j.etl_job_id AND s.is_active = 'Y') as step_count,
             lr.status as last_run_status,
             lr.start_time as last_run_time
-        FROM MDP01_META.META_ETL_JOB j
-        LEFT JOIN MDP01_META.META_TABLE st ON j.source_table_id = st.table_id
-        LEFT JOIN MDP01_META.META_TABLE tt ON j.target_table_id = tt.table_id
-        LEFT JOIN MDP01_META.META_DATABASE sd ON st.database_id = sd.database_id
-        LEFT JOIN MDP01_META.META_DATABASE td ON tt.database_id = td.database_id
+        FROM {META_SCHEMA}.META_ETL_JOB j
+        LEFT JOIN {META_SCHEMA}.META_TABLE st ON j.source_table_id = st.table_id
+        LEFT JOIN {META_SCHEMA}.META_TABLE tt ON j.target_table_id = tt.table_id
+        LEFT JOIN {META_SCHEMA}.META_DATABASE sd ON st.database_id = sd.database_id
+        LEFT JOIN {META_SCHEMA}.META_DATABASE td ON tt.database_id = td.database_id
         LEFT JOIN (
             SELECT etl_job_id, status, start_time
             FROM (
                 SELECT etl_job_id, status, start_time,
                        ROW_NUMBER() OVER (PARTITION BY etl_job_id ORDER BY start_time DESC) as rn
-                FROM MDP01_META.META_ETL_JOB_RUN
+                FROM {META_SCHEMA}.META_ETL_JOB_RUN
             ) tmp
             WHERE rn = 1
         ) lr ON j.etl_job_id = lr.etl_job_id
@@ -211,7 +214,7 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT
                 j.etl_job_id,
                 j.job_name,
@@ -225,21 +228,21 @@ class ETLService:
                 tt.table_name  AS target_table_name,
                 COALESCE(sd.layer_id, j.source_layer_id) AS source_layer_id,
                 COALESCE(td.layer_id, j.target_layer_id) AS target_layer_id,
-                (SELECT COUNT(*) FROM MDP01_META.META_ETL_JOB_STEP s
+                (SELECT COUNT(*) FROM {META_SCHEMA}.META_ETL_JOB_STEP s
                  WHERE s.etl_job_id = j.etl_job_id AND s.is_active = 'Y') AS step_count,
                 lr.status     AS last_run_status,
                 lr.start_time AS last_run_time
-            FROM MDP01_META.META_ETL_JOB j
-            LEFT JOIN MDP01_META.META_TABLE    st ON j.source_table_id = st.table_id
-            LEFT JOIN MDP01_META.META_TABLE    tt ON j.target_table_id = tt.table_id
-            LEFT JOIN MDP01_META.META_DATABASE sd ON st.database_id   = sd.database_id
-            LEFT JOIN MDP01_META.META_DATABASE td ON tt.database_id   = td.database_id
+            FROM {META_SCHEMA}.META_ETL_JOB j
+            LEFT JOIN {META_SCHEMA}.META_TABLE    st ON j.source_table_id = st.table_id
+            LEFT JOIN {META_SCHEMA}.META_TABLE    tt ON j.target_table_id = tt.table_id
+            LEFT JOIN {META_SCHEMA}.META_DATABASE sd ON st.database_id   = sd.database_id
+            LEFT JOIN {META_SCHEMA}.META_DATABASE td ON tt.database_id   = td.database_id
             LEFT JOIN (
                 SELECT etl_job_id, status, start_time
                 FROM (
                     SELECT etl_job_id, status, start_time,
                            ROW_NUMBER() OVER (PARTITION BY etl_job_id ORDER BY start_time DESC) AS rn
-                    FROM MDP01_META.META_ETL_JOB_RUN
+                    FROM {META_SCHEMA}.META_ETL_JOB_RUN
                 ) tmp WHERE rn = 1
             ) lr ON j.etl_job_id = lr.etl_job_id
             WHERE j.etl_job_id = ?
@@ -269,12 +272,12 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT etl_job_step_id, etl_job_id, step_name, step_order, step_category,
                    sql_template_path, sql_inline, python_module, python_function,
                    parameters, condition_sql, skip_on_empty, is_critical,
                    rollback_on_error, is_active, create_timestamp, last_alter_timestamp
-            FROM MDP01_META.META_ETL_JOB_STEP
+            FROM {META_SCHEMA}.META_ETL_JOB_STEP
             WHERE etl_job_id = ?
             ORDER BY step_order
         """, (job_id,))
@@ -308,7 +311,7 @@ class ETLService:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "SELECT etl_job_id FROM MDP01_META.META_ETL_JOB_STEP WHERE etl_job_step_id = ? SAMPLE 1",
+                f"SELECT etl_job_id FROM {META_SCHEMA}.META_ETL_JOB_STEP WHERE etl_job_step_id = ? SAMPLE 1",
                 [step_id]
             )
             row = cursor.fetchone()
@@ -317,8 +320,8 @@ class ETLService:
                 params = _json.loads(parameters_json) if isinstance(parameters_json, str) else parameters_json
                 write_step_parameters(job_id, step_id, params, PATHS["etl_jobs"])
 
-            cursor.execute("""
-                UPDATE MDP01_META.META_ETL_JOB_STEP
+            cursor.execute(f"""
+                UPDATE {META_SCHEMA}.META_ETL_JOB_STEP
                 SET parameters = ?,
                     last_alter_timestamp = CURRENT_TIMESTAMP
                 WHERE etl_job_step_id = ?
@@ -337,12 +340,12 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT l.layer_id, l.layer_name, l.layer_code, l.layer_sequence,
                    l.layer_beschreibung, l.modellierungsansatz,
                    COUNT(d.database_id) as database_count
-            FROM MDP01_META.META_LAYER l
-            LEFT JOIN MDP01_META.META_DATABASE d ON l.layer_id = d.layer_id
+            FROM {META_SCHEMA}.META_LAYER l
+            LEFT JOIN {META_SCHEMA}.META_DATABASE d ON l.layer_id = d.layer_id
             GROUP BY l.layer_id, l.layer_name, l.layer_code, l.layer_sequence,
                      l.layer_beschreibung, l.modellierungsansatz
             ORDER BY l.layer_sequence
@@ -366,14 +369,14 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        sql = """
+        sql = f"""
             SELECT d.database_id, d.database_name, d.layer_id, 
                    l.layer_code, l.layer_name, l.layer_sequence,
                    d.comment_string,
                    COUNT(t.table_id) as table_count
-            FROM MDP01_META.META_DATABASE d
-            JOIN MDP01_META.META_LAYER l ON d.layer_id = l.layer_id
-            LEFT JOIN MDP01_META.META_TABLE t ON d.database_id = t.database_id
+            FROM {META_SCHEMA}.META_DATABASE d
+            JOIN {META_SCHEMA}.META_LAYER l ON d.layer_id = l.layer_id
+            LEFT JOIN {META_SCHEMA}.META_TABLE t ON d.database_id = t.database_id
         """
         
         params = []
@@ -406,12 +409,12 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT t.table_id, t.table_name, t.is_historized, t.historization_type,
                    t.comment_string,
                    COUNT(c.column_id) as column_count
-            FROM MDP01_META.META_TABLE t
-            LEFT JOIN MDP01_META.META_COLUMN c ON t.table_id = c.table_id
+            FROM {META_SCHEMA}.META_TABLE t
+            LEFT JOIN {META_SCHEMA}.META_COLUMN c ON t.table_id = c.table_id
             WHERE t.database_id = ?
             GROUP BY t.table_id, t.table_name, t.is_historized, 
                      t.historization_type, t.comment_string
@@ -435,13 +438,13 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT c.column_id, c.column_name, c.column_position,
                    c.column_type, c.column_length, c.nullable,
                    c.is_business_key, c.is_technical_key,
                    c.is_audit_column, c.is_scd_column, c.scd_type,
                    c.comment_string
-            FROM MDP01_META.META_COLUMN c
+            FROM {META_SCHEMA}.META_COLUMN c
             WHERE c.table_id = ?
             ORDER BY c.column_position
         """, (table_id,))
@@ -471,7 +474,7 @@ class ETLService:
 
         # Tabellenname ermitteln (für Rückgabe)
         cursor.execute(
-            "SELECT table_name FROM MDP01_META.META_TABLE WHERE table_id = ?",
+            f"SELECT table_name FROM {META_SCHEMA}.META_TABLE WHERE table_id = ?",
             (table_id,)
         )
         row = cursor.fetchone()
@@ -483,14 +486,14 @@ class ETLService:
 
         # Spalten zuerst löschen (FK-Abhängigkeit)
         cursor.execute(
-            "DELETE FROM MDP01_META.META_COLUMN WHERE table_id = ?",
+            f"DELETE FROM {META_SCHEMA}.META_COLUMN WHERE table_id = ?",
             (table_id,)
         )
         columns_deleted = cursor.rowcount
 
         # Dann die Tabelle selbst
         cursor.execute(
-            "DELETE FROM MDP01_META.META_TABLE WHERE table_id = ?",
+            f"DELETE FROM {META_SCHEMA}.META_TABLE WHERE table_id = ?",
             (table_id,)
         )
         conn.commit()
@@ -537,7 +540,7 @@ class ETLService:
         cursor = conn.cursor()
         
         # Hole Database-Name
-        cursor.execute("SELECT database_name FROM MDP01_META.META_DATABASE WHERE database_id = ?", (database_id,))
+        cursor.execute(f"SELECT database_name FROM {META_SCHEMA}.META_DATABASE WHERE database_id = ?", (database_id,))
         db_row = cursor.fetchone()
         if not db_row:
             conn.close()
@@ -546,8 +549,8 @@ class ETLService:
         database_name = db_row[0]
         
         # Prüfe ob Tabelle schon existiert
-        cursor.execute("""
-            SELECT table_id FROM MDP01_META.META_TABLE 
+        cursor.execute(f"""
+            SELECT table_id FROM {META_SCHEMA}.META_TABLE 
             WHERE database_id = ? AND UPPER(table_name) = UPPER(?)
         """, (database_id, table_name))
         if cursor.fetchone():
@@ -568,12 +571,12 @@ class ETLService:
         table_comment = tbl_row[1]
         
         # Nächste table_id
-        cursor.execute("SELECT COALESCE(MAX(table_id), 0) + 1 FROM MDP01_META.META_TABLE")
+        cursor.execute(f"SELECT COALESCE(MAX(table_id), 0) + 1 FROM {META_SCHEMA}.META_TABLE")
         next_table_id = cursor.fetchone()[0]
         
         # Tabelle einfügen
-        cursor.execute("""
-            INSERT INTO MDP01_META.META_TABLE (
+        cursor.execute(f"""
+            INSERT INTO {META_SCHEMA}.META_TABLE (
                 table_id, database_id, table_name, is_historized,
                 comment_string, ersterfassungsdatum, aenderungsdatum
             ) VALUES (?, ?, ?, 'N', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -585,19 +588,19 @@ class ETLService:
         # Spalten einfügen
         inserted_columns = 0
         for col in columns:
-            cursor.execute("SELECT COALESCE(MAX(column_id), 0) + 1 FROM MDP01_META.META_COLUMN")
+            cursor.execute(f"SELECT COALESCE(MAX(column_id), 0) + 1 FROM {META_SCHEMA}.META_COLUMN")
             next_col_id = cursor.fetchone()[0]
             
             # Datatype lookup
-            cursor.execute("""
-                SELECT datatype_id FROM MDP01_META.META_DATATYPE 
+            cursor.execute(f"""
+                SELECT datatype_id FROM {META_SCHEMA}.META_DATATYPE 
                 WHERE teradata_type = ? SAMPLE 1
             """, (col["column_type"],))
             dt_row = cursor.fetchone()
             datatype_id = dt_row[0] if dt_row else 1
             
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_COLUMN (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_COLUMN (
                     column_id, table_id, column_name, column_position,
                     datatype_id, column_type, column_length, nullable,
                     ersterfassungsdatum, aenderungsdatum
@@ -626,11 +629,11 @@ class ETLService:
         cursor = conn.cursor()
         
         # Tabelle laden
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT t.table_id, t.table_name, d.database_name, 
                    t.comment_string, t.is_historized, t.historization_type
-            FROM MDP01_META.META_TABLE t
-            LEFT JOIN MDP01_META.META_DATABASE d ON t.database_id = d.database_id
+            FROM {META_SCHEMA}.META_TABLE t
+            LEFT JOIN {META_SCHEMA}.META_DATABASE d ON t.database_id = d.database_id
             WHERE t.table_id = ?
         """, (table_id,))
         
@@ -651,12 +654,12 @@ class ETLService:
         }
         
         # Spalten laden
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT c.column_id, c.column_name, c.column_position, 
                    c.column_type, c.column_length, c.nullable,
                    c.is_business_key, c.is_technical_key, c.is_audit_column,
                    c.is_scd_column, c.scd_type, c.comment_string
-            FROM MDP01_META.META_COLUMN c
+            FROM {META_SCHEMA}.META_COLUMN c
             WHERE c.table_id = ?
             ORDER BY c.column_position
         """, (table_id,))
@@ -751,9 +754,9 @@ class ETLService:
                 "message": "Fehler: source_system_id nicht in Parameters"
             }
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT ODBC_DSN_NAME, CREDENTIAL_USER_WALLET, CREDENTIAL_PASSWORD_WALLET, DEFAULT_DATABASE
-            FROM MDP01_META.META_SOURCE_SYSTEM
+            FROM {META_SCHEMA}.META_SOURCE_SYSTEM
             WHERE SOURCE_SYSTEM_ID = ?
         """, (source_system_id,))
         
@@ -868,10 +871,10 @@ class ETLService:
         cursor = conn.cursor()
         
         # Hole Tabellen-Info
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT t.table_name, d.database_name
-            FROM MDP01_META.META_TABLE t
-            JOIN MDP01_META.META_DATABASE d ON t.database_id = d.database_id
+            FROM {META_SCHEMA}.META_TABLE t
+            JOIN {META_SCHEMA}.META_DATABASE d ON t.database_id = d.database_id
             WHERE t.table_id = ?
         """, (table_id,))
         
@@ -983,20 +986,20 @@ class ETLService:
         for col in diff["added"]:
             try:
                 # Hole nächste column_id
-                cursor.execute("SELECT COALESCE(MAX(column_id), 0) + 1 FROM MDP01_META.META_COLUMN")
+                cursor.execute(f"SELECT COALESCE(MAX(column_id), 0) + 1 FROM {META_SCHEMA}.META_COLUMN")
                 next_id = cursor.fetchone()[0]
                 
                 # Hole datatype_id (oder default)
-                cursor.execute("""
-                    SELECT datatype_id FROM MDP01_META.META_DATATYPE 
+                cursor.execute(f"""
+                    SELECT datatype_id FROM {META_SCHEMA}.META_DATATYPE 
                     WHERE teradata_type = ? 
                     SAMPLE 1
                 """, (col["column_type"],))
                 dt_row = cursor.fetchone()
                 datatype_id = dt_row[0] if dt_row else 1
                 
-                cursor.execute("""
-                    INSERT INTO MDP01_META.META_COLUMN (
+                cursor.execute(f"""
+                    INSERT INTO {META_SCHEMA}.META_COLUMN (
                         column_id, table_id, column_name, column_position,
                         datatype_id, column_type, column_length, nullable,
                         ersterfassungsdatum, aenderungsdatum
@@ -1012,8 +1015,8 @@ class ETLService:
         for col in diff["changed"]:
             try:
                 actual = col["actual"]
-                cursor.execute("""
-                    UPDATE MDP01_META.META_COLUMN
+                cursor.execute(f"""
+                    UPDATE {META_SCHEMA}.META_COLUMN
                     SET column_type = ?,
                         column_length = ?,
                         column_position = ?,
@@ -1028,7 +1031,7 @@ class ETLService:
         # Gelöschte Spalten entfernen (nicht mehr in DB vorhanden)
         for col in diff["removed"]:
             try:
-                cursor.execute("DELETE FROM MDP01_META.META_COLUMN WHERE column_id = ?", (col["column_id"],))
+                cursor.execute(f"DELETE FROM {META_SCHEMA}.META_COLUMN WHERE column_id = ?", (col["column_id"],))
                 results["deleted"] += 1
             except Exception as e:
                 results["errors"].append(f"Delete {col['column_name']}: {str(e)}")
@@ -1076,8 +1079,8 @@ class ETLService:
         cursor = conn.cursor()
         
         # 1. Finde und update stale JOB runs
-        cursor.execute("""
-            UPDATE MDP01_META.META_ETL_JOB_RUN
+        cursor.execute(f"""
+            UPDATE {META_SCHEMA}.META_ETL_JOB_RUN
             SET status = 'FAILED',
                 error_message = 'Job wurde als fehlgeschlagen markiert (Timeout/Stale Run Cleanup)',
                 end_time = CURRENT_TIMESTAMP
@@ -1088,8 +1091,8 @@ class ETLService:
         job_count = cursor.rowcount
         
         # 2. Finde und update stale STEP runs
-        cursor.execute("""
-            UPDATE MDP01_META.META_ETL_JOB_STEP_RUN
+        cursor.execute(f"""
+            UPDATE {META_SCHEMA}.META_ETL_JOB_STEP_RUN
             SET status = 'FAILED',
                 error_message = 'Step wurde als fehlgeschlagen markiert (Timeout/Stale Run Cleanup)',
                 end_time = CURRENT_TIMESTAMP
@@ -1155,12 +1158,12 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        query = """
+        query = f"""
         SELECT etl_job_run_id, etl_job_id, start_time, end_time, duration_seconds,
                status, error_message, 
                CAST(error_stack AS VARCHAR(2000)) AS error_stack, 
                create_timestamp
-        FROM MDP01_META.META_ETL_JOB_RUN
+        FROM {META_SCHEMA}.META_ETL_JOB_RUN
         WHERE 1=1
         """
         params = []
@@ -1209,13 +1212,13 @@ class ETLService:
         cursor = conn.cursor()
         
         # Job Run
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT r.etl_job_run_id, r.etl_job_id, r.start_time, r.end_time,
                    r.duration_seconds, r.status, r.error_message, 
                    CAST(r.error_stack AS VARCHAR(2000)) AS error_stack,
                    r.create_timestamp, j.job_name
-            FROM MDP01_META.META_ETL_JOB_RUN r
-            JOIN MDP01_META.META_ETL_JOB j ON r.etl_job_id = j.etl_job_id
+            FROM {META_SCHEMA}.META_ETL_JOB_RUN r
+            JOIN {META_SCHEMA}.META_ETL_JOB j ON r.etl_job_id = j.etl_job_id
             WHERE r.etl_job_run_id = ?
         """, (job_run_id,))
         
@@ -1232,7 +1235,7 @@ class ETLService:
         )
         
         # Step Runs - inklusive PARAMETERS für Debugging
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT sr.etl_job_step_run_id, sr.etl_job_run_id, sr.etl_job_step_id,
                    sr.start_time, sr.end_time, sr.duration_seconds, sr.status,
                    sr.rows_read, sr.rows_inserted, sr.rows_updated, sr.rows_deleted,
@@ -1241,8 +1244,8 @@ class ETLService:
                    sr.was_skipped, sr.skip_reason,
                    sr.create_timestamp, s.step_name, s.step_order, s.step_category,
                    CAST(s.parameters AS VARCHAR(10000)) AS parameters
-            FROM MDP01_META.META_ETL_JOB_STEP_RUN sr
-            JOIN MDP01_META.META_ETL_JOB_STEP s ON sr.etl_job_step_id = s.etl_job_step_id
+            FROM {META_SCHEMA}.META_ETL_JOB_STEP_RUN sr
+            JOIN {META_SCHEMA}.META_ETL_JOB_STEP s ON sr.etl_job_step_id = s.etl_job_step_id
             WHERE sr.etl_job_run_id = ?
             ORDER BY s.step_order
         """, (job_run_id,))
@@ -1272,30 +1275,30 @@ class ETLService:
         cursor = conn.cursor()
         
         # Total & Active Jobs
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN is_active = 'Y' THEN 1 ELSE 0 END) as active
-            FROM MDP01_META.META_ETL_JOB
+            FROM {META_SCHEMA}.META_ETL_JOB
         """)
         row = cursor.fetchone()
         total_jobs, active_jobs = row[0], row[1]
         
         # Running Jobs
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COUNT(DISTINCT etl_job_id)
-            FROM MDP01_META.META_ETL_JOB_RUN
+            FROM {META_SCHEMA}.META_ETL_JOB_RUN
             WHERE status = 'RUNNING'
         """)
         running_jobs = cursor.fetchone()[0]
         
         # Recent Runs (last 10)
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT TOP 10 etl_job_run_id, etl_job_id, start_time, end_time,
                    duration_seconds, status, error_message, 
                    CAST(error_stack AS VARCHAR(2000)) AS error_stack, 
                    create_timestamp
-            FROM MDP01_META.META_ETL_JOB_RUN
+            FROM {META_SCHEMA}.META_ETL_JOB_RUN
             ORDER BY start_time DESC
         """)
         recent_runs = [
@@ -1308,20 +1311,20 @@ class ETLService:
         ]
         
         # Failed runs last 24h
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COUNT(*)
-            FROM MDP01_META.META_ETL_JOB_RUN
+            FROM {META_SCHEMA}.META_ETL_JOB_RUN
             WHERE status = 'FAILED' 
             AND start_time >= CURRENT_TIMESTAMP - INTERVAL '24' HOUR
         """)
         failed_24h = cursor.fetchone()[0]
         
         # Success rate last 24h
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as success,
                 COUNT(*) as total
-            FROM MDP01_META.META_ETL_JOB_RUN
+            FROM {META_SCHEMA}.META_ETL_JOB_RUN
             WHERE start_time >= CURRENT_TIMESTAMP - INTERVAL '24' HOUR
         """)
         row = cursor.fetchone()
@@ -1343,7 +1346,7 @@ class ETLService:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        query = """
+        query = f"""
         SELECT 
             j.etl_job_id,
             j.job_name,
@@ -1353,8 +1356,8 @@ class ETLService:
             AVG(r.duration_seconds) as avg_duration,
             MIN(r.duration_seconds) as min_duration,
             MAX(r.duration_seconds) as max_duration
-        FROM MDP01_META.META_ETL_JOB j
-        LEFT JOIN MDP01_META.META_ETL_JOB_RUN r ON j.etl_job_id = r.etl_job_id
+        FROM {META_SCHEMA}.META_ETL_JOB j
+        LEFT JOIN {META_SCHEMA}.META_ETL_JOB_RUN r ON j.etl_job_id = r.etl_job_id
         """
         
         if job_id:
@@ -1408,8 +1411,8 @@ class ETLService:
         }
         
         # 1. Prüfen ob Job existiert
-        cursor.execute("""
-            SELECT JOB_NAME, TARGET_TABLE_ID FROM MDP01_META.META_ETL_JOB WHERE ETL_JOB_ID = ?
+        cursor.execute(f"""
+            SELECT JOB_NAME, TARGET_TABLE_ID FROM {META_SCHEMA}.META_ETL_JOB WHERE ETL_JOB_ID = ?
         """, (job_id,))
         job_row = cursor.fetchone()
         
@@ -1425,10 +1428,10 @@ class ETLService:
         target_db = None
         target_table = None
         if delete_tables and target_table_id:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT d.DATABASE_NAME, t.TABLE_NAME 
-                FROM MDP01_META.META_TABLE t
-                JOIN MDP01_META.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
+                FROM {META_SCHEMA}.META_TABLE t
+                JOIN {META_SCHEMA}.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
                 WHERE t.TABLE_ID = ?
             """, (target_table_id,))
             table_row = cursor.fetchone()
@@ -1437,29 +1440,29 @@ class ETLService:
                 target_table = table_row[1]
         
         # 3. Step Runs löschen (für alle Job Runs dieses Jobs)
-        cursor.execute("""
-            DELETE FROM MDP01_META.META_ETL_JOB_STEP_RUN 
+        cursor.execute(f"""
+            DELETE FROM {META_SCHEMA}.META_ETL_JOB_STEP_RUN 
             WHERE ETL_JOB_RUN_ID IN (
-                SELECT ETL_JOB_RUN_ID FROM MDP01_META.META_ETL_JOB_RUN WHERE ETL_JOB_ID = ?
+                SELECT ETL_JOB_RUN_ID FROM {META_SCHEMA}.META_ETL_JOB_RUN WHERE ETL_JOB_ID = ?
             )
         """, (job_id,))
         result['deleted_step_runs'] = cursor.rowcount
         
         # 4. Job Runs löschen
-        cursor.execute("""
-            DELETE FROM MDP01_META.META_ETL_JOB_RUN WHERE ETL_JOB_ID = ?
+        cursor.execute(f"""
+            DELETE FROM {META_SCHEMA}.META_ETL_JOB_RUN WHERE ETL_JOB_ID = ?
         """, (job_id,))
         result['deleted_job_runs'] = cursor.rowcount
         
         # 5. Job Steps löschen
-        cursor.execute("""
-            DELETE FROM MDP01_META.META_ETL_JOB_STEP WHERE ETL_JOB_ID = ?
+        cursor.execute(f"""
+            DELETE FROM {META_SCHEMA}.META_ETL_JOB_STEP WHERE ETL_JOB_ID = ?
         """, (job_id,))
         result['deleted_steps'] = cursor.rowcount
         
         # 6. Job löschen
-        cursor.execute("""
-            DELETE FROM MDP01_META.META_ETL_JOB WHERE ETL_JOB_ID = ?
+        cursor.execute(f"""
+            DELETE FROM {META_SCHEMA}.META_ETL_JOB WHERE ETL_JOB_ID = ?
         """, (job_id,))
         
         conn.commit()
@@ -1468,10 +1471,10 @@ class ETLService:
         # SICHERHEIT: RAW-Layer Tabellen NIEMALS löschen!
         if delete_tables and target_db and target_table:
             # Prüfen ob Target im RAW-Layer liegt
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT l.LAYER_NAME 
-                FROM MDP01_META.META_TABLE t
-                JOIN MDP01_META.META_LAYER l ON t.LAYER_ID = l.LAYER_ID
+                FROM {META_SCHEMA}.META_TABLE t
+                JOIN {META_SCHEMA}.META_LAYER l ON t.LAYER_ID = l.LAYER_ID
                 WHERE t.TABLE_ID = ?
             """, (target_table_id,))
             layer_row = cursor.fetchone()

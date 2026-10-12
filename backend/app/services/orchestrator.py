@@ -26,6 +26,8 @@ except ImportError:
     print("ERROR: teradatasql not installed. Run: pip install teradatasql")
     sys.exit(1)
 
+from ..config import get_active_teradata_config, META_SCHEMA
+
 # Template Engine (lokal aus services/)
 try:
     from .template_engine import SQLTemplateEngine, load_parameters_from_json, resolve_step_parameters
@@ -159,12 +161,13 @@ class MetadataETLOrchestrator:
         Returns:
             Teradata-Connection
         """
-        logger.debug(f"Connecting to Teradata: {self.teradata_config['host']}")
+        logger.debug(f"Connecting to Teradata: {get_active_teradata_config()['host']}")
         
+        active_cfg = get_active_teradata_config()
         conn = teradatasql.connect(
-            host=self.teradata_config['host'],
-            user=self.teradata_config['user'],
-            password=self.teradata_config['password'],
+            host=active_cfg['host'],
+            user=active_cfg['user'],
+            password=active_cfg['password'],
             tmode=self.etl_config.get('transaction_mode', 'ANSI')
         )
         
@@ -192,10 +195,11 @@ class MetadataETLOrchestrator:
         """
         if self._log_conn is None:
             logger.debug("Creating dedicated logging connection")
+            active_cfg = get_active_teradata_config()
             self._log_conn = teradatasql.connect(
-                host=self.teradata_config['host'],
-                user=self.teradata_config['user'],
-                password=self.teradata_config['password'],
+                host=active_cfg['host'],
+                user=active_cfg['user'],
+                password=active_cfg['password'],
                 tmode=self.etl_config.get('transaction_mode', 'ANSI')
             )
             self._log_conn.autocommit = True  # Jedes Statement sofort committen
@@ -351,11 +355,11 @@ class MetadataETLOrchestrator:
     def _load_job(self, conn: teradatasql.TeradataConnection, job_id: int) -> ETLJob:
         """Lädt Job-Definition aus META_ETL_JOB."""
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 etl_job_id, job_name, job_type, 
                 source_table_id, target_table_id, is_active
-            FROM MDP01_META.META_ETL_JOB
+            FROM {META_SCHEMA}.META_ETL_JOB
             WHERE etl_job_id = ?
         """, (job_id,))
         
@@ -376,13 +380,13 @@ class MetadataETLOrchestrator:
         """Lädt Steps aus META_ETL_JOB_STEP (sortiert nach step_order).
         F4-A: Parameter werden file-first aus etl/jobs/{job_id}/{step_id}.json geladen."""
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 etl_job_step_id, etl_job_id, step_name, step_order, step_category,
                 sql_template_path, sql_inline, python_module, python_function,
                 parameters, condition_sql, skip_on_empty, is_critical, 
                 rollback_on_error, is_active
-            FROM MDP01_META.META_ETL_JOB_STEP
+            FROM {META_SCHEMA}.META_ETL_JOB_STEP
             WHERE etl_job_id = ?
               AND is_active = 'Y'
             ORDER BY step_order
@@ -423,16 +427,16 @@ class MetadataETLOrchestrator:
         """Erstellt Job-Run Eintrag in META_ETL_JOB_RUN (über Log-Connection)."""
         log_conn = self._get_log_connection()
         cursor = log_conn.cursor()
-        cursor.execute("""
-            INSERT INTO MDP01_META.META_ETL_JOB_RUN (
+        cursor.execute(f"""
+            INSERT INTO {META_SCHEMA}.META_ETL_JOB_RUN (
                 etl_job_id, run_timestamp, start_time, status, execution_mode
             ) VALUES (?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), 'RUNNING', ?)
         """, (job_id, execution_mode))
         
         # Get generated job_run_id
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT etl_job_run_id
-            FROM MDP01_META.META_ETL_JOB_RUN
+            FROM {META_SCHEMA}.META_ETL_JOB_RUN
             WHERE etl_job_id = ?
             ORDER BY run_timestamp DESC
         """, (job_id,))
@@ -630,15 +634,15 @@ class MetadataETLOrchestrator:
         """Erstellt Step-Run Eintrag (über Log-Connection)."""
         log_conn = self._get_log_connection()
         cursor = log_conn.cursor()
-        cursor.execute("""
-            INSERT INTO MDP01_META.META_ETL_JOB_STEP_RUN (
+        cursor.execute(f"""
+            INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP_RUN (
                 etl_job_run_id, etl_job_step_id, start_time, status
             ) VALUES (?, ?, CURRENT_TIMESTAMP(6), 'RUNNING')
         """, (job_run_id, step_id))
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT etl_job_step_run_id
-            FROM MDP01_META.META_ETL_JOB_STEP_RUN
+            FROM {META_SCHEMA}.META_ETL_JOB_STEP_RUN
             WHERE etl_job_run_id = ? AND etl_job_step_id = ?
             ORDER BY start_time DESC
         """, (job_run_id, step_id))
@@ -658,8 +662,8 @@ class MetadataETLOrchestrator:
         """Aktualisiert Step-Run mit Results (über Log-Connection)."""
         log_conn = self._get_log_connection()
         cursor = log_conn.cursor()
-        cursor.execute("""
-            UPDATE MDP01_META.META_ETL_JOB_STEP_RUN
+        cursor.execute(f"""
+            UPDATE {META_SCHEMA}.META_ETL_JOB_STEP_RUN
             SET 
                 end_time = CURRENT_TIMESTAMP(6),
                 duration_seconds = ?,
@@ -692,8 +696,8 @@ class MetadataETLOrchestrator:
         """Aktualisiert Job-Run Status (über Log-Connection)."""
         log_conn = self._get_log_connection()
         cursor = log_conn.cursor()
-        cursor.execute("""
-            UPDATE MDP01_META.META_ETL_JOB_RUN
+        cursor.execute(f"""
+            UPDATE {META_SCHEMA}.META_ETL_JOB_RUN
             SET 
                 end_time = CURRENT_TIMESTAMP(6),
                 duration_seconds = (CURRENT_TIMESTAMP(6) - start_time) SECOND(4),
@@ -721,9 +725,9 @@ class MetadataETLOrchestrator:
         # Log-Connection verwenden, damit Daten-Transaktion nicht gestört wird
         log_conn = self._get_log_connection()
         cursor = log_conn.cursor()
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT control_flag
-            FROM MDP01_META.META_ETL_JOB_RUN
+            FROM {META_SCHEMA}.META_ETL_JOB_RUN
             WHERE etl_job_run_id = ?
         """, (job_run_id,))
         
@@ -736,8 +740,8 @@ class MetadataETLOrchestrator:
         if control_flag == 'PAUSE_REQUESTED':
             # Pause ausführen: Status auf PAUSED setzen, paused_at_step merken
             logger.info(f"Pause requested - stopping before step {current_step_order}")
-            cursor.execute("""
-                UPDATE MDP01_META.META_ETL_JOB_RUN
+            cursor.execute(f"""
+                UPDATE {META_SCHEMA}.META_ETL_JOB_RUN
                 SET status = 'PAUSED',
                     paused_at_step = ?,
                     control_flag = NULL
@@ -749,8 +753,8 @@ class MetadataETLOrchestrator:
         elif control_flag == 'CANCEL_REQUESTED':
             # Cancel ausführen: Status auf CANCELLED setzen
             logger.info(f"Cancel requested - aborting job")
-            cursor.execute("""
-                UPDATE MDP01_META.META_ETL_JOB_RUN
+            cursor.execute(f"""
+                UPDATE {META_SCHEMA}.META_ETL_JOB_RUN
                 SET status = 'CANCELLED',
                     end_time = CURRENT_TIMESTAMP(6),
                     control_flag = NULL,
@@ -778,8 +782,8 @@ class MetadataETLOrchestrator:
         cursor = conn.cursor()
         
         # Prüfe ob Job RUNNING ist
-        cursor.execute("""
-            SELECT status FROM MDP01_META.META_ETL_JOB_RUN
+        cursor.execute(f"""
+            SELECT status FROM {META_SCHEMA}.META_ETL_JOB_RUN
             WHERE etl_job_run_id = ?
         """, (job_run_id,))
         
@@ -789,8 +793,8 @@ class MetadataETLOrchestrator:
             return False
         
         # Setze Pause-Flag
-        cursor.execute("""
-            UPDATE MDP01_META.META_ETL_JOB_RUN
+        cursor.execute(f"""
+            UPDATE {META_SCHEMA}.META_ETL_JOB_RUN
             SET control_flag = 'PAUSE_REQUESTED'
             WHERE etl_job_run_id = ?
         """, (job_run_id,))
@@ -810,8 +814,8 @@ class MetadataETLOrchestrator:
         cursor = conn.cursor()
         
         # Prüfe ob Job RUNNING oder PAUSED ist
-        cursor.execute("""
-            SELECT status FROM MDP01_META.META_ETL_JOB_RUN
+        cursor.execute(f"""
+            SELECT status FROM {META_SCHEMA}.META_ETL_JOB_RUN
             WHERE etl_job_run_id = ?
         """, (job_run_id,))
         
@@ -824,8 +828,8 @@ class MetadataETLOrchestrator:
         
         if status == 'PAUSED':
             # Direkt auf CANCELLED setzen
-            cursor.execute("""
-                UPDATE MDP01_META.META_ETL_JOB_RUN
+            cursor.execute(f"""
+                UPDATE {META_SCHEMA}.META_ETL_JOB_RUN
                 SET status = 'CANCELLED',
                     end_time = CURRENT_TIMESTAMP(6),
                     error_message = 'Job wurde manuell abgebrochen'
@@ -833,8 +837,8 @@ class MetadataETLOrchestrator:
             """, (job_run_id,))
         elif status == 'RUNNING':
             # Cancel-Flag setzen
-            cursor.execute("""
-                UPDATE MDP01_META.META_ETL_JOB_RUN
+            cursor.execute(f"""
+                UPDATE {META_SCHEMA}.META_ETL_JOB_RUN
                 SET control_flag = 'CANCEL_REQUESTED'
                 WHERE etl_job_run_id = ?
             """, (job_run_id,))
@@ -857,9 +861,9 @@ class MetadataETLOrchestrator:
         cursor = conn.cursor()
         
         # Prüfe ob Job PAUSED ist und hole Daten
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT status, etl_job_id, paused_at_step
-            FROM MDP01_META.META_ETL_JOB_RUN
+            FROM {META_SCHEMA}.META_ETL_JOB_RUN
             WHERE etl_job_run_id = ?
         """, (job_run_id,))
         
@@ -872,8 +876,8 @@ class MetadataETLOrchestrator:
         resume_from_step = row[2] or 1
         
         # Status auf RUNNING setzen
-        cursor.execute("""
-            UPDATE MDP01_META.META_ETL_JOB_RUN
+        cursor.execute(f"""
+            UPDATE {META_SCHEMA}.META_ETL_JOB_RUN
             SET status = 'RUNNING',
                 control_flag = NULL
             WHERE etl_job_run_id = ?
@@ -990,8 +994,8 @@ class MetadataETLOrchestrator:
         """Erstellt SKIPPED Step-Run (über Log-Connection)."""
         log_conn = self._get_log_connection()
         cursor = log_conn.cursor()
-        cursor.execute("""
-            INSERT INTO MDP01_META.META_ETL_JOB_STEP_RUN (
+        cursor.execute(f"""
+            INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP_RUN (
                 etl_job_run_id, etl_job_step_id, start_time, end_time,
                 status, was_skipped, skip_reason
             ) VALUES (?, ?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6), 'SKIPPED', 'Y', ?)

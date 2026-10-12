@@ -40,6 +40,7 @@ from ..models.source_models import (
     TPTJobCreateRequest, TPTJobCreateResponse,
     TableImportStatus
 )
+from ..config import get_active_teradata_config, get_active_env_id, META_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -117,12 +118,13 @@ class SourceSystemService:
         self.db_config = config['teradata']
     
     def _get_td_connection(self):
-        """Erstellt Teradata Connection."""
+        """Erstellt Teradata Connection (aktives Environment, nicht gecacht)."""
+        active_cfg = get_active_teradata_config()
         # Nur Connection-Parameter, nicht autocommit/transaction_mode/batch_size
         conn_params = {
-            'host': self.db_config.get('host'),
-            'user': self.db_config.get('user'),
-            'password': self.db_config.get('password'),
+            'host': active_cfg.get('host'),
+            'user': active_cfg.get('user'),
+            'password': active_cfg.get('password'),
         }
         return teradatasql.connect(**conn_params)
     
@@ -135,7 +137,7 @@ class SourceSystemService:
         conn = self._get_td_connection()
         cursor = conn.cursor()
         
-        query = """
+        query = f"""
             SELECT 
                 SOURCE_SYSTEM_ID, SOURCE_SYSTEM_NAME, SOURCE_SYSTEM_CODE,
                 SOURCE_TYPE, HOST_NAME, PORT_NUMBER,
@@ -143,7 +145,7 @@ class SourceSystemService:
                 CREDENTIAL_USER_WALLET, CREDENTIAL_PASSWORD_WALLET,
                 IS_ACTIVE, BESCHREIBUNG, VERANTWORTLICHER, KONTAKT_EMAIL,
                 CREATE_TIMESTAMP, LAST_ALTER_TIMESTAMP
-            FROM MDP01_META.META_SOURCE_SYSTEM
+            FROM {META_SCHEMA}.META_SOURCE_SYSTEM
         """
         
         if active_only:
@@ -183,7 +185,7 @@ class SourceSystemService:
         conn = self._get_td_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 SOURCE_SYSTEM_ID, SOURCE_SYSTEM_NAME, SOURCE_SYSTEM_CODE,
                 SOURCE_TYPE, HOST_NAME, PORT_NUMBER,
@@ -191,7 +193,7 @@ class SourceSystemService:
                 CREDENTIAL_USER_WALLET, CREDENTIAL_PASSWORD_WALLET,
                 IS_ACTIVE, BESCHREIBUNG, VERANTWORTLICHER, KONTAKT_EMAIL,
                 CREATE_TIMESTAMP, LAST_ALTER_TIMESTAMP
-            FROM MDP01_META.META_SOURCE_SYSTEM
+            FROM {META_SCHEMA}.META_SOURCE_SYSTEM
             WHERE SOURCE_SYSTEM_ID = ?
         """, (source_system_id,))
         
@@ -479,15 +481,17 @@ class SourceSystemService:
         Returns:
             Liste von Mapping-Dictionaries
         """
-        # Cache prüfen
-        if source_system in self._datatype_mappings_cache:
-            return self._datatype_mappings_cache[source_system]
+        # Cache prüfen (pro Environment, sonst Datatype-Mappings der
+        # zuvor aktiven Umgebung im Speicher)
+        cache_key = f"{get_active_env_id()}::{source_system}"
+        if cache_key in self._datatype_mappings_cache:
+            return self._datatype_mappings_cache[cache_key]
         
         conn = self._get_td_connection()
         cursor = conn.cursor()
         
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT 
                     SOURCE_DATATYPE,
                     SOURCE_MAX_LENGTH,
@@ -500,7 +504,7 @@ class SourceSystemService:
                     TPT_SCHEMA_MULTIPLIER,
                     CONVERT_TEMPLATE,
                     TYPE_FORMAT_TEMPLATE
-                FROM MDP01_META.META_DATATYPE_MAPPING
+                FROM {META_SCHEMA}.META_DATATYPE_MAPPING
                 WHERE SOURCE_SYSTEM = ?
                   AND IS_ACTIVE = 1
                 ORDER BY 
@@ -524,7 +528,7 @@ class SourceSystemService:
                     'type_format_template': row[10] or '{base}'  # Default: nur Basistyp
                 })
             
-            self._datatype_mappings_cache[source_system] = mappings
+            self._datatype_mappings_cache[cache_key] = mappings
             logger.info(f"Loaded {len(mappings)} datatype mappings for {source_system}")
             return mappings
             
@@ -715,18 +719,18 @@ class SourceSystemService:
             
             # 3. META_ETL_JOB erstellen
             # PRÜFUNG: Job-Name bereits vergeben?
-            cursor.execute("SELECT ETL_JOB_ID FROM MDP01_META.META_ETL_JOB WHERE JOB_NAME = ?", [job_name])
+            cursor.execute(f"SELECT ETL_JOB_ID FROM {META_SCHEMA}.META_ETL_JOB WHERE JOB_NAME = ?", [job_name])
             existing_job = cursor.fetchone()
             if existing_job:
                 raise ValueError(f"Job mit Namen '{job_name}' existiert bereits (ID: {existing_job[0]})")
             
-            cursor.execute("""
-                SELECT COALESCE(MAX(ETL_JOB_ID), 0) + 1 FROM MDP01_META.META_ETL_JOB
+            cursor.execute(f"""
+                SELECT COALESCE(MAX(ETL_JOB_ID), 0) + 1 FROM {META_SCHEMA}.META_ETL_JOB
             """)
             new_job_id = cursor.fetchone()[0]
             
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_ETL_JOB (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_ETL_JOB (
                     ETL_JOB_ID, JOB_NAME, JOB_TYPE,
                     SOURCE_TABLE_ID, TARGET_TABLE_ID,
                     SOURCE_LAYER_ID, TARGET_LAYER_ID,
@@ -871,8 +875,8 @@ class SourceSystemService:
             ]
             
             for step in job_steps:
-                cursor.execute("""
-                    INSERT INTO MDP01_META.META_ETL_JOB_STEP (
+                cursor.execute(f"""
+                    INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP (
                         ETL_JOB_ID, STEP_NAME, STEP_ORDER, STEP_CATEGORY,
                         PYTHON_MODULE, PYTHON_FUNCTION, PARAMETERS,
                         IS_CRITICAL, IS_ACTIVE, BESCHREIBUNG,
@@ -927,8 +931,8 @@ class SourceSystemService:
         """Registriert Tabelle und Spalten in META_TABLE/META_COLUMN."""
         
         # Database ID finden oder erstellen
-        cursor.execute("""
-            SELECT DATABASE_ID FROM MDP01_META.META_DATABASE
+        cursor.execute(f"""
+            SELECT DATABASE_ID FROM {META_SCHEMA}.META_DATABASE
             WHERE DATABASE_NAME = ?
         """, (database_name,))
         row = cursor.fetchone()
@@ -937,15 +941,15 @@ class SourceSystemService:
             database_id = row[0]
         else:
             # Database erstellen
-            cursor.execute("""
-                SELECT COALESCE(MAX(DATABASE_ID), 0) + 1 FROM MDP01_META.META_DATABASE
+            cursor.execute(f"""
+                SELECT COALESCE(MAX(DATABASE_ID), 0) + 1 FROM {META_SCHEMA}.META_DATABASE
             """)
             database_id = cursor.fetchone()[0]
             
             # LAYER_ID: 0 für externe Systeme, 1 für Teradata
             layer_id = 0 if is_external else 1
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_DATABASE (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_DATABASE (
                     DATABASE_ID, DATABASE_NAME, LAYER_ID,
                     ERSTERFASSUNGSDATUM, AENDERUNGSDATUM
                 ) VALUES (?, ?, ?, CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
@@ -954,8 +958,8 @@ class SourceSystemService:
             logger.info(f"Registered database {database_name} (ID: {database_id}, external={is_external})")
         
         # Prüfen ob Tabelle schon existiert
-        cursor.execute("""
-            SELECT TABLE_ID FROM MDP01_META.META_TABLE
+        cursor.execute(f"""
+            SELECT TABLE_ID FROM {META_SCHEMA}.META_TABLE
             WHERE DATABASE_ID = ? AND TABLE_NAME = ?
         """, (database_id, table_name))
         row = cursor.fetchone()
@@ -965,15 +969,15 @@ class SourceSystemService:
             logger.info(f"Table {table_name} already registered (ID: {table_id})")
         else:
             # Table erstellen
-            cursor.execute("""
-                SELECT COALESCE(MAX(TABLE_ID), 0) + 1 FROM MDP01_META.META_TABLE
+            cursor.execute(f"""
+                SELECT COALESCE(MAX(TABLE_ID), 0) + 1 FROM {META_SCHEMA}.META_TABLE
             """)
             table_id = cursor.fetchone()[0]
             
             # LAYER_ID: 0 für externe Systeme, 1 für Teradata
             layer_id = 0 if is_external else 1
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_TABLE (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_TABLE (
                     TABLE_ID, DATABASE_ID, TABLE_NAME, LAYER_ID,
                     TABLE_KIND, CREATE_TIMESTAMP, LAST_ALTER_TIMESTAMP
                 ) VALUES (?, ?, ?, ?, 'T', CURRENT_TIMESTAMP(6), CURRENT_TIMESTAMP(6))
@@ -983,19 +987,19 @@ class SourceSystemService:
         
         # Columns registrieren (wenn noch nicht vorhanden)
         for col in columns:
-            cursor.execute("""
-                SELECT COLUMN_ID FROM MDP01_META.META_COLUMN
+            cursor.execute(f"""
+                SELECT COLUMN_ID FROM {META_SCHEMA}.META_COLUMN
                 WHERE TABLE_ID = ? AND COLUMN_NAME = ?
             """, (table_id, col.column_name))
             
             if not cursor.fetchone():
-                cursor.execute("""
-                    SELECT COALESCE(MAX(COLUMN_ID), 0) + 1 FROM MDP01_META.META_COLUMN
+                cursor.execute(f"""
+                    SELECT COALESCE(MAX(COLUMN_ID), 0) + 1 FROM {META_SCHEMA}.META_COLUMN
                 """)
                 column_id = cursor.fetchone()[0]
                 
-                cursor.execute("""
-                    INSERT INTO MDP01_META.META_COLUMN (
+                cursor.execute(f"""
+                    INSERT INTO {META_SCHEMA}.META_COLUMN (
                         COLUMN_ID, TABLE_ID, COLUMN_NAME, COLUMN_POSITION,
                         DATATYPE_ID, COLUMN_TYPE, NULLABLE,
                         ERSTERFASSUNGSDATUM, AENDERUNGSDATUM
@@ -1030,13 +1034,13 @@ class SourceSystemService:
         results = []
         for table_name in tables:
             # Prüfe ob TPT Job existiert
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT j.ETL_JOB_ID, r.STATUS, r.END_TIME
-                FROM MDP01_META.META_ETL_JOB j
+                FROM {META_SCHEMA}.META_ETL_JOB j
                 LEFT JOIN (
                     SELECT ETL_JOB_ID, STATUS, END_TIME,
                            ROW_NUMBER() OVER (PARTITION BY ETL_JOB_ID ORDER BY END_TIME DESC) as rn
-                    FROM MDP01_META.META_ETL_JOB_RUN
+                    FROM {META_SCHEMA}.META_ETL_JOB_RUN
                 ) r ON j.ETL_JOB_ID = r.ETL_JOB_ID AND r.rn = 1
                 WHERE j.JOB_TYPE = 'TPT_LOAD'
                   AND j.JOB_NAME LIKE ?

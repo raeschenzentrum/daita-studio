@@ -1,0 +1,41 @@
+# ============================================================================
+# Environments - auswaehlbare Metadaten-Umgebungen (Web-UI Umgebungs-Switch)
+# ============================================================================
+# Kopieren nach environments.yml und Zugangsdaten je Umgebung anpassen.
+# host/user/password sind PRO Environment ueberschreibbar (koennen also auf
+# unterschiedlichen Teradata-Servern liegen). "schema" ist die META-DB
+# (dort liegen META_TABLE, META_COLUMN, META_ETL_JOB, ...).
+# ============================================================================
+
+environments:
+  - id: mdp01
+    label: "MDP01 (Produktiv-Meta)"
+    host: '192.168.114.21'
+    user: 'tdops'
+    password: 'tdops'
+    schema: 'MDP01_META'
+
+  - id: sem_dev
+    label: "SEM_DEV (Entwicklung)"
+    host: '192.168.114.21'
+    user: 'tdops'
+    password: 'tdops'
+    schema: 'SEM_DEV_MET_BASE'
+
+  - id: sem_dev01
+    label: "SEM_DEV01"
+    host: '192.168.114.21'
+    user: 'tdops'
+    password: 'tdops'
+    schema: 'SEM_DEV01_MET_BASE'
+
+  - id: sem_tst
+    label: "SEM_TST (Test)"
+    host: '192.168.114.21'
+    user: 'tdops'
+    password: 'tdops'
+    schema: 'SEM_TST_MET_BASE'
+
+# Environment-ID, die verwendet wird, wenn das Frontend keinen (oder einen
+# unbekannten) X-Env-Id-Header schickt.
+default: mdp01

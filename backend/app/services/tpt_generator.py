@@ -23,6 +23,7 @@ except ImportError:
     teradatasql = None
 
 from .type_utils import td_typecode_to_ddl
+from ..config import META_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -193,10 +194,10 @@ class TPTGenerator:
         cursor = self.conn.cursor()
         
         # Lookup table_id via META_TABLE
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT t.TABLE_ID
-            FROM MDP01_META.META_TABLE t
-            JOIN MDP01_META.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
+            FROM {META_SCHEMA}.META_TABLE t
+            JOIN {META_SCHEMA}.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
             WHERE d.DATABASE_NAME = ?
               AND t.TABLE_NAME = ?
         """, (parameters['target_database'], parameters['target_table']))
@@ -212,7 +213,7 @@ class TPTGenerator:
         table_id = row[0]
         
         # Get columns
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT 
                 COLUMN_NAME,
                 COLUMN_TYPE,
@@ -221,7 +222,7 @@ class TPTGenerator:
                 DECIMAL_FRACTIONAL_DIGITS,
                 NULLABLE,
                 COLUMN_POSITION
-            FROM MDP01_META.META_COLUMN
+            FROM {META_SCHEMA}.META_COLUMN
             WHERE TABLE_ID = ?
             ORDER BY COLUMN_POSITION
         """, (table_id,))
@@ -391,8 +392,8 @@ class TPTGenerator:
         # Wenn numerische ID, dann SOURCE_SYSTEM_CODE aus DB holen
         if isinstance(source_system_id, int) or (isinstance(source_system_id, str) and source_system_id.isdigit()):
             cursor = self.conn.cursor()
-            cursor.execute('''
-                SELECT SOURCE_SYSTEM_CODE FROM MDP01_META.META_SOURCE_SYSTEM 
+            cursor.execute(f'''
+                SELECT SOURCE_SYSTEM_CODE FROM {META_SCHEMA}.META_SOURCE_SYSTEM 
                 WHERE SOURCE_SYSTEM_ID = ?
             ''', (int(source_system_id),))
             row = cursor.fetchone()
@@ -469,10 +470,10 @@ class TPTGenerator:
         
         try:
             cursor = self.conn.cursor()
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT source_datatype, target_datatype, target_max_length,
                        target_precision, target_scale, requires_cast, cast_expression
-                FROM MDP01_META.META_DATATYPE_MAPPING
+                FROM {META_SCHEMA}.META_DATATYPE_MAPPING
                 WHERE source_system = 'SQL_SERVER'
                   AND is_active = 1
             """)

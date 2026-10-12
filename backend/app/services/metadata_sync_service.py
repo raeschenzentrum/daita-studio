@@ -25,28 +25,30 @@ try:
 except ImportError:
     raise ImportError("teradatasql not installed")
 
+from ..config import META_SCHEMA, get_active_teradata_config
+
 logger = logging.getLogger(__name__)
 
 
 class MetadataSyncService:
     """Service für Metadaten-Synchronisation zwischen dbc und META-Schema"""
     
-    def __init__(self, db_config: dict):
+    def __init__(self, db_config: Optional[dict] = None):
         """
-        Initialisiert Service mit Datenbankverbindung.
-        
-        Args:
-            db_config: Dict mit host, user, password
+        Initialisiert Service. db_config wird ignoriert/optional gehalten
+        (Kompatibilitaet) - die Verbindung liest die Zugangsdaten pro Aufruf
+        dynamisch aus dem aktiven Environment (siehe _get_connection).
         """
-        self.db_config = db_config
+        self.db_config = db_config or {}
     
     def _get_connection(self):
-        """Erstellt Teradata-Verbindung"""
+        """Erstellt Teradata-Verbindung (aktives Environment, nicht gecacht)"""
+        active_cfg = get_active_teradata_config()
         return teradatasql.connect(
-            host=self.db_config.get("host", "192.168.114.21"),
-            user=self.db_config.get("user", "dbc"),
-            password=self.db_config.get("password", "dbc"),
-            connect_timeout=self.db_config.get("connect_timeout", 10000)
+            host=active_cfg.get("host", "192.168.114.21"),
+            user=active_cfg.get("user", "dbc"),
+            password=active_cfg.get("password", "dbc"),
+            connect_timeout=active_cfg.get("connect_timeout", 10000)
         )
     
     # =========================================================================
@@ -70,7 +72,7 @@ class MetadataSyncService:
         try:
             # Hole Database-Name und layer_id
             cursor.execute(
-                "SELECT database_name, layer_id FROM MDP01_META.META_DATABASE WHERE database_id = ?", 
+                f"SELECT database_name, layer_id FROM {META_SCHEMA}.META_DATABASE WHERE database_id = ?", 
                 (database_id,)
             )
             db_row = cursor.fetchone()
@@ -81,8 +83,8 @@ class MetadataSyncService:
             layer_id = db_row[1]
             
             # Prüfe ob Tabelle schon existiert
-            cursor.execute("""
-                SELECT table_id FROM MDP01_META.META_TABLE 
+            cursor.execute(f"""
+                SELECT table_id FROM {META_SCHEMA}.META_TABLE 
                 WHERE database_id = ? AND UPPER(table_name) = UPPER(?)
             """, (database_id, table_name))
             if cursor.fetchone():
@@ -101,12 +103,12 @@ class MetadataSyncService:
             table_comment = tbl_row[1]
             
             # Nächste table_id
-            cursor.execute("SELECT COALESCE(MAX(table_id), 0) + 1 FROM MDP01_META.META_TABLE")
+            cursor.execute(f"SELECT COALESCE(MAX(table_id), 0) + 1 FROM {META_SCHEMA}.META_TABLE")
             next_table_id = cursor.fetchone()[0]
             
             # Tabelle einfügen (korrekte Spaltennamen!)
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_TABLE (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_TABLE (
                     table_id, database_id, table_name, layer_id, is_historized,
                     comment_string, CREATE_TIMESTAMP, LAST_ALTER_TIMESTAMP
                 ) VALUES (?, ?, ?, ?, 'N', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -118,20 +120,20 @@ class MetadataSyncService:
             # Spalten einfügen
             inserted_columns = 0
             for col in columns:
-                cursor.execute("SELECT COALESCE(MAX(column_id), 0) + 1 FROM MDP01_META.META_COLUMN")
+                cursor.execute(f"SELECT COALESCE(MAX(column_id), 0) + 1 FROM {META_SCHEMA}.META_COLUMN")
                 next_col_id = cursor.fetchone()[0]
                 
                 # Datatype lookup
-                cursor.execute("""
-                    SELECT datatype_id FROM MDP01_META.META_DATATYPE 
+                cursor.execute(f"""
+                    SELECT datatype_id FROM {META_SCHEMA}.META_DATATYPE 
                     WHERE teradata_type = ? SAMPLE 1
                 """, (col["column_type"],))
                 dt_row = cursor.fetchone()
                 datatype_id = dt_row[0] if dt_row else 1
                 
                 # Spalte einfügen (META_COLUMN hat andere Spaltennamen als META_TABLE!)
-                cursor.execute("""
-                    INSERT INTO MDP01_META.META_COLUMN (
+                cursor.execute(f"""
+                    INSERT INTO {META_SCHEMA}.META_COLUMN (
                         column_id, table_id, column_name, column_position,
                         datatype_id, column_type, column_length, nullable,
                         ersterfassungsdatum, aenderungsdatum
@@ -178,10 +180,10 @@ class MetadataSyncService:
         
         try:
             # Hole Tabellen-Info
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT t.table_name, d.database_name
-                FROM MDP01_META.META_TABLE t
-                JOIN MDP01_META.META_DATABASE d ON t.database_id = d.database_id
+                FROM {META_SCHEMA}.META_TABLE t
+                JOIN {META_SCHEMA}.META_DATABASE d ON t.database_id = d.database_id
                 WHERE t.table_id = ?
             """, (table_id,))
             
@@ -193,9 +195,9 @@ class MetadataSyncService:
             database_name = row[1]
             
             # Aktuelle Spalten aus META_COLUMN
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT column_id, column_name, column_type, column_length, nullable
-                FROM MDP01_META.META_COLUMN
+                FROM {META_SCHEMA}.META_COLUMN
                 WHERE table_id = ?
             """, (table_id,))
             
@@ -221,19 +223,19 @@ class MetadataSyncService:
                 
                 if col_name_upper not in meta_columns:
                     # Neue Spalte hinzufügen
-                    cursor.execute("SELECT COALESCE(MAX(column_id), 0) + 1 FROM MDP01_META.META_COLUMN")
+                    cursor.execute(f"SELECT COALESCE(MAX(column_id), 0) + 1 FROM {META_SCHEMA}.META_COLUMN")
                     next_col_id = cursor.fetchone()[0]
                     
                     # Datatype lookup
-                    cursor.execute("""
-                        SELECT datatype_id FROM MDP01_META.META_DATATYPE 
+                    cursor.execute(f"""
+                        SELECT datatype_id FROM {META_SCHEMA}.META_DATATYPE 
                         WHERE teradata_type = ? SAMPLE 1
                     """, (col["column_type"],))
                     dt_row = cursor.fetchone()
                     datatype_id = dt_row[0] if dt_row else 1
                     
-                    cursor.execute("""
-                        INSERT INTO MDP01_META.META_COLUMN (
+                    cursor.execute(f"""
+                        INSERT INTO {META_SCHEMA}.META_COLUMN (
                             column_id, table_id, column_name, column_position,
                             datatype_id, column_type, column_length, nullable,
                             ersterfassungsdatum, aenderungsdatum
@@ -256,8 +258,8 @@ class MetadataSyncService:
                         needs_update = True
                     
                     if needs_update:
-                        cursor.execute("""
-                            UPDATE MDP01_META.META_COLUMN
+                        cursor.execute(f"""
+                            UPDATE {META_SCHEMA}.META_COLUMN
                             SET column_type = ?,
                                 column_length = ?,
                                 nullable = ?,
@@ -272,8 +274,8 @@ class MetadataSyncService:
             for col_name_upper, meta_col in meta_columns.items():
                 if col_name_upper not in dbc_column_names:
                     # Spalte existiert nicht mehr in dbc - markieren
-                    cursor.execute("""
-                        UPDATE MDP01_META.META_COLUMN
+                    cursor.execute(f"""
+                        UPDATE {META_SCHEMA}.META_COLUMN
                         SET column_type = COLUMN_TYPE || ' [DELETED]',
                             aenderungsdatum = CURRENT_TIMESTAMP
                         WHERE column_id = ?
@@ -317,10 +319,10 @@ class MetadataSyncService:
         
         try:
             # Hole Tabellen-Info
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT t.table_name, d.database_name
-                FROM MDP01_META.META_TABLE t
-                JOIN MDP01_META.META_DATABASE d ON t.database_id = d.database_id
+                FROM {META_SCHEMA}.META_TABLE t
+                JOIN {META_SCHEMA}.META_DATABASE d ON t.database_id = d.database_id
                 WHERE t.table_id = ?
             """, (table_id,))
             
@@ -332,9 +334,9 @@ class MetadataSyncService:
             database_name = row[1]
             
             # META_COLUMN laden
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT column_name, column_type, column_length, nullable, column_position
-                FROM MDP01_META.META_COLUMN
+                FROM {META_SCHEMA}.META_COLUMN
                 WHERE table_id = ?
                 ORDER BY column_position
             """, (table_id,))
@@ -489,11 +491,11 @@ class MetadataSyncService:
         cursor = conn.cursor()
         
         try:
-            query = """
+            query = f"""
                 SELECT t.table_id, t.table_name, d.database_name,
                        t.LAST_ALTER_TIMESTAMP as meta_last_alter
-                FROM MDP01_META.META_TABLE t
-                JOIN MDP01_META.META_DATABASE d ON t.database_id = d.database_id
+                FROM {META_SCHEMA}.META_TABLE t
+                JOIN {META_SCHEMA}.META_DATABASE d ON t.database_id = d.database_id
             """
             params = []
             
@@ -524,25 +526,10 @@ class MetadataSyncService:
 # Service-Instanz erstellen
 # =============================================================================
 
-def create_metadata_sync_service(config_path: str = None) -> MetadataSyncService:
+def create_metadata_sync_service() -> MetadataSyncService:
     """
     Factory-Funktion für MetadataSyncService.
-    
-    Args:
-        config_path: Pfad zur database.yml (optional)
-        
-    Returns:
-        MetadataSyncService Instanz
+    Die Zugangsdaten kommen dynamisch aus dem aktiven Environment
+    (siehe MetadataSyncService._get_connection) - kein Config-Pfad mehr noetig.
     """
-    import yaml
-    from pathlib import Path
-    
-    if config_path is None:
-        config_path = Path(__file__).parent.parent.parent.parent / "cfg" / "database.yml"
-    
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-    
-    db_config = config.get("teradata", {})
-    
-    return MetadataSyncService(db_config)
+    return MetadataSyncService()

@@ -22,6 +22,7 @@
 
     const TOKEN_KEY = 'studio_token';
     const USER_KEY = 'studio_user';
+    const ENV_KEY = 'studio_env_id';
     const ROLE_RANK = { Viewer: 0, Editor: 1, Admin: 2 };
 
     // ----------------------------------------------------------------
@@ -47,6 +48,18 @@
     function clearSession() {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
+    }
+
+    // ----------------------------------------------------------------
+    // Aktive Metadaten-Umgebung: sessionStorage -> pro Browser-Tab
+    // (nicht localStorage, damit mehrere Tabs unabhaengig voneinander
+    // gegen unterschiedliche Umgebungen arbeiten koennen).
+    // ----------------------------------------------------------------
+    function getEnvId() { return sessionStorage.getItem(ENV_KEY) || ''; }
+
+    function setEnvId(envId) {
+        if (envId) sessionStorage.setItem(ENV_KEY, envId);
+        else sessionStorage.removeItem(ENV_KEY);
     }
 
     function hasRole(required) {
@@ -95,15 +108,17 @@
 
         if (isBackendRequest(url)) {
             const token = getToken();
-            if (token) {
-                const headers = new Headers(
-                    init.headers || (typeof input !== 'string' && input && input.headers) || {}
-                );
-                if (!headers.has('Authorization')) {
-                    headers.set('Authorization', 'Bearer ' + token);
-                }
-                init = { ...init, headers };
+            const envId = getEnvId();
+            const headers = new Headers(
+                init.headers || (typeof input !== 'string' && input && input.headers) || {}
+            );
+            if (token && !headers.has('Authorization')) {
+                headers.set('Authorization', 'Bearer ' + token);
             }
+            if (envId && !headers.has('X-Env-Id')) {
+                headers.set('X-Env-Id', envId);
+            }
+            init = { ...init, headers };
         }
 
         const resp = await _origFetch(input, init);
@@ -147,6 +162,51 @@
         badge.querySelector('.studio-logout').addEventListener('click', logout);
     }
 
+    // ----------------------------------------------------------------
+    // Environment-Switcher (Meta-Datenbank-Auswahl, session-scoped)
+    // ----------------------------------------------------------------
+    let envSwitcherLoading = false;
+
+    async function injectEnvSwitcher() {
+        if (isLoginPage()) return;
+        const header = document.querySelector('.studio-header');
+        if (!header || header.querySelector('.studio-env-switcher') || envSwitcherLoading) return;
+        envSwitcherLoading = true;
+
+        let data;
+        try {
+            const resp = await fetch(backendBase() + '/api/environments');
+            if (!resp.ok) return;
+            data = await resp.json();
+        } catch (_) {
+            return;
+        } finally {
+            envSwitcherLoading = false;
+        }
+        const envs = data.environments || [];
+        if (envs.length === 0) return;
+
+        if (!getEnvId()) setEnvId(data.default_id || envs[0].id);
+        const activeId = getEnvId();
+
+        const wrap = document.createElement('div');
+        wrap.className = 'studio-env-switcher';
+        wrap.style.cssText = 'display:flex;align-items:center;gap:6px;color:#fff;font-size:0.85em;margin-left:16px;';
+        const options = envs.map(e =>
+            `<option value="${e.id}" ${e.id === activeId ? 'selected' : ''}>${e.label}</option>`
+        ).join('');
+        wrap.innerHTML =
+            `<span title="Aktive Metadaten-Umgebung (nur dieser Tab)">\u{1F5C4}\uFE0F</span>` +
+            `<select class="studio-env-select" style="background:rgba(255,255,255,.18);` +
+            `border:none;color:#fff;padding:3px 6px;border-radius:6px;cursor:pointer;font-size:0.95em;">` +
+            options + `</select>`;
+        header.appendChild(wrap);
+        wrap.querySelector('.studio-env-select').addEventListener('change', (ev) => {
+            setEnvId(ev.target.value);
+            window.location.reload();
+        });
+    }
+
     function logout() {
         clearSession();
         window.location.replace('login.html');
@@ -154,6 +214,8 @@
 
     document.addEventListener('studio:nav-ready', injectUserBadge);
     document.addEventListener('DOMContentLoaded', injectUserBadge);
+    document.addEventListener('studio:nav-ready', injectEnvSwitcher);
+    document.addEventListener('DOMContentLoaded', injectEnvSwitcher);
 
     // ----------------------------------------------------------------
     // Öffentliche API
@@ -166,5 +228,7 @@
         clearSession,
         hasRole,
         logout,
+        getEnvId,
+        setEnvId,
     };
 })();

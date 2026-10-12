@@ -19,7 +19,7 @@ import yaml
 from pydantic import BaseModel
 
 from .type_utils import td_typecode_to_ddl
-from ..config import PATHS
+from ..config import PATHS, get_active_teradata_config, META_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -122,15 +122,10 @@ class TemplateService:
     """
     
     def __init__(self):
-        """Initialisiert Service mit DB-Config und Parameter-Regeln"""
-        cfg_dir = Path("/home/tdops/ps_toolbox/PS_ROOT/subsystem/metadaita/cfg")
-        database_yml = cfg_dir / "database.yml"
-        
-        with open(database_yml, 'r') as f:
-            db_config = yaml.safe_load(f)
-        
-        self.db_config = db_config.get('teradata', {})
-        
+        """Initialisiert Service mit Parameter-Regeln (DB-Config kommt pro
+        Verbindung dynamisch aus dem aktiven Environment, siehe _get_connection)"""
+        cfg_dir = PATHS["cfg"]
+
         # Parameter-Regeln laden
         param_rules_yml = cfg_dir / "parameter_rules.yml"
         if param_rules_yml.exists():
@@ -145,12 +140,13 @@ class TemplateService:
             }
     
     def _get_connection(self) -> teradatasql.TeradataConnection:
-        """Erstellt neue DB Connection"""
+        """Erstellt neue DB Connection (aktives Environment, nicht gecacht)"""
+        active_cfg = get_active_teradata_config()
         return teradatasql.connect(
-            host=self.db_config.get('host'),
-            user=self.db_config.get('user'),
-            password=self.db_config.get('password'),
-            connect_timeout=self.db_config.get('connect_timeout', 10000)
+            host=active_cfg.get('host'),
+            user=active_cfg.get('user'),
+            password=active_cfg.get('password'),
+            connect_timeout=active_cfg.get('connect_timeout', 10000)
         )
     
     def _load_scd2_column_names(self) -> Dict[str, str]:
@@ -206,7 +202,7 @@ class TemplateService:
         cursor = conn.cursor()
         
         try:
-            sql = """
+            sql = f"""
                 SELECT 
                     TEMPLATE_ID,
                     TEMPLATE_NAME,
@@ -225,7 +221,7 @@ class TemplateService:
                     DEFAULT_VALID_TO_COLUMN,
                     DEFAULT_IS_CURRENT_COLUMN,
                     USE_SK
-                FROM MDP01_META.META_ETL_JOB_TEMPLATE
+                FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE
                 WHERE IS_ACTIVE = 'Y'
             """
             
@@ -294,8 +290,8 @@ class TemplateService:
         cursor = conn.cursor()
         
         try:
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_ETL_JOB_TEMPLATE (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_ETL_JOB_TEMPLATE (
                     TEMPLATE_NAME, TEMPLATE_CODE, JOB_TYPE,
                     SOURCE_LAYER_ID, TARGET_LAYER_ID,
                     CATEGORY, BESCHREIBUNG
@@ -312,9 +308,9 @@ class TemplateService:
             conn.commit()
             
             # ID des neuen Templates holen
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT TEMPLATE_ID 
-                FROM MDP01_META.META_ETL_JOB_TEMPLATE 
+                FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE 
                 WHERE TEMPLATE_CODE = ?
             """, [request.template_code])
             row = cursor.fetchone()
@@ -345,7 +341,7 @@ class TemplateService:
         cursor = conn.cursor()
         
         try:
-            sql = """
+            sql = f"""
                 SELECT 
                     STEP_TEMPLATE_ID,
                     TEMPLATE_ID,
@@ -360,7 +356,7 @@ class TemplateService:
                     OPTIONAL_PARAMETERS,
                     BESCHREIBUNG,
                     IS_ACTIVE
-                FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE
+                FROM {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE
                 WHERE IS_ACTIVE = 'Y'
             """
             
@@ -417,8 +413,8 @@ class TemplateService:
         try:
             params_json = json.dumps(request.default_parameters) if request.default_parameters else None
             
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_ETL_JOB_STEP_TEMPLATE (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE (
                     TEMPLATE_ID, STEP_NAME, STEP_CODE, STEP_ORDER,
                     STEP_CATEGORY, SQL_TEMPLATE_PATH, SQL_INLINE,
                     DEFAULT_PARAMETERS, REQUIRED_PARAMETERS, BESCHREIBUNG
@@ -438,9 +434,9 @@ class TemplateService:
             conn.commit()
             
             # ID holen (letzter Insert)
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT MAX(STEP_TEMPLATE_ID) 
-                FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE
+                FROM {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE
             """)
             row = cursor.fetchone()
             
@@ -476,8 +472,8 @@ class TemplateService:
                 raise ValueError(f"Template {request.template_id} nicht gefunden")
             
             # 2. Source Layer ID ermitteln
-            cursor.execute("""
-                SELECT LAYER_ID FROM MDP01_META.META_TABLE 
+            cursor.execute(f"""
+                SELECT LAYER_ID FROM {META_SCHEMA}.META_TABLE 
                 WHERE TABLE_ID = ?
             """, [request.source_table_id])
             src_layer = cursor.fetchone()
@@ -495,8 +491,8 @@ class TemplateService:
             
             if not target_table_id and request.target_table_name:
                 # Erst versuchen, Tabelle im TARGET-LAYER zu finden (NICHT im Source-Layer!)
-                cursor.execute("""
-                    SELECT TABLE_ID, LAYER_ID FROM MDP01_META.META_TABLE 
+                cursor.execute(f"""
+                    SELECT TABLE_ID, LAYER_ID FROM {META_SCHEMA}.META_TABLE 
                     WHERE TABLE_NAME = ? AND LAYER_ID = ?
                     SAMPLE 1
                 """, [request.target_table_name, expected_target_layer_id])
@@ -510,8 +506,8 @@ class TemplateService:
                     next_layer_id = expected_target_layer_id
                     
                     # Database ID für nächsten Layer holen
-                    cursor.execute("""
-                        SELECT DATABASE_ID FROM MDP01_META.META_DATABASE
+                    cursor.execute(f"""
+                        SELECT DATABASE_ID FROM {META_SCHEMA}.META_DATABASE
                         WHERE LAYER_ID = ?
                         SAMPLE 1
                     """, [next_layer_id])
@@ -519,12 +515,12 @@ class TemplateService:
                     target_db_id = db_row[0] if db_row else 1  # Fallback
                     
                     # Nächste freie TABLE_ID holen (keine IDENTITY in Tabelle)
-                    cursor.execute("SELECT COALESCE(MAX(TABLE_ID), 0) + 1 FROM MDP01_META.META_TABLE")
+                    cursor.execute(f"SELECT COALESCE(MAX(TABLE_ID), 0) + 1 FROM {META_SCHEMA}.META_TABLE")
                     next_table_id = cursor.fetchone()[0]
                     
                     # Neue Tabelle in META_TABLE anlegen
-                    cursor.execute("""
-                        INSERT INTO MDP01_META.META_TABLE (
+                    cursor.execute(f"""
+                        INSERT INTO {META_SCHEMA}.META_TABLE (
                             TABLE_ID, TABLE_NAME, DATABASE_ID, LAYER_ID
                         ) VALUES (?, ?, ?, ?)
                     """, [next_table_id, request.target_table_name, target_db_id, next_layer_id])
@@ -547,18 +543,18 @@ class TemplateService:
                 )
             
             # PRÜFUNG: Job-Name bereits vergeben?
-            cursor.execute("SELECT ETL_JOB_ID FROM MDP01_META.META_ETL_JOB WHERE JOB_NAME = ?", [request.job_name])
+            cursor.execute(f"SELECT ETL_JOB_ID FROM {META_SCHEMA}.META_ETL_JOB WHERE JOB_NAME = ?", [request.job_name])
             existing_job = cursor.fetchone()
             if existing_job:
                 raise ValueError(f"Job mit Namen '{request.job_name}' existiert bereits (ID: {existing_job[0]})")
             
             # 4. Job erstellen
             # Nächste freie Job-ID holen (keine IDENTITY in Tabelle)
-            cursor.execute("SELECT COALESCE(MAX(ETL_JOB_ID), 0) + 1 FROM MDP01_META.META_ETL_JOB")
+            cursor.execute(f"SELECT COALESCE(MAX(ETL_JOB_ID), 0) + 1 FROM {META_SCHEMA}.META_ETL_JOB")
             next_job_id = cursor.fetchone()[0]
             
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_ETL_JOB (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_ETL_JOB (
                     ETL_JOB_ID, JOB_NAME, JOB_TYPE,
                     SOURCE_TABLE_ID, TARGET_TABLE_ID,
                     SOURCE_LAYER_ID, TARGET_LAYER_ID,
@@ -624,10 +620,10 @@ class TemplateService:
             # ================================================================
             # Source-Infos automatisch aus source_table_id laden
             # ================================================================
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT t.TABLE_NAME, d.DATABASE_NAME 
-                FROM MDP01_META.META_TABLE t
-                JOIN MDP01_META.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
+                FROM {META_SCHEMA}.META_TABLE t
+                JOIN {META_SCHEMA}.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
                 WHERE t.TABLE_ID = ?
             """, [request.source_table_id])
             src_row = cursor.fetchone()
@@ -635,16 +631,16 @@ class TemplateService:
             source_database_name = src_row[1] if src_row else ''
             
             # Spalten aus META_COLUMN laden (für SELECT_COLUMNS)
-            cursor.execute("""
-                SELECT COLUMN_NAME FROM MDP01_META.META_COLUMN 
+            cursor.execute(f"""
+                SELECT COLUMN_NAME FROM {META_SCHEMA}.META_COLUMN 
                 WHERE TABLE_ID = ? 
                 ORDER BY COLUMN_POSITION
             """, [request.source_table_id])
             all_source_columns = [r[0].upper() for r in cursor.fetchall()]
             
             # Primary Keys aus META_COLUMN laden (für BUSINESS_KEY)
-            cursor.execute("""
-                SELECT COLUMN_NAME FROM MDP01_META.META_COLUMN 
+            cursor.execute(f"""
+                SELECT COLUMN_NAME FROM {META_SCHEMA}.META_COLUMN 
                 WHERE TABLE_ID = ? AND IS_BUSINESS_KEY = 'Y'
                 ORDER BY COLUMN_POSITION
             """, [request.source_table_id])
@@ -815,8 +811,8 @@ class TemplateService:
                 else:
                     step_sql_inline = step_tpl.sql_inline
                 
-                cursor.execute("""
-                    INSERT INTO MDP01_META.META_ETL_JOB_STEP (
+                cursor.execute(f"""
+                    INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP (
                         ETL_JOB_ID, STEP_NAME, STEP_ORDER, STEP_CATEGORY,
                         SQL_TEMPLATE_PATH, SQL_INLINE,
                         PARAMETERS, IS_CRITICAL, ROLLBACK_ON_ERROR, IS_ACTIVE,
@@ -840,7 +836,7 @@ class TemplateService:
             try:
                 from .template_engine import write_step_parameters
                 cursor.execute(
-                    "SELECT ETL_JOB_STEP_ID, PARAMETERS FROM MDP01_META.META_ETL_JOB_STEP WHERE ETL_JOB_ID = ?",
+                    f"SELECT ETL_JOB_STEP_ID, PARAMETERS FROM {META_SCHEMA}.META_ETL_JOB_STEP WHERE ETL_JOB_ID = ?",
                     [job_id]
                 )
                 for step_row in cursor.fetchall():
@@ -876,8 +872,8 @@ class TemplateService:
             if pk_list:
                 for pk_col in pk_list:
                     try:
-                        cursor.execute("""
-                            UPDATE MDP01_META.META_COLUMN
+                        cursor.execute(f"""
+                            UPDATE {META_SCHEMA}.META_COLUMN
                             SET IS_BUSINESS_KEY = 'Y', AENDERUNGSDATUM = CURRENT_TIMESTAMP(6)
                             WHERE TABLE_ID = ? AND COLUMN_NAME = ?
                         """, [request.source_table_id, pk_col.upper()])
@@ -1105,7 +1101,7 @@ class TemplateService:
           - FK-Spaltenname {MASTER_SK}_FK
         Liefert eine Liste von FK-Definitionen (master_mode=True).
         """
-        col_tbl = "MDP01_META.META_COLUMN"
+        col_tbl = f"{META_SCHEMA}.META_COLUMN"
         defs = []
         for m in (mappings or []):
             try:
@@ -1118,10 +1114,10 @@ class TemplateService:
                 continue
 
             # Master-DB/-Tabelle
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT t.TABLE_NAME, d.DATABASE_NAME
-                FROM MDP01_META.META_TABLE t
-                JOIN MDP01_META.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
+                FROM {META_SCHEMA}.META_TABLE t
+                JOIN {META_SCHEMA}.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
                 WHERE t.TABLE_ID = ? SAMPLE 1
             """, [master_id])
             row = cursor.fetchone()
@@ -1189,13 +1185,13 @@ class TemplateService:
 
         Idempotent: vorhandene FK-Spalten/Beziehungen werden übersprungen.
         """
-        col_tbl = "MDP01_META.META_COLUMN"
-        fk_tbl  = "MDP01_META.META_FOREIGN_KEY"
+        col_tbl = f"{META_SCHEMA}.META_COLUMN"
+        fk_tbl  = f"{META_SCHEMA}.META_FOREIGN_KEY"
 
         # DATATYPE_ID für BIGINT
         try:
             cursor.execute(
-                "SELECT DATATYPE_ID FROM MDP01_META.META_DATATYPE WHERE TERADATA_TYPE = 'BIGINT' SAMPLE 1"
+                f"SELECT DATATYPE_ID FROM {META_SCHEMA}.META_DATATYPE WHERE TERADATA_TYPE = 'BIGINT' SAMPLE 1"
             )
             r = cursor.fetchone()
             bigint_id = int(r[0]) if r else 1
@@ -1317,7 +1313,7 @@ class TemplateService:
 
         Überspringt falls für diese table_id bereits Einträge vorhanden.
         """
-        col_tbl = "MDP01_META.META_COLUMN"
+        col_tbl = f"{META_SCHEMA}.META_COLUMN"
 
         # Prüfen ob bereits Spalten vorhanden
         cursor.execute(f"SELECT COUNT(*) FROM {col_tbl} WHERE TABLE_ID = ?", [target_table_id])
@@ -1335,7 +1331,7 @@ class TemplateService:
             try:
                 base_type = col_type_str.split('(')[0].strip().upper()
                 cursor.execute(
-                    "SELECT DATATYPE_ID FROM MDP01_META.META_DATATYPE WHERE TERADATA_TYPE = ? SAMPLE 1",
+                    f"SELECT DATATYPE_ID FROM {META_SCHEMA}.META_DATATYPE WHERE TERADATA_TYPE = ? SAMPLE 1",
                     [base_type]
                 )
                 row = cursor.fetchone()
@@ -1377,11 +1373,11 @@ class TemplateService:
             inserted     += 1
 
         # --- 2. Source-Spalten (Typ/Länge aus META_COLUMN der Source) ---
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COLUMN_NAME, DATATYPE_ID, COLUMN_TYPE, COLUMN_LENGTH,
                    DECIMAL_TOTAL_DIGITS, DECIMAL_FRACTIONAL_DIGITS,
                    NULLABLE, IS_BUSINESS_KEY, CHARSET
-            FROM MDP01_META.META_COLUMN
+            FROM {META_SCHEMA}.META_COLUMN
             WHERE TABLE_ID = ?
             ORDER BY COLUMN_POSITION
         """, [source_table_id])
@@ -1521,10 +1517,10 @@ class TemplateService:
             logger.warning(f"Fehler beim Prüfen der Ziel-Tabelle: {e}")
         
         # Source-Spalten aus META_COLUMN laden
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_LENGTH,
                    DECIMAL_TOTAL_DIGITS, DECIMAL_FRACTIONAL_DIGITS
-            FROM MDP01_META.META_COLUMN
+            FROM {META_SCHEMA}.META_COLUMN
             WHERE TABLE_ID = ?
             ORDER BY COLUMN_POSITION
         """, [source_table_id])
@@ -1532,10 +1528,10 @@ class TemplateService:
 
         if not source_columns:
             # Fallback: Direkt aus dbc.ColumnsV laden
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT t.TABLE_NAME, d.DATABASE_NAME
-                FROM MDP01_META.META_TABLE t
-                JOIN MDP01_META.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
+                FROM {META_SCHEMA}.META_TABLE t
+                JOIN {META_SCHEMA}.META_DATABASE d ON t.DATABASE_ID = d.DATABASE_ID
                 WHERE t.TABLE_ID = ?
             """, [source_table_id])
             src_info = cursor.fetchone()
@@ -1786,7 +1782,7 @@ class TemplateService:
         """
         try:
             cursor.execute(
-                "SELECT COALESCE(MAX(ETL_JOB_STEP_ID), 0) + 1 FROM MDP01_META.META_ETL_JOB_STEP"
+                f"SELECT COALESCE(MAX(ETL_JOB_STEP_ID), 0) + 1 FROM {META_SCHEMA}.META_ETL_JOB_STEP"
             )
             next_id = cursor.fetchone()[0]
 
@@ -1814,8 +1810,8 @@ class TemplateService:
                 if ddl:
                     # Doppelte Semikolons vermeiden
                     ddl_sql = ddl if ddl.rstrip().endswith(';') else ddl + ';'
-                    cursor.execute("""
-                        INSERT INTO MDP01_META.META_ETL_JOB_STEP (
+                    cursor.execute(f"""
+                        INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP (
                             ETL_JOB_STEP_ID, ETL_JOB_ID, STEP_NAME, STEP_ORDER,
                             STEP_CATEGORY, SQL_TEMPLATE_PATH, SQL_INLINE,
                             IS_CRITICAL, ROLLBACK_ON_ERROR, IS_ACTIVE,
@@ -1843,8 +1839,8 @@ class TemplateService:
                     sk_ddl = None
 
                 if sk_ddl:
-                    cursor.execute("""
-                        INSERT INTO MDP01_META.META_ETL_JOB_STEP (
+                    cursor.execute(f"""
+                        INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP (
                             ETL_JOB_STEP_ID, ETL_JOB_ID, STEP_NAME, STEP_ORDER,
                             STEP_CATEGORY, SQL_TEMPLATE_PATH, SQL_INLINE,
                             IS_CRITICAL, ROLLBACK_ON_ERROR, IS_ACTIVE,
@@ -1884,12 +1880,12 @@ class TemplateService:
         
         try:
             # Step-Template laden
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT 
                     STEP_NAME, STEP_ORDER, STEP_CATEGORY,
                     SQL_TEMPLATE_PATH, SQL_INLINE,
                     DEFAULT_PARAMETERS
-                FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE
+                FROM {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE
                 WHERE STEP_TEMPLATE_ID = ?
             """, [step_template_id])
             
@@ -1899,9 +1895,9 @@ class TemplateService:
             
             # Step-Order bestimmen
             if step_order is None:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT COALESCE(MAX(STEP_ORDER), 0) + 10
-                    FROM MDP01_META.META_ETL_JOB_STEP
+                    FROM {META_SCHEMA}.META_ETL_JOB_STEP
                     WHERE ETL_JOB_ID = ?
                 """, [job_id])
                 order_row = cursor.fetchone()
@@ -1922,8 +1918,8 @@ class TemplateService:
                 step_params = json.loads(params_str)
             
             # Step einfügen
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_ETL_JOB_STEP (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP (
                     ETL_JOB_ID, STEP_NAME, STEP_ORDER, STEP_CATEGORY,
                     SQL_TEMPLATE_PATH, SQL_INLINE,
                     PARAMETERS, IS_CRITICAL, ROLLBACK_ON_ERROR, IS_ACTIVE
@@ -1940,9 +1936,9 @@ class TemplateService:
             conn.commit()
             
             # Step-ID holen
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT MAX(ETL_JOB_STEP_ID)
-                FROM MDP01_META.META_ETL_JOB_STEP
+                FROM {META_SCHEMA}.META_ETL_JOB_STEP
                 WHERE ETL_JOB_ID = ?
             """, [job_id])
             step_row = cursor.fetchone()
@@ -1967,9 +1963,9 @@ class TemplateService:
         cursor = conn.cursor()
         
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT TEMPLATE_ID 
-                FROM MDP01_META.META_ETL_JOB_TEMPLATE
+                FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE
                 WHERE TEMPLATE_NAME = ?
             """, [template_name])
             row = cursor.fetchone()
@@ -2005,7 +2001,7 @@ class TemplateService:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                f"UPDATE MDP01_META.META_ETL_JOB_TEMPLATE SET {', '.join(set_parts)} WHERE TEMPLATE_ID = ?",
+                f"UPDATE {META_SCHEMA}.META_ETL_JOB_TEMPLATE SET {', '.join(set_parts)} WHERE TEMPLATE_ID = ?",
                 values
             )
             conn.commit()
@@ -2058,7 +2054,7 @@ class TemplateService:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                f"UPDATE MDP01_META.META_ETL_JOB_STEP_TEMPLATE SET {', '.join(set_parts)} WHERE STEP_TEMPLATE_ID = ?",
+                f"UPDATE {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE SET {', '.join(set_parts)} WHERE STEP_TEMPLATE_ID = ?",
                 values
             )
             conn.commit()
@@ -2077,10 +2073,10 @@ class TemplateService:
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT s.SQL_TEMPLATE_PATH, t.TEMPLATE_CODE
-                FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE s
-                LEFT JOIN MDP01_META.META_ETL_JOB_TEMPLATE t ON t.TEMPLATE_ID = s.TEMPLATE_ID
+                FROM {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE s
+                LEFT JOIN {META_SCHEMA}.META_ETL_JOB_TEMPLATE t ON t.TEMPLATE_ID = s.TEMPLATE_ID
                 WHERE s.STEP_TEMPLATE_ID = ?
             """, [step_template_id])
             row = cursor.fetchone()
@@ -2116,7 +2112,7 @@ class TemplateService:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "SELECT DEFAULT_PARAMETERS FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE WHERE STEP_TEMPLATE_ID = ?",
+                f"SELECT DEFAULT_PARAMETERS FROM {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE WHERE STEP_TEMPLATE_ID = ?",
                 [step_template_id]
             )
             row = cursor.fetchone()
@@ -2144,7 +2140,7 @@ class TemplateService:
         cursor = conn.cursor()
         try:
             cursor.execute(
-                "UPDATE MDP01_META.META_ETL_JOB_STEP_TEMPLATE SET DEFAULT_PARAMETERS = ? WHERE STEP_TEMPLATE_ID = ?",
+                f"UPDATE {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE SET DEFAULT_PARAMETERS = ? WHERE STEP_TEMPLATE_ID = ?",
                 [json.dumps(params, ensure_ascii=False), step_template_id]
             )
             conn.commit()
@@ -2162,8 +2158,8 @@ class TemplateService:
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
-                DELETE FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE
+            cursor.execute(f"""
+                DELETE FROM {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE
                 WHERE STEP_TEMPLATE_ID = ?
             """, [step_template_id])
             conn.commit()
@@ -2187,14 +2183,14 @@ class TemplateService:
         
         try:
             # Erst Step-Templates löschen
-            cursor.execute("""
-                DELETE FROM MDP01_META.META_ETL_JOB_STEP_TEMPLATE
+            cursor.execute(f"""
+                DELETE FROM {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE
                 WHERE TEMPLATE_ID = ?
             """, [template_id])
             
             # Dann Job-Template löschen
-            cursor.execute("""
-                DELETE FROM MDP01_META.META_ETL_JOB_TEMPLATE
+            cursor.execute(f"""
+                DELETE FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE
                 WHERE TEMPLATE_ID = ?
             """, [template_id])
             
@@ -2234,13 +2230,13 @@ class TemplateService:
         
         try:
             # 1. Job laden für Name und Typ
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT 
                     JOB_NAME, JOB_TYPE, SOURCE_LAYER_ID, TARGET_LAYER_ID,
                     PRIMARY_KEY_COLUMNS, HASH_COLUMNS,
                     VALID_FROM_COLUMN, VALID_TO_COLUMN, IS_CURRENT_COLUMN,
                     BESCHREIBUNG
-                FROM MDP01_META.META_ETL_JOB
+                FROM {META_SCHEMA}.META_ETL_JOB
                 WHERE ETL_JOB_ID = ?
             """, [job_id])
             
@@ -2255,9 +2251,9 @@ class TemplateService:
             final_template_code = template_code or final_template_name.upper().replace(' ', '_').replace('-', '_')
             
             # 2. Prüfen ob Template mit gleichem NAMEN bereits existiert
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT TEMPLATE_ID, TEMPLATE_CODE
-                FROM MDP01_META.META_ETL_JOB_TEMPLATE
+                FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE
                 WHERE TEMPLATE_NAME = ?
             """, [final_template_name])
             existing = cursor.fetchone()
@@ -2280,8 +2276,8 @@ class TemplateService:
                 cursor = conn.cursor()
             
             # 4. Job-Template erstellen
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_ETL_JOB_TEMPLATE (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_ETL_JOB_TEMPLATE (
                     TEMPLATE_NAME, TEMPLATE_CODE, JOB_TYPE,
                     SOURCE_LAYER_ID, TARGET_LAYER_ID,
                     DEFAULT_PRIMARY_KEY_COLUMNS, DEFAULT_HASH_COLUMNS,
@@ -2306,9 +2302,9 @@ class TemplateService:
             conn.commit()
             
             # Template-ID holen
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT TEMPLATE_ID 
-                FROM MDP01_META.META_ETL_JOB_TEMPLATE
+                FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE
                 WHERE TEMPLATE_CODE = ?
             """, [final_template_code])
             tpl_row = cursor.fetchone()
@@ -2318,12 +2314,12 @@ class TemplateService:
                 raise ValueError("Template konnte nicht erstellt werden")
             
             # 5. Steps kopieren
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT 
                     STEP_NAME, STEP_ORDER, STEP_CATEGORY,
                     SQL_TEMPLATE_PATH, SQL_INLINE, PARAMETERS,
                     IS_CRITICAL, ROLLBACK_ON_ERROR, BESCHREIBUNG
-                FROM MDP01_META.META_ETL_JOB_STEP
+                FROM {META_SCHEMA}.META_ETL_JOB_STEP
                 WHERE ETL_JOB_ID = ?
                 ORDER BY STEP_ORDER
             """, [job_id])
@@ -2331,8 +2327,8 @@ class TemplateService:
             steps = cursor.fetchall()
             
             for step in steps:
-                cursor.execute("""
-                    INSERT INTO MDP01_META.META_ETL_JOB_STEP_TEMPLATE (
+                cursor.execute(f"""
+                    INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE (
                         TEMPLATE_ID, STEP_NAME, STEP_ORDER, STEP_CATEGORY,
                         SQL_TEMPLATE_PATH, SQL_INLINE, DEFAULT_PARAMETERS,
                         DEFAULT_IS_CRITICAL, DEFAULT_ROLLBACK_ON_ERROR,
@@ -2509,9 +2505,9 @@ class TemplateService:
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("""
+            cursor.execute(f"""
                 SELECT TEMPLATE_ID
-                FROM MDP01_META.META_ETL_JOB_TEMPLATE
+                FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE
                 WHERE TEMPLATE_CODE = ?
             """, [template_code])
             existing_row = cursor.fetchone()
@@ -2533,11 +2529,11 @@ class TemplateService:
                 cursor = conn.cursor()
 
             # Nächste freie Template-ID
-            cursor.execute("SELECT COALESCE(MAX(TEMPLATE_ID), 0) + 1 FROM MDP01_META.META_ETL_JOB_TEMPLATE")
+            cursor.execute(f"SELECT COALESCE(MAX(TEMPLATE_ID), 0) + 1 FROM {META_SCHEMA}.META_ETL_JOB_TEMPLATE")
             new_template_id = cursor.fetchone()[0]
 
-            cursor.execute("""
-                INSERT INTO MDP01_META.META_ETL_JOB_TEMPLATE (
+            cursor.execute(f"""
+                INSERT INTO {META_SCHEMA}.META_ETL_JOB_TEMPLATE (
                     TEMPLATE_ID, TEMPLATE_NAME, TEMPLATE_CODE, JOB_TYPE,
                     SOURCE_LAYER_ID, TARGET_LAYER_ID,
                     DEFAULT_PRIMARY_KEY_COLUMNS, DEFAULT_HASH_COLUMNS,
@@ -2577,8 +2573,8 @@ class TemplateService:
                 default_params = step_data.get("default_parameters")
                 params_json = json.dumps(default_params, ensure_ascii=False) if default_params else None
 
-                cursor.execute("""
-                    INSERT INTO MDP01_META.META_ETL_JOB_STEP_TEMPLATE (
+                cursor.execute(f"""
+                    INSERT INTO {META_SCHEMA}.META_ETL_JOB_STEP_TEMPLATE (
                         TEMPLATE_ID, STEP_NAME, STEP_CODE, STEP_ORDER,
                         STEP_CATEGORY, SQL_TEMPLATE_PATH, SQL_INLINE,
                         DEFAULT_PARAMETERS, REQUIRED_PARAMETERS, BESCHREIBUNG

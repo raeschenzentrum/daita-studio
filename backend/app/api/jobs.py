@@ -203,7 +203,7 @@ async def delete_preview(
                 "required": False,
                 "default_selected": False,
                 "sql_preview": (
-                    f"DELETE FROM MDP01_META.META_TABLE\nWHERE TABLE_ID = {job.target_table_id};"  # per ID, nicht Name!
+                    f"DELETE FROM {META_SCHEMA}.META_TABLE\nWHERE TABLE_ID = {job.target_table_id};"  # per ID, nicht Name!
                 ) if job.target_table_id else None,
             },
             {
@@ -213,7 +213,7 @@ async def delete_preview(
                 "required": False,
                 "default_selected": False,
                 "sql_preview": (
-                    f"DELETE FROM MDP01_META.META_COLUMN\nWHERE TABLE_ID = {job.target_table_id};"
+                    f"DELETE FROM {META_SCHEMA}.META_COLUMN\nWHERE TABLE_ID = {job.target_table_id};"
                 ) if job.target_table_id else None,
             },
         ]
@@ -293,7 +293,7 @@ async def delete_job(
                     # (Name-Suche würde Source+Target mit gleichem Namen beide treffen)
                     try:
                         cursor.execute(
-                            "SELECT TARGET_TABLE_ID FROM MDP01_META.META_ETL_JOB WHERE ETL_JOB_ID = ?",
+                            f"SELECT TARGET_TABLE_ID FROM {META_SCHEMA}.META_ETL_JOB WHERE ETL_JOB_ID = ?",
                             [job_id]
                         )
                         id_row = cursor.fetchone()
@@ -301,11 +301,11 @@ async def delete_job(
                         if tbl_id:
                             if opts.drop_meta_columns:
                                 cursor.execute(
-                                    "DELETE FROM MDP01_META.META_COLUMN WHERE TABLE_ID = ?", [tbl_id]
+                                    f"DELETE FROM {META_SCHEMA}.META_COLUMN WHERE TABLE_ID = ?", [tbl_id]
                                 )
                             if opts.drop_meta_table:
                                 cursor.execute(
-                                    "DELETE FROM MDP01_META.META_TABLE WHERE TABLE_ID = ?", [tbl_id]
+                                    f"DELETE FROM {META_SCHEMA}.META_TABLE WHERE TABLE_ID = ?", [tbl_id]
                                 )
                             conn.commit()
                             logger.info(f"META-Einträge für TABLE_ID={tbl_id} (Job {job_id}) gelöscht")
@@ -447,9 +447,9 @@ async def migrate_params_to_files(
     errors = []
 
     try:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT etl_job_step_id, etl_job_id, parameters
-            FROM MDP01_META.META_ETL_JOB_STEP
+            FROM {META_SCHEMA}.META_ETL_JOB_STEP
             WHERE parameters IS NOT NULL
         """)
         rows = cursor.fetchall()

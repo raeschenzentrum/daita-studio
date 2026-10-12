@@ -22,10 +22,12 @@ import time
 import teradatasql
 from typing import Optional
 
-from app.config import DB_CONFIG, META_SCHEMA, META_TABLES
+from app.config import DB_CONFIG, META_SCHEMA, META_TABLES, get_active_env_id
 
 # ---------------------------------------------------------------------------
-# Einfacher In-Memory-Cache (TTL-basiert)
+# Einfacher In-Memory-Cache (TTL-basiert, PRO Environment - sonst wuerden nach
+# einem Umgebungswechsel bis zu 5 Minuten lang Daten der vorherigen Umgebung
+# angezeigt).
 # ---------------------------------------------------------------------------
 
 _CACHE: dict = {}
@@ -33,6 +35,7 @@ _CACHE_TTL = 300  # Sekunden
 
 
 def _cached(key: str, loader):
+    key = f"{get_active_env_id()}::{key}"
     entry = _CACHE.get(key)
     if entry and (time.time() - entry["ts"]) < _CACHE_TTL:
         return entry["data"]

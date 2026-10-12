@@ -20,6 +20,7 @@ sql/generated/
 # Config mit Credentials (niemals committen!)
 cfg/database.yml
 cfg/connections.json
+cfg/environments.yml
 
 # Temporäre Dateien
 tmp/

@@ -165,17 +165,161 @@ class ConnectionManager:
 connection_manager = ConnectionManager()
 
 # =============================================================================
+# Environments (Meta-Datenbank-Auswahl, session-scoped per Request-Header)
+# =============================================================================
+# cfg/environments.yml listet mehrere Metadaten-Umgebungen (z.B. MDP01_META,
+# SEM_DEV_MET_BASE, ...), jede mit eigenem Host/User/Passwort/Schema. Das
+# aktive Environment wird PRO REQUEST über eine ContextVar gehalten (gesetzt
+# von EnvironmentMiddleware in main.py anhand des Headers "X-Env-Id") - dadurch
+# bleibt der Wechsel session-/tab-scoped und ist nebenläufig sicher (kein
+# globaler mutable State, der zwischen parallelen Requests kollidieren könnte).
+import contextvars
+
+_environments_raw = _load_yaml('environments.yml')
+_ENV_LIST = _environments_raw.get('environments', []) or []
+ENVIRONMENTS: Dict[str, dict] = {e['id']: e for e in _ENV_LIST if e.get('id')}
+
+# Fallback ohne environments.yml: ein "default"-Environment aus database.yml,
+# damit der Proxy-Mechanismus unten immer funktioniert.
+if not ENVIRONMENTS:
+    ENVIRONMENTS = {
+        "default": {
+            "id": "default",
+            "label": "Standard (database.yml)",
+            "host": TERADATA_CONFIG.get("host", ""),
+            "user": TERADATA_CONFIG.get("user", ""),
+            "password": TERADATA_CONFIG.get("password", ""),
+            "connect_timeout": TERADATA_CONFIG.get("connect_timeout", 10000),
+            "schema": METADATA_CONFIG.get("schema", "MDP01_META"),
+        }
+    }
+
+DEFAULT_ENV_ID = _environments_raw.get('default') or next(iter(ENVIRONMENTS))
+if DEFAULT_ENV_ID not in ENVIRONMENTS:
+    DEFAULT_ENV_ID = next(iter(ENVIRONMENTS))
+
+_active_env_id_var: contextvars.ContextVar = contextvars.ContextVar(
+    "active_env_id", default=DEFAULT_ENV_ID
+)
+
+
+def list_environments() -> List[dict]:
+    """Für's Frontend: nur id+label, NIE Host/User/Passwort."""
+    return [{"id": e["id"], "label": e.get("label", e["id"])} for e in ENVIRONMENTS.values()]
+
+
+def get_default_env_id() -> str:
+    return DEFAULT_ENV_ID
+
+
+def get_active_env_id() -> str:
+    return _active_env_id_var.get()
+
+
+def set_active_env_id(env_id: str) -> str:
+    """Setzt das aktive Environment für den aktuellen Request (ContextVar).
+    Unbekannte/leere IDs fallen still auf den Default zurück."""
+    _active_env_id_var.set(env_id if env_id in ENVIRONMENTS else DEFAULT_ENV_ID)
+    return _active_env_id_var.get()
+
+
+def get_active_env() -> dict:
+    return ENVIRONMENTS.get(get_active_env_id(), ENVIRONMENTS[DEFAULT_ENV_ID])
+
+
+def get_active_schema() -> str:
+    return get_active_env().get("schema", "MDP01_META")
+
+
+def get_active_teradata_config() -> dict:
+    """Connection-Parameter (host/user/password/connect_timeout) des aktiven Environments."""
+    env = get_active_env()
+    return {
+        "host": env.get("host", TERADATA_CONFIG.get("host", "")),
+        "user": env.get("user", TERADATA_CONFIG.get("user", "")),
+        "password": env.get("password", TERADATA_CONFIG.get("password", "")),
+        "connect_timeout": env.get("connect_timeout", TERADATA_CONFIG.get("connect_timeout", 10000)),
+    }
+
+
+# =============================================================================
 # Modeler-Konfiguration (META-Schema + Tabellennamen)
 # =============================================================================
-# Kompatibilitäts-Alias für daita-modeler-Services (erwarten DB_CONFIG)
-DB_CONFIG = {
-    "host":     TERADATA_CONFIG.get("host", ""),
-    "username": TERADATA_CONFIG.get("user", ""),
-    "password": TERADATA_CONFIG.get("password", ""),
-    "database": TERADATA_CONFIG.get("database", "dbc"),
-}
+class _DynamicSchema:
+    """String-artiger Proxy: liefert immer das META-Schema des AKTIVEN Environments.
 
-META_SCHEMA = METADATA_CONFIG.get("schema", "MDP01_META")
+    So bleiben alle bestehenden `from ..config import META_SCHEMA` +
+    f"{META_SCHEMA}.META_TABLE" Stellen unveraendert funktionsfaehig, obwohl
+    sich der Wert nun je nach Request/Environment aendert.
+    """
+    def _value(self) -> str:
+        return get_active_schema()
+
+    def __str__(self):
+        return self._value()
+
+    def __repr__(self):
+        return self._value()
+
+    def __format__(self, spec):
+        return format(self._value(), spec)
+
+    def __add__(self, other):
+        return self._value() + other
+
+    def __radd__(self, other):
+        return other + self._value()
+
+    def __eq__(self, other):
+        return self._value() == other
+
+    def __ne__(self, other):
+        return self._value() != other
+
+    def __hash__(self):
+        return hash(self._value())
+
+    def __getattr__(self, name):
+        return getattr(self._value(), name)
+
+
+class _DynamicDBConfig:
+    """Dict-artiger Proxy: liefert host/username/password/database des aktiven Environments."""
+    def _value(self) -> dict:
+        cfg = get_active_teradata_config()
+        return {
+            "host": cfg["host"],
+            "username": cfg["user"],
+            "password": cfg["password"],
+            "database": "dbc",
+        }
+
+    def __getitem__(self, key):
+        return self._value()[key]
+
+    def get(self, key, default=None):
+        return self._value().get(key, default)
+
+    def __contains__(self, key):
+        return key in self._value()
+
+    def __iter__(self):
+        return iter(self._value())
+
+    def keys(self):
+        return self._value().keys()
+
+    def items(self):
+        return self._value().items()
+
+    def __repr__(self):
+        return repr(self._value())
+
+
+# Kompatibilitäts-Alias für daita-modeler-Services (erwarten DB_CONFIG)
+DB_CONFIG = _DynamicDBConfig()
+
+META_SCHEMA = _DynamicSchema()
 
 META_TABLES = {
     "tables":     "META_TABLE",

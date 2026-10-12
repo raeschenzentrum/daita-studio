@@ -35,6 +35,7 @@ from .api import modeler as modeler_router
 from .api import diagrams as diagrams_router
 from .api import import_td as import_router
 from .api import lineage_flow as lineage_flow_router
+from .api import environments as environments_router
 
 # Auth / RBAC
 from .auth import router as auth_router
@@ -60,6 +61,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# Environment-Auswahl (Meta-Datenbank-Switch): das Frontend schickt den
+# gewuenschten X-Env-Id-Header (pro Browser-Tab, aus sessionStorage) auf jedem
+# Request. Wird per ContextVar fuer die Dauer des Requests aktiv gesetzt -
+# session-scoped und nebenlaeufig sicher (kein globaler mutable State).
+from starlette.middleware.base import BaseHTTPMiddleware
+from .config import set_active_env_id
+
+
+class EnvironmentMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        set_active_env_id(request.headers.get("X-Env-Id", ""))
+        return await call_next(request)
+
+
+app.add_middleware(EnvironmentMiddleware)
+
 # Auth-Router (Login/Benutzerverwaltung) – NICHT durch rbac_guard geschützt,
 # da /login öffentlich sein muss und die übrigen Routen eigene Guards haben.
 app.include_router(auth_router.router)
@@ -79,6 +97,7 @@ app.include_router(modeler_router.router, dependencies=[Depends(module_guard("mo
 app.include_router(diagrams_router.router, dependencies=[Depends(module_guard("modeler"))])
 app.include_router(import_router.router, dependencies=[Depends(module_guard("modeler"))])
 app.include_router(lineage_flow_router.router, dependencies=[Depends(module_guard("lineage"))])  # Lineage-Flow (Dataflow-Graph, Phase 1)
+app.include_router(environments_router.router)  # nur Login noetig (Depends in der Route selbst)
 
 # Services
 lineage_service = LineageService()

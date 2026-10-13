@@ -10,6 +10,10 @@
 --      und Zeilen nach einer Löschung. Hashgleiche Folgezeilen entfallen.
 --   3. Für die behaltenen Zeilen: Snapshot-Zeit und Art der nächsten Zeile
 --      (ergibt VALID_TO, IS_CURRENT und das Lösch-Kennzeichen im Insert).
+--   4. IS_INITIAL_VERSION = 'Y' für die erste Version eines Keys aus dem ersten
+--      Ladelauf des Jobs (Ladestand 0, kleinster Ladelauf im Staging, Key noch
+--      nicht im Ziel). Sie bekommt im Insert den Gültigkeitsbeginn des
+--      initialen Stands (ADR-0016).
 -- Löschungen werden keine Version; sie schließen ihren Vorgänger.
 --
 -- PARAMETER:
@@ -22,7 +26,7 @@
 --   ${BUSINESS_KEY_JOIN_PREV} : stg.X = prev.X (generiert)
 --   ${LOAD_ID_COL}, ${SNAPSHOT_COL}, ${CHANGE_TYPE_COL}, ${CT_DELETE}
 --   ${RECORD_HASH_COL}, ${DELETED_COL}, ${DELETED_VAL}, ${GUELTIGVON_COL}
---   ${PRIMARY_INDEX_COLS}
+--   ${PRIMARY_INDEX_COLS}, ${LOAD_WATERMARK}
 -- ============================================================================
 
 CREATE MULTISET VOLATILE TABLE ${VERSIONS_TABLE} AS (
@@ -41,7 +45,14 @@ CREATE MULTISET VOLATILE TABLE ${VERSIONS_TABLE} AS (
                 WHEN stg.PREV_LOAD_ID IS NOT NULL THEN prev.${RECORD_HASH_COL}
                 WHEN hist.CUR_DELETED = '${DELETED_VAL}' THEN NULL
                 ELSE hist.CUR_HASH
-            END AS PREV_HASH
+            END AS PREV_HASH,
+            CASE
+                WHEN stg.PREV_LOAD_ID IS NULL
+                 AND hist.CUR_EXISTS IS NULL
+                 AND ${LOAD_WATERMARK} = 0
+                 AND stg.${LOAD_ID_COL} = (SELECT MIN(s0.${LOAD_ID_COL}) FROM ${STAGING_TABLE} s0)
+                THEN 'Y' ELSE 'N'
+            END AS IS_INITIAL_VERSION
         FROM (
             SELECT
                 stg.*,
@@ -60,7 +71,8 @@ CREATE MULTISET VOLATILE TABLE ${VERSIONS_TABLE} AS (
             SELECT
                 ${BUSINESS_KEY_HIST},
                 hist.${RECORD_HASH_COL} AS CUR_HASH,
-                hist.${DELETED_COL} AS CUR_DELETED
+                hist.${DELETED_COL} AS CUR_DELETED,
+                1 AS CUR_EXISTS
             FROM ${TARGET_DATABASE}.${TARGET_TABLE} hist
             QUALIFY ROW_NUMBER() OVER (
                 PARTITION BY ${BUSINESS_KEY_HIST} ORDER BY hist.${GUELTIGVON_COL} DESC

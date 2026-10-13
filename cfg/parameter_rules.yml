@@ -151,6 +151,10 @@ scd2_technical_columns:
     type: "TIMESTAMP(6)"
     nullable: false
     default: "CURRENT_TIMESTAMP(6)"
+    # Gültigkeitsbeginn des initialen Stands (ADR-0016): erste Version eines Keys aus dem
+    # ersten Ladelauf des Jobs. Vor dem ersten Snapshot ist nur der letzte Quellstand bekannt.
+    # Leer = Snapshot-Zeit. Wirkt im Template-Set RAW_TO_DISC_SCD2_DELTA.
+    initial_value: "1000-01-01 00:00:00"
   
   valid_to:
     name: "VALID_TO"

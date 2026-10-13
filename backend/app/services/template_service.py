@@ -211,7 +211,8 @@ class TemplateService:
         return cols
 
     def _raw_delta_params(self, raw_delta: dict, job_id: int, source_table_id: int,
-                          pk_columns: List[str], staging_prefix: str, source_table: str) -> Dict[str, str]:
+                          pk_columns: List[str], staging_prefix: str, source_table: str,
+                          scd2_config: dict = None) -> Dict[str, str]:
         """Parameter für das Delta-Set aus cfg/parameter_rules.yml → raw_delta.
 
         LOAD_WATERMARK ist ein SQL-Ausdruck auf die Ladestand-Tabelle der Meta-DB,
@@ -223,7 +224,12 @@ class TemplateService:
         target_cfg = self._raw_delta_target_cfg(raw_delta)
         meta_db = str(META_SCHEMA)
         state_table = raw_delta.get('load_state_table', 'META_ETL_LOAD_STATE')
+        # ADR-0016: Gültigkeitsbeginn des initialen Stands (leer = Snapshot-Zeit)
+        vf_cfg = (scd2_config or {}).get('valid_from', {})
+        initial_vf = vf_cfg.get('initial_value') if isinstance(vf_cfg, dict) else None
+        snapshot_col = raw_delta.get('snapshot_column', '')
         return {
+            'INITIAL_VALID_FROM_EXPR': f"TIMESTAMP '{initial_vf}'" if initial_vf else f"src.{snapshot_col}",
             'LOAD_ID_COL':      raw_delta.get('load_id_column', ''),
             'SNAPSHOT_COL':     raw_delta.get('snapshot_column', ''),
             'CHANGE_TYPE_COL':  raw_delta.get('change_type_column', ''),
@@ -907,6 +913,7 @@ class TemplateService:
                 pk_columns=pk_columns if isinstance(pk_columns, list) else [],
                 staging_prefix=staging_prefix,
                 source_table=new_source,
+                scd2_config=scd2_config,
             ))
 
             logger.debug(f"Parameter-Generierung: source={new_source}, core_name={core_name}, pk_columns={pk_columns}, select_columns={len(select_columns)} Spalten")

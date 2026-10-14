@@ -14,6 +14,7 @@
 --   ${FK_SK_COLUMNS}, ${FK_JOINS} (Alias st), ${KEY_COLS_V_EN}, ${JOIN_KEY_ST_EN},
 --   ${PART_KEY_V} (generiert)
 --   ${SRC_*}, ${STG_HASH}, ${TGT_*_COL}
+--   ${OPEN_VALID_TO}, ${IS_CURRENT_OPEN}, ${IS_CURRENT_CLOSED} : aktuell = Ende offen
 -- ============================================================================
 
 INSERT INTO ${TARGET_DATABASE}.${TARGET_TABLE}
@@ -37,7 +38,7 @@ ${FK_SK_COLUMNS}
     ${INSERT_SELECT},
     st.${SRC_VALID_FROM},
     en.${SRC_VALID_TO},
-    en.${SRC_IS_CURRENT},
+    en.E_IS_CURRENT,
     en.${SRC_DELETED},
     st.${SRC_LOAD_ID},
     en.${SRC_UPDATE_LOAD_ID},
@@ -49,7 +50,9 @@ FROM (
 ) st
 JOIN (
     SELECT ${KEY_COLS_V}, v.RUN_NO,
-           v.${SRC_VALID_TO}, v.${SRC_IS_CURRENT}, v.${SRC_DELETED}, v.${SRC_UPDATE_LOAD_ID}
+           v.${SRC_VALID_TO}, v.${SRC_DELETED}, v.${SRC_UPDATE_LOAD_ID},
+           CASE WHEN v.${SRC_VALID_TO} = TIMESTAMP '${OPEN_VALID_TO}'
+                THEN '${IS_CURRENT_OPEN}' ELSE '${IS_CURRENT_CLOSED}' END AS E_IS_CURRENT
     FROM ${VERSIONS_TABLE} v
     QUALIFY ROW_NUMBER() OVER (PARTITION BY ${PART_KEY_V}, v.RUN_NO ORDER BY v.SEQ_NO DESC) = 1
 ) en

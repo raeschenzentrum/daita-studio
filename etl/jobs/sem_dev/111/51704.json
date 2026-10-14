@@ -1,0 +1,130 @@
+{
+  "TARGET_DATABASE": "SEM_DEV_REU_BASE",
+  "TARGET_TABLE": "PART_IDENTITAET",
+  "VERSIONS_TABLE": "temp_part_identitaet_versions",
+  "SK_COLUMN": "PART_IDENTITAET_SK",
+  "INSERT_COLUMNS": "IDENTITAET_ID, NACHNAME, VORNAME, GEBURTSDATUM_ORIG, GEBURTSDATUM, GEBURTS_ORT, ELTERN_NAME_1, ELTERN_VORNAME_1, ELTERN_NAME_2, ELTERN_VORNAME_2, HAT_ANAG_GESCHAEFT_JN, HAT_ASYL_GESCHAEFT_JN, HAT_BUEG_GESCHAEFT_JN, AUSWEIS_IDENT_JN, NACHNAME_BESTR_JN, VORNAME_BESTR_JN, GEBURTSDATUM_BESTR_JN, GESCHLECHT_BESTR_JN, ZIVILSTAND_BESTR_JN, NATIONALITAET_BESTR_JN, GEBURTS_ORT_BESTR_JN, GEBURT_CH_GEMEINDE_BESTR_JN, AHV_VERSICHERTEN_NUMMER, EMAIL, TELEFONNUMMER",
+  "INSERT_SELECT": "st.IDENTITAET_ID, st.NACHNAME, st.VORNAME, st.GEBURTSDATUM_ORIG, st.GEBURTSDATUM, st.GEBURTS_ORT, st.ELTERN_NAME_1, st.ELTERN_VORNAME_1, st.ELTERN_NAME_2, st.ELTERN_VORNAME_2, st.HAT_ANAG_GESCHAEFT_JN, st.HAT_ASYL_GESCHAEFT_JN, st.HAT_BUEG_GESCHAEFT_JN, st.AUSWEIS_IDENT_JN, st.NACHNAME_BESTR_JN, st.VORNAME_BESTR_JN, st.GEBURTSDATUM_BESTR_JN, st.GESCHLECHT_BESTR_JN, st.ZIVILSTAND_BESTR_JN, st.NATIONALITAET_BESTR_JN, st.GEBURTS_ORT_BESTR_JN, st.GEBURT_CH_GEMEINDE_BESTR_JN, st.AHV_VERSICHERTEN_NUMMER, st.EMAIL, st.TELEFONNUMMER",
+  "fk_definitions": [
+    {
+      "sk_column": "PERSON_SK",
+      "key_table": "KEY_PART_PERSON",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.PERSON_ID AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "IDENTITAET_ART_SK",
+      "key_table": "KEY_CD_IDENTITAET_ART",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.IDENTITAET_ART_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "IDENT_STATUS_SK",
+      "key_table": "KEY_CD_IDENT_STATUS",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.IDENT_STATUS_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "IDENTIFIK_ART_SK",
+      "key_table": "KEY_CD_IDENTIFIK_ART",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.IDENTIFIK_ART_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "GESCHLECHT_SK",
+      "key_table": "KEY_CD_GESCHLECHT",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.GESCHLECHT_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "ZIVILSTAND_SK",
+      "key_table": "KEY_CD_ZIVILSTAND",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.ZIVILSTAND_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "ZIVILSTAND_ZUS_SK",
+      "key_table": "KEY_CD_ZIVILSTAND_ZUS",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.ZIVILSTAND_ZUS_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "NATIONALITAET_SK",
+      "key_table": "KEY_CD_NATION",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.NATIONALITAET_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "ZWEITE_NATIONALITAET_SK",
+      "key_table": "KEY_CD_NATION",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.ZWEITE_NATIONALITAET_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "EHEM_NATIONALITAET_SK",
+      "key_table": "KEY_CD_NATION",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.EHEM_NATIONALITAET_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "GEBURT_AUSL_NATION_SK",
+      "key_table": "KEY_CD_NATION",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.GEBURT_AUSL_NATION_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "POLIT_GEMEINDE_SK",
+      "key_table": "KEY_CD_GEMEINDE",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.POLIT_GEMEINDE_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "ERSTE_POLIT_GEMEINDE_SK",
+      "key_table": "KEY_CD_GEMEINDE",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.ERSTE_POLIT_GEMEINDE_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "GEBURT_CH_GEMEINDE_SK",
+      "key_table": "KEY_CD_GEMEINDE",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.GEBURT_CH_GEMEINDE_CD AS VARCHAR(255))"
+    }
+  ],
+  "KEY_COLS_V": "v.PART_IDENTITAET_SK",
+  "PART_KEY_V": "v.PART_IDENTITAET_SK",
+  "JOIN_KEY_ST_EN": "en.PART_IDENTITAET_SK = st.PART_IDENTITAET_SK",
+  "SRC_VALID_FROM": "VALID_FROM",
+  "SRC_VALID_TO": "VALID_TO",
+  "SRC_DELETED": "DWH_DELETED_IN_SOURCE",
+  "SRC_LOAD_ID": "DWH_LOAD_ID",
+  "SRC_UPDATE_LOAD_ID": "DWH_UPDATE_LOAD_ID",
+  "STG_HASH": "STG_RECORD_HASH",
+  "TGT_VALID_FROM_COL": "DWH_VALID_FROM",
+  "TGT_VALID_TO_COL": "DWH_VALID_TO",
+  "TGT_IS_CURRENT_COL": "DWH_IS_CURRENT",
+  "TGT_DELETED_COL": "DWH_DELETED_IN_SOURCE",
+  "TGT_LOAD_ID_COL": "DWH_LOAD_ID",
+  "TGT_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID",
+  "TGT_HASH_COL": "DWH_RECORD_HASH",
+  "TGT_CREATED_TS_COL": "DWH_CREATED_TS",
+  "TGT_UPDATED_TS_COL": "DWH_UPDATED_TS",
+  "OPEN_VALID_TO": "9999-12-31 23:59:59.999999",
+  "IS_CURRENT_OPEN": "Y",
+  "IS_CURRENT_CLOSED": "N",
+  "ROLE": "MAIN"
+}

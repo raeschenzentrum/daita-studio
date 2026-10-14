@@ -231,7 +231,8 @@ class KeyedHistoryService(TemplateService):
             'HASH_EXPRESSION': "HASHROW(" + ", ".join(hash_parts) + ")",
             'STG_HASH': 'STG_RECORD_HASH',
             'SRC_VALID_FROM': s['valid_from'], 'SRC_VALID_TO': s['valid_to'],
-            'SRC_IS_CURRENT': s['is_current'], 'SRC_DELETED': s['deleted_in_source'],
+            'SRC_DELETED': s['deleted_in_source'],
+            'OPEN_VALID_TO': self.cfg.get('open_valid_to', '9999-12-31 23:59:59.999999'),
             'SRC_LOAD_ID': s['load_id'], 'SRC_UPDATE_LOAD_ID': s['update_load_id'],
             'TGT_VALID_FROM_COL': self.tgt['valid_from'], 'TGT_VALID_TO_COL': self.tgt['valid_to'],
             'TGT_IS_CURRENT_COL': self.tgt['is_current'], 'TGT_DELETED_COL': self.tgt['deleted_in_source'],
@@ -354,10 +355,12 @@ class KeyedHistoryService(TemplateService):
                              self._target_ddl(tgt_db, r['target'], spec['sk_column'].upper(), r)))
 
             # Tabellen anlegen (KEY ohne Zeile -1; Ziele mit technischen Spalten)
+            neu_angelegt = set()
             for _, db, tab, ddl in ddls:
                 if not self._table_exists(cursor, db, tab):
                     cursor.execute(ddl)
                     conn.commit()
+                    neu_angelegt.add((db, tab))
                     logger.info(f"{db}.{tab} angelegt")
 
             # Ziele in META registrieren (Layer der Zielschicht)
@@ -368,8 +371,9 @@ class KeyedHistoryService(TemplateService):
                     JOIN {META_SCHEMA}.META_DATABASE d ON d.DATABASE_ID = t.DATABASE_ID
                     WHERE d.DATABASE_NAME = ? AND t.TABLE_NAME = ?""", [tgt_db, r['target']])
                 row = cursor.fetchone()
-                if not row:
-                    erg = import_service.import_table(tgt_db, r['target'], tgt_layer)
+                if not row or (tgt_db, r['target']) in neu_angelegt:
+                    # neu angelegt: Spalten (neu) einlesen, eine vorhandene TABLE_ID bleibt
+                    erg = import_service.reimport_table(tgt_db, r['target'], tgt_layer)
                     if erg.get('error'):
                         raise ValueError(f"{tgt_db}.{r['target']}: {erg['error']}")
                     row = (erg['table_id'],)

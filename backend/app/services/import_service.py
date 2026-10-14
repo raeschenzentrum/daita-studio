@@ -438,6 +438,51 @@ def import_table(db_name: str, table_name: str, layer_id: int = 1) -> dict:
         return {"error": str(e)}
 
 
+def reimport_table(db_name: str, table_name: str, layer_id: int) -> dict:
+    """
+    Liest Spalten und Indizes einer schon registrierten Tabelle/View neu aus
+    DBC ein (z.B. nach REPLACE VIEW). Die TABLE_ID bleibt erhalten, damit Jobs
+    und Verweise weiter auf denselben Eintrag zeigen. Ist die Tabelle noch nicht
+    registriert, wird sie wie mit import_table angelegt.
+
+    Gibt zurück: wie import_table, zusätzlich {reimported: True|False}
+    """
+    tbl      = f"{META_SCHEMA}.{META_TABLES['tables']}"
+    col_tbl  = f"{META_SCHEMA}.{META_TABLES['columns']}"
+    meta_db  = f"{META_SCHEMA}.{META_TABLES['database']}"
+    idx_tbl     = f"{META_SCHEMA}.{META_TABLES['index']}"
+    idx_col_tbl = f"{META_SCHEMA}.{META_TABLES['index_col']}"
+    try:
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""SELECT t.table_id FROM {tbl} t JOIN {meta_db} d ON d.database_id = t.database_id
+                                WHERE d.database_name = ? AND t.table_name = ?""", (db_name, table_name.upper()))
+                row = cur.fetchone()
+                if not row:
+                    erg = import_table(db_name, table_name, layer_id)
+                    erg["reimported"] = False
+                    return erg
+                alt = int(row[0])
+                cur.execute(f"DELETE FROM {idx_col_tbl} WHERE index_id IN "
+                            f"(SELECT index_id FROM {idx_tbl} WHERE table_id = ?)", (alt,))
+                for t in (idx_tbl, col_tbl, tbl):
+                    cur.execute(f"DELETE FROM {t} WHERE table_id = ?", (alt,))
+                conn.commit()
+        erg = import_table(db_name, table_name, layer_id)
+        if erg.get("error"):
+            return erg
+        neu = int(erg["table_id"])
+        with _connect() as conn:
+            with conn.cursor() as cur:
+                for t in (tbl, col_tbl, idx_tbl):
+                    cur.execute(f"UPDATE {t} SET table_id = ? WHERE table_id = ?", (alt, neu))
+                conn.commit()
+        erg.update({"table_id": alt, "reimported": True})
+        return erg
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def refresh_view_column_types(table_id: int) -> dict:
     """
     Aktualisiert COLUMN_TYPE / LENGTH / DECIMAL_* einer bereits importierten VIEW

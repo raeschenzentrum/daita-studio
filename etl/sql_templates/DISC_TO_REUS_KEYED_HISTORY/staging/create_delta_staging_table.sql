@@ -13,7 +13,7 @@
 --   ${SOURCE_DATABASE}, ${SOURCE_TABLE} : Quell-View
 --   ${STAGING_TABLE}                    : Volatile Tabelle
 --   ${STG_SELECT}                       : Fachspalten der View (generiert, Alias src)
---   ${SRC_VALID_FROM}, ${SRC_VALID_TO}, ${SRC_IS_CURRENT}, ${SRC_DELETED},
+--   ${SRC_VALID_FROM}, ${SRC_VALID_TO}, ${SRC_DELETED},
 --   ${SRC_LOAD_ID}, ${SRC_UPDATE_LOAD_ID} : Versionsspalten der View
 --   ${HASH_EXPRESSION}, ${STG_HASH}     : Hash über die Fachspalten (generiert)
 --   ${LOAD_WATERMARK}, ${LOAD_CAP}      : Ladestand, Obergrenze (generiert)
@@ -25,7 +25,6 @@ CREATE MULTISET VOLATILE TABLE ${STAGING_TABLE} AS (
         ${STG_SELECT},
         src.${SRC_VALID_FROM},
         src.${SRC_VALID_TO},
-        src.${SRC_IS_CURRENT},
         src.${SRC_DELETED},
         src.${SRC_LOAD_ID},
         src.${SRC_UPDATE_LOAD_ID},

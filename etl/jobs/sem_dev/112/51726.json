@@ -1,0 +1,60 @@
+{
+  "TARGET_DATABASE": "SEM_DEV_REU_BASE",
+  "TARGET_TABLE": "CASE_VERFAHREN",
+  "VERSIONS_TABLE": "temp_case_verfahren_versions",
+  "SK_COLUMN": "CASE_VERFAHREN_SK",
+  "INSERT_COLUMNS": "VERFAHREN_ID, EROEFFNUNG_DAT, KOMPLETT_JN, ABGESCHLOSSEN_JN, INAKTIVIERT_JN, INAKTIVIERUNG_DAT, INAKTIVIERT_ZEMIS_NR, INAKTIVIERUNG_BENUTZER, AUPER_PERS_NR_ALT, AUPER_ALIAS_NR_ALT",
+  "INSERT_SELECT": "st.VERFAHREN_ID, st.EROEFFNUNG_DAT, st.KOMPLETT_JN, st.ABGESCHLOSSEN_JN, st.INAKTIVIERT_JN, st.INAKTIVIERUNG_DAT, st.INAKTIVIERT_ZEMIS_NR, st.INAKTIVIERUNG_BENUTZER, st.AUPER_PERS_NR_ALT, st.AUPER_ALIAS_NR_ALT",
+  "fk_definitions": [
+    {
+      "sk_column": "PERSON_SK",
+      "key_table": "KEY_PART_PERSON",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.PERSON_ID AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "VERFAHREN_ART_SK",
+      "key_table": "KEY_CD_VERFAHREN_ART",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.VERFAHREN_ART_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "VU_KANTON_SK",
+      "key_table": "KEY_CD_KANTON",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.VU_KANTON_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "EROEFF_NATION_SK",
+      "key_table": "KEY_CD_NATION",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.EROEFF_NATION_CD AS VARCHAR(255))"
+    }
+  ],
+  "KEY_COLS_V": "v.CASE_VERFAHREN_SK",
+  "PART_KEY_V": "v.CASE_VERFAHREN_SK",
+  "JOIN_KEY_ST_EN": "en.CASE_VERFAHREN_SK = st.CASE_VERFAHREN_SK",
+  "SRC_VALID_FROM": "VALID_FROM",
+  "SRC_VALID_TO": "VALID_TO",
+  "SRC_DELETED": "DWH_DELETED_IN_SOURCE",
+  "SRC_LOAD_ID": "DWH_LOAD_ID",
+  "SRC_UPDATE_LOAD_ID": "DWH_UPDATE_LOAD_ID",
+  "STG_HASH": "STG_RECORD_HASH",
+  "TGT_VALID_FROM_COL": "DWH_VALID_FROM",
+  "TGT_VALID_TO_COL": "DWH_VALID_TO",
+  "TGT_IS_CURRENT_COL": "DWH_IS_CURRENT",
+  "TGT_DELETED_COL": "DWH_DELETED_IN_SOURCE",
+  "TGT_LOAD_ID_COL": "DWH_LOAD_ID",
+  "TGT_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID",
+  "TGT_HASH_COL": "DWH_RECORD_HASH",
+  "TGT_CREATED_TS_COL": "DWH_CREATED_TS",
+  "TGT_UPDATED_TS_COL": "DWH_UPDATED_TS",
+  "OPEN_VALID_TO": "9999-12-31 23:59:59.999999",
+  "IS_CURRENT_OPEN": "Y",
+  "IS_CURRENT_CLOSED": "N",
+  "ROLE": "MAIN"
+}

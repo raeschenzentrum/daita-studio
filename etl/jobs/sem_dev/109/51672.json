@@ -1,0 +1,53 @@
+{
+  "TARGET_DATABASE": "SEM_DEV_REU_BASE",
+  "TARGET_TABLE": "CD_ASYL_ERLEDIG",
+  "VERSIONS_TABLE": "temp_cd_asyl_erledig_versions",
+  "SK_COLUMN": "ASYL_ERLEDIG_SK",
+  "INSERT_COLUMNS": "ASYL_ERLEDIG_CD, CTL_ACT_CD, RECHTSKRAFT_JN_CD, ADRESSE_AUTO_ERLEDIG_JN_CD",
+  "INSERT_SELECT": "st.ASYL_ERLEDIG_CD, st.CTL_ACT_CD, st.RECHTSKRAFT_JN_CD, st.ADRESSE_AUTO_ERLEDIG_JN_CD",
+  "fk_definitions": [
+    {
+      "sk_column": "RECHTSK_AUTO_ZU_ERLEDIG_GS_SK",
+      "key_table": "KEY_CD_ASYLGS_ART",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.RECHTSK_AUTO_ZU_ERLEDIG_GS_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "RECHTSK_AUTO_GS_SK",
+      "key_table": "KEY_CD_ASYLGS_ART",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.RECHTSK_AUTO_GS_CD AS VARCHAR(255))"
+    },
+    {
+      "sk_column": "RECHTSK_AUTO_ERLEDIG_SK",
+      "key_table": "KEY_CD_ASYL_ERLEDIG",
+      "key_database": "SEM_DEV_REU_BASE",
+      "domain": "ZEMIS",
+      "natural_key_expr": "CAST(st.RECHTSK_AUTO_ERLEDIG_CD AS VARCHAR(255))"
+    }
+  ],
+  "KEY_COLS_V": "v.ASYL_ERLEDIG_SK",
+  "PART_KEY_V": "v.ASYL_ERLEDIG_SK",
+  "JOIN_KEY_ST_EN": "en.ASYL_ERLEDIG_SK = st.ASYL_ERLEDIG_SK",
+  "SRC_VALID_FROM": "VALID_FROM",
+  "SRC_VALID_TO": "VALID_TO",
+  "SRC_DELETED": "DWH_DELETED_IN_SOURCE",
+  "SRC_LOAD_ID": "DWH_LOAD_ID",
+  "SRC_UPDATE_LOAD_ID": "DWH_UPDATE_LOAD_ID",
+  "STG_HASH": "STG_RECORD_HASH",
+  "TGT_VALID_FROM_COL": "DWH_VALID_FROM",
+  "TGT_VALID_TO_COL": "DWH_VALID_TO",
+  "TGT_IS_CURRENT_COL": "DWH_IS_CURRENT",
+  "TGT_DELETED_COL": "DWH_DELETED_IN_SOURCE",
+  "TGT_LOAD_ID_COL": "DWH_LOAD_ID",
+  "TGT_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID",
+  "TGT_HASH_COL": "DWH_RECORD_HASH",
+  "TGT_CREATED_TS_COL": "DWH_CREATED_TS",
+  "TGT_UPDATED_TS_COL": "DWH_UPDATED_TS",
+  "OPEN_VALID_TO": "9999-12-31 23:59:59.999999",
+  "IS_CURRENT_OPEN": "Y",
+  "IS_CURRENT_CLOSED": "N",
+  "ROLE": "MAIN"
+}

@@ -265,8 +265,7 @@ raw_delta:
 keyed_history:
   source_columns:            # Versionsspalten der Quell-View
     valid_from: "VALID_FROM"
-    valid_to: "VALID_TO"
-    is_current: "IS_CURRENT"
+    valid_to: "VALID_TO"           # offen = open_valid_to; daraus folgt "aktuell"
     deleted_in_source: "DWH_DELETED_IN_SOURCE"
     load_id: "DWH_LOAD_ID"
     update_load_id: "DWH_UPDATE_LOAD_ID"

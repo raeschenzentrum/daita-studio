@@ -1,0 +1,12 @@
+{
+  "STAGING_TABLE": "temp_cd_ident_status_stg",
+  "KEYED_TABLE": "temp_cd_ident_status_keyed",
+  "KEY_DATABASE": "SEM_DEV_REU_BASE",
+  "KEY_TABLE": "KEY_CD_IDENT_STATUS",
+  "DOMAIN": "ZEMIS",
+  "NATURAL_KEY_EXPRESSION_STG": "CAST(stg.IDENT_STATUS_CD AS VARCHAR(255))",
+  "SK_COLUMN": "IDENT_STATUS_SK",
+  "PART_KEY_STG": "k.SURROGATE_KEY",
+  "SRC_VALID_FROM": "VALID_FROM",
+  "ROLE": "MAIN"
+}

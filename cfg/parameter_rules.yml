@@ -251,3 +251,44 @@ raw_delta:
       default: "'N'"
       deleted_value: "Y"
       not_deleted_value: "N"
+
+# ============================================================================
+# Reusable mit eigener Historie (Template-Set DISC_TO_REUS_KEYED_HISTORY)
+# ============================================================================
+# Quelle ist eine View im Discoverable: Sie kapselt die Business-Logik
+# (Zuschnitt, Namen, Integration mehrerer Tabellen) und liefert je Zeile eine
+# Version mit den Versionsspalten unten. Das Template-Set macht nur die
+# technische Historisierung: Highwatermark auf Ladelauf/Änderungs-Ladelauf,
+# Vorgänger fortsetzen oder schließen, neue Versionen anhängen; Zeitpunkte aus
+# der Quelle, nie die Ladezeit. Ein Job kann mehrere Rollen haben (z.B. Haupt-
+# und Texttabelle) mit gemeinsamer KEY-Tabelle.
+keyed_history:
+  source_columns:            # Versionsspalten der Quell-View
+    valid_from: "VALID_FROM"
+    valid_to: "VALID_TO"
+    is_current: "IS_CURRENT"
+    deleted_in_source: "DWH_DELETED_IN_SOURCE"
+    load_id: "DWH_LOAD_ID"
+    update_load_id: "DWH_UPDATE_LOAD_ID"
+  target_columns:            # technische Spalten der Zieltabellen (ADR-0015)
+    valid_from:        {name: "DWH_VALID_FROM",        type: "TIMESTAMP(6) NOT NULL"}
+    valid_to:          {name: "DWH_VALID_TO",          type: "TIMESTAMP(6) NOT NULL"}
+    is_current:        {name: "DWH_IS_CURRENT",        type: "CHAR(1) CHARACTER SET UNICODE NOT NULL"}
+    deleted_in_source: {name: "DWH_DELETED_IN_SOURCE", type: "CHAR(1) CHARACTER SET UNICODE NOT NULL"}
+    load_id:           {name: "DWH_LOAD_ID",           type: "BIGINT"}
+    update_load_id:    {name: "DWH_UPDATE_LOAD_ID",    type: "BIGINT"}
+    record_hash:       {name: "DWH_RECORD_HASH",       type: "BYTE(20)"}
+    created_ts:        {name: "DWH_CREATED_TS",        type: "TIMESTAMP(6) NOT NULL"}
+    updated_ts:        {name: "DWH_UPDATED_TS",        type: "TIMESTAMP(6)"}
+  values:
+    is_current: "Y"
+    is_closed: "N"
+    deleted: "Y"
+    not_deleted: "N"
+  # Gültigkeit der festen Zeile -1 (ADR-0016: Beginn des initialen Stands)
+  initial_valid_from: "1000-01-01 00:00:00"
+  open_valid_to: "9999-12-31 23:59:59.999999"
+  # Länge, auf die Textspalten im Hash gecastet werden
+  hash_cast_length: 1000
+  # Volatile Tabellen je Rolle: <prefix><zieltabelle><suffix>
+  staging_prefix: "temp_"

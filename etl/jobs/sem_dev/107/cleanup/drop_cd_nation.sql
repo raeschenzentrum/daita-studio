@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht SEM_DEV_REU_BASE.CD_NATION inkl. aller Daten!
+-- Job ID: 107
+
+DROP TABLE SEM_DEV_REU_BASE.CD_NATION;

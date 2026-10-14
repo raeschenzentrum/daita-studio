@@ -1,0 +1,12 @@
+{
+  "STAGING_TABLE": "temp_cd_asyl_erled_zus_stg",
+  "KEYED_TABLE": "temp_cd_asyl_erled_zus_keyed",
+  "KEY_DATABASE": "SEM_DEV_REU_BASE",
+  "KEY_TABLE": "KEY_CD_ASYL_ERLED_ZUS",
+  "DOMAIN": "ZEMIS",
+  "NATURAL_KEY_EXPRESSION_STG": "CAST(stg.ASYL_ERLED_ZUS_CD AS VARCHAR(255))",
+  "SK_COLUMN": "ASYL_ERLED_ZUS_SK",
+  "PART_KEY_STG": "k.SURROGATE_KEY",
+  "SRC_VALID_FROM": "VALID_FROM",
+  "ROLE": "MAIN"
+}

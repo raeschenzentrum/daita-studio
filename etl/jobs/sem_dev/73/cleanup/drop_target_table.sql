@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 73
+
+DROP TABLE SEM_DEV_DIS_BASE.UZMS01_TARF_ASYLGS_SCHRITT_TX_HISTORY;

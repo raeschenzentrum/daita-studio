@@ -1,0 +1,9 @@
+{
+  "META_DATABASE": "SEM_DEV_MET_BASE",
+  "LOAD_STATE_TABLE": "META_ETL_LOAD_STATE",
+  "ETL_JOB_ID": "76",
+  "SOURCE_TABLE_ID": "164",
+  "STAGING_TABLE": "temp_uzms01_tarf_nation_bs_staging",
+  "LOAD_ID_COL": "LADE_ID",
+  "SNAPSHOT_COL": "SNAPSHOT_DT"
+}

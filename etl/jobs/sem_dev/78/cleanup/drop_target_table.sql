@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 78
+
+DROP TABLE SEM_DEV_DIS_BASE.UZMS01_TARF_GEMEINDE_BS_HISTORY;

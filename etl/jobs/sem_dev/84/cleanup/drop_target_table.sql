@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 84
+
+DROP TABLE SEM_DEV_DIS_BASE.UZMS01_TARF_IDENTITAET_ART_BS_HISTORY;

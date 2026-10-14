@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 71
+
+DROP TABLE SEM_DEV_DIS_BASE.UZMS01_TARF_ASYL_ERLED_ZUS_TX_HISTORY;

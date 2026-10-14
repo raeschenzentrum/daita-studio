@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 91
+
+DROP TABLE SEM_DEV_DIS_BASE.UZMS01_TARF_ZIVILSTAND_TX_HISTORY;

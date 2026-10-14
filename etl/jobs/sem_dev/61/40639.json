@@ -1,0 +1,17 @@
+{
+  "TARGET_DATABASE": "SEM_DEV_DIS_BASE",
+  "TARGET_TABLE": "UZMS01_TAAS_ERLEDIG_ZUSATZ_HISTORY",
+  "IST_AKTUELL_COL": "IS_CURRENT",
+  "IST_AKTUELL_VAL": "Y",
+  "DELETED_COL": "DWH_DELETED_IN_SOURCE",
+  "DELETED_VAL": "Y",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_ERLEDIGUNG_SK_FK",
+      "key_database": "SEM_DEV_DIS_BASE",
+      "key_table": "KEY_UZMS01_TAAS_ERLEDIGUNG",
+      "natural_key_expr": "CAST(src.ERLEDIGUNG_ID AS VARCHAR(255))",
+      "domain": "ZEMIS"
+    }
+  ]
+}

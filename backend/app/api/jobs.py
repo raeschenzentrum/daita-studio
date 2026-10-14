@@ -26,7 +26,7 @@ from ..services.job_management import (
 )
 from ..services.etl_service import ETLService, get_etl_service
 from ..models.etl_models import ETLJobWithDetails
-from ..config import PATHS, get_etl_jobs_path
+from ..config import PATHS, get_etl_jobs_path, META_SCHEMA
 
 logger = logging.getLogger(__name__)
 

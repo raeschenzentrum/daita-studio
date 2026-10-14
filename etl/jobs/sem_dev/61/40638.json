@@ -1,0 +1,18 @@
+{
+  "META_DATABASE": "SEM_DEV_MET_BASE",
+  "LOAD_STATE_TABLE": "META_ETL_LOAD_STATE",
+  "ETL_JOB_ID": "61",
+  "SOURCE_TABLE_ID": "49",
+  "STAGING_TABLE": "temp_uzms01_taas_erledig_zusatz_staging",
+  "LOAD_ID_COL": "LADE_ID",
+  "SNAPSHOT_COL": "SNAPSHOT_DT",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_ERLEDIGUNG_SK_FK",
+      "key_database": "SEM_DEV_DIS_BASE",
+      "key_table": "KEY_UZMS01_TAAS_ERLEDIGUNG",
+      "natural_key_expr": "CAST(src.ERLEDIGUNG_ID AS VARCHAR(255))",
+      "domain": "ZEMIS"
+    }
+  ]
+}

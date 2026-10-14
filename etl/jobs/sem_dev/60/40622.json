@@ -1,0 +1,15 @@
+{
+  "TARGET_DATABASE": "SEM_DEV_DIS_BASE",
+  "TARGET_TABLE": "UZMS01_TAAS_GESCHAEFTSSCHRITT_HISTORY",
+  "DWH_LOAD_ID_COL": "DWH_LOAD_ID",
+  "LOAD_WATERMARK": "(SELECT COALESCE(MAX(LAST_LOAD_ID), 0) FROM SEM_DEV_MET_BASE.META_ETL_LOAD_STATE WHERE ETL_JOB_ID = 60)",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_GESCHAEFT_SK_FK",
+      "key_database": "SEM_DEV_DIS_BASE",
+      "key_table": "KEY_UZMS01_TAAS_GESCHAEFT",
+      "natural_key_expr": "CAST(src.GESCHAEFT_ID AS VARCHAR(255))",
+      "domain": "ZEMIS"
+    }
+  ]
+}

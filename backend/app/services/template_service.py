@@ -174,6 +174,22 @@ class TemplateService:
             logger.warning(f"Layer-Datenbanken aus META_DATABASE nicht lesbar - parameter_rules.yml: {e}")
         return layers
 
+    def _extract_core_name(self, table_name: str) -> str:
+        """Extrahiert Kern: TAAA_IDENTITAET → IDENTITAET (Regeln: core_name_extraction)"""
+        if not table_name:
+            return ''
+        prefixes = self.param_rules.get('core_name_extraction', {}).get('remove_prefixes', [])
+        name_upper = table_name.upper()
+        for prefix in prefixes:
+            if name_upper.startswith(prefix.upper()):
+                return table_name[len(prefix):]
+        # Fallback: nach erstem _ splitten wenn Präfix kurz
+        if '_' in table_name:
+            parts = table_name.split('_', 1)
+            if len(parts[0]) <= 4:
+                return parts[1]
+        return table_name
+
     @staticmethod
     def _scd2_column_names_params(scd2_config: dict) -> Dict[str, str]:
         """Namen der Hash- und Audit-Spalten aus scd2_technical_columns als Parameter."""
@@ -263,8 +279,9 @@ class TemplateService:
             return
         params = request.parameters or {}
         fk_defs = params.get('fk_definitions') or params.get('FK_DEFINITIONS') or []
-        if params.get('fk_master_mappings') or params.get('FK_MASTER_MAPPINGS') \
-                or any(isinstance(d, dict) and d.get('master_mode') for d in fk_defs):
+        # fk_master_mappings (Wizard) sind erlaubt: _build_fk_defs_from_mappings liefert
+        # dafür beim Delta-Set KEY-Modus-Definitionen
+        if any(isinstance(d, dict) and d.get('master_mode') for d in fk_defs):
             raise ValueError(
                 "Dieses Template-Set (Delta) braucht FK-Definitionen im KEY-Modus "
                 "(key_table/domain/natural_key_expr). Der Master-Modus joint die Parent-History "
@@ -745,21 +762,7 @@ class TemplateService:
                 return default
             
             # Core-Name aus Tabellennamen extrahieren (basierend auf Config)
-            def extract_core_name(table_name: str) -> str:
-                """Extrahiert Kern: TAAA_IDENTITAET → IDENTITAET"""
-                if not table_name:
-                    return ''
-                prefixes = self.param_rules.get('core_name_extraction', {}).get('remove_prefixes', [])
-                name_upper = table_name.upper()
-                for prefix in prefixes:
-                    if name_upper.startswith(prefix.upper()):
-                        return table_name[len(prefix):]
-                # Fallback: nach erstem _ splitten wenn Präfix kurz
-                if '_' in table_name:
-                    parts = table_name.split('_', 1)
-                    if len(parts[0]) <= 4:
-                        return parts[1]
-                return table_name
+            extract_core_name = self._extract_core_name
             
             # ================================================================
             # Source-Infos automatisch aus source_table_id laden
@@ -926,8 +929,14 @@ class TemplateService:
                            or request.parameters.get('FK_MASTER_MAPPINGS') or [])
                 if isinstance(raw_map, list):
                     fk_master_mappings = raw_map
+            # Delta-Set: KEY-Modus (Parent-SK aus KEY_*), sonst Master-Modus wie bisher
+            set_domain = next((st.default_parameters.get('DOMAIN') for st in step_templates
+                               if st.default_parameters and st.default_parameters.get('DOMAIN')), '')
             derived_fk_definitions = (
-                self._build_fk_defs_from_mappings(cursor, fk_master_mappings)
+                self._build_fk_defs_from_mappings(
+                    cursor, fk_master_mappings,
+                    key_mode=is_delta_set, domain=set_domain, layers_config=layers_config,
+                )
                 if fk_master_mappings else []
             )
             fk_column_names = [d['sk_column'] for d in derived_fk_definitions]
@@ -1263,19 +1272,27 @@ class TemplateService:
             logger.error(f"Fehler beim Erstellen der Key-Tabelle {fqn}: {e}")
             # Kein raise - Job wurde bereits erstellt, Key-Tabelle kann später manuell erstellt werden
     
-    def _build_fk_defs_from_mappings(self, cursor, mappings: List[dict]) -> list:
+    def _build_fk_defs_from_mappings(self, cursor, mappings: List[dict], key_mode: bool = False,
+                                     domain: str = '', layers_config: Dict[str, dict] = None) -> list:
         """
         F6-Beladung: Leitet aus den Master-Mappings des Wizards `fk_definitions`
-        im Master-Modus ab (für template_engine._build_fk_expressions).
+        ab (für template_engine._build_fk_expressions).
 
         mappings: [{ "table_id": <master_id>, "source_column": "<Quellspalte>" }, ...]
 
         Pro Master:
           - Master-DB/-Tabelle aus META_TABLE/META_DATABASE
           - Master-SK  (IS_PK='Y', Fallback IS_TECHNICAL_KEY='Y')
-          - Master-BK  (IS_BUSINESS_KEY='Y')
           - FK-Spaltenname {MASTER_SK}_FK
-        Liefert eine Liste von FK-Definitionen (master_mode=True).
+
+        Master-Modus (Standard, z.B. RAW_TO_DISC_SCD2_FK): Join auf die Master-Tabelle
+        über ihren Business Key (IS_BUSINESS_KEY='Y'), master_mode=True.
+
+        KEY-Modus (key_mode=True, Delta-Set RAW_TO_DISC_SCD2_DELTA): Join auf die
+        KEY-Tabelle des Parents, abgeleitet wie KEY_TABLE beim Parent-Job:
+        key_prefix + Kernname der Parent-Tabelle (ohne history_suffix), Datenbank
+        der Parent-Schicht, Domain des Template-Sets. Unabhängig von der Version
+        des Parents (kein Fan-out bei historisierten Parents).
         """
         col_tbl = f"{META_SCHEMA}.META_COLUMN"
         defs = []
@@ -1320,6 +1337,22 @@ class TemplateService:
                 logger.warning(f"F6-Beladung: Keine SK-Spalte in Master {master_id}, übersprungen")
                 continue
             master_sk = (sk_row[0] or '').strip().upper()
+            natural_key_expr = f"CAST(src.{source_col.upper()} AS VARCHAR(255))"
+
+            if key_mode:
+                key_db, key_tbl = self._parent_key_table(cursor, master_id, master_tbl, master_db,
+                                                         layers_config or {})
+                if not domain:
+                    logger.warning(f"F6-Beladung: keine DOMAIN im Template-Set, FK zu Master {master_id} übersprungen")
+                    continue
+                defs.append({
+                    'sk_column':        f"{master_sk}_FK",
+                    'key_database':     key_db,
+                    'key_table':        key_tbl,
+                    'natural_key_expr': natural_key_expr,
+                    'domain':           domain,
+                })
+                continue
 
             # Master-BK (IS_BUSINESS_KEY)
             cursor.execute(f"""
@@ -1339,10 +1372,33 @@ class TemplateService:
                 'key_table':        master_tbl,
                 'parent_sk_column': master_sk,
                 'parent_bk_column': master_bk,
-                'natural_key_expr': f"CAST(src.{source_col.upper()} AS VARCHAR(255))",
+                'natural_key_expr': natural_key_expr,
                 'master_mode':      True,
             })
         return defs
+
+    def _parent_key_table(self, cursor, master_id: int, master_tbl: str, master_db: str,
+                          layers_config: Dict[str, dict]) -> tuple:
+        """(key_database, key_table) der KEY-Tabelle eines Parents.
+
+        Gleiche Regeln wie KEY_TABLE/KEY_DATABASE beim Parent-Job: Kernname aus dem
+        Tabellennamen (history_suffix der Parent-Schicht abgeschnitten), key_prefix und
+        Datenbank der Parent-Schicht aus der Layer-Config.
+        """
+        layer_id_to_name = {1: 'raw', 2: 'discoverable', 3: 'reusable', 4: 'consumable'}
+        cursor.execute(f"SELECT LAYER_ID FROM {META_SCHEMA}.META_TABLE WHERE TABLE_ID = ?", [master_id])
+        row = cursor.fetchone()
+        layer_cfg = layers_config.get(layer_id_to_name.get(row[0] if row else None, ''), {})
+        base = master_tbl
+        suffix = layer_cfg.get('history_suffix', '')
+        if suffix and base.upper().endswith(suffix.upper()):
+            base = base[: -len(suffix)]
+        key_tbl = f"{layer_cfg.get('key_prefix', 'KEY_')}{self._extract_core_name(base).upper()}"
+        key_db = layer_cfg.get('database', master_db)
+        cursor.execute("SELECT 1 FROM dbc.TablesV WHERE DatabaseName = ? AND TableName = ?", [key_db, key_tbl])
+        if not cursor.fetchone():
+            logger.warning(f"F6-Beladung: KEY-Tabelle {key_db}.{key_tbl} des Parents {master_tbl} existiert nicht")
+        return key_db, key_tbl
 
     def _create_fk_from_master_tables(
         self,

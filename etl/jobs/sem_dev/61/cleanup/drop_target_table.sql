@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 61
+
+DROP TABLE SEM_DEV_DIS_BASE.UZMS01_TAAS_ERLEDIG_ZUSATZ_HISTORY;

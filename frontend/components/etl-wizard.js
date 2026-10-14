@@ -233,9 +233,15 @@
         return `LOAD_${(sourceName || 'SRC').toUpperCase()}_TO_${(targetName || 'TGT').toUpperCase()}`;
     }
 
-    function generateTargetName(sourceName, templateName) {
-        const src = (sourceName || '').replace(/^(RAW_|STAGING_)/i, '');
-        return src.toUpperCase();
+    // Layer-ID -> Schlüssel in /api/config/layers (wie data-flow.html)
+    const LAYER_KEYS = { 1: 'raw', 2: 'discoverable', 3: 'reusable', 4: 'consumable' };
+
+    function generateTargetName(sourceName, template, layerConfig) {
+        const src = (sourceName || '').replace(/^(RAW_|STAGING_)/i, '').toUpperCase();
+        // history_suffix der Zielschicht des Templates (DISC/REUS: _HISTORY)
+        const layerKey = LAYER_KEYS[template?.target_layer_id];
+        const suffix = ((layerConfig || {})[layerKey]?.history_suffix || '').toUpperCase();
+        return suffix && !src.endsWith(suffix) ? src + suffix : src;
     }
 
     // ----------------------------------------------------------------
@@ -311,6 +317,7 @@
 
         async _loadTemplates() {
             this._templates = await window.api.templates.listJobs().catch(() => []);
+            this._layerConfig = await window.api.config.layers().catch(() => ({}));
         }
 
         async _loadSourceInfo() {
@@ -449,8 +456,10 @@
                 this._form.template_id   = tpl?.template_id || null;
                 this._form.template_name = tpl?.template_name || '';
                 if (!targetEl.dataset.manual && this._sourceName) {
-                    targetEl.value = generateTargetName(this._sourceName, tpl?.template_name);
+                    targetEl.value = generateTargetName(this._sourceName, tpl, this._layerConfig);
                     this._form.target_table_name = targetEl.value;
+                    // Job-Name zum neuen Zielnamen neu erzeugen (wie bei manueller Eingabe)
+                    if (!jobEl.dataset.manual) this._form.job_name = '';
                 }
                 autoFill();
             });

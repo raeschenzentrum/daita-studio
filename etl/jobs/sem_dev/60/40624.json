@@ -1,0 +1,17 @@
+{
+  "STAGING_TABLE": "temp_uzms01_taas_geschaeftsschritt_staging",
+  "KEY_DATABASE": "SEM_DEV_DIS_BASE",
+  "KEY_TABLE": "KEY_UZMS01_TAAS_GESCHAEFTSSCHRITT",
+  "NATURAL_KEY_COL": "GESCHAEFTSSCHRITT_ID",
+  "NATURAL_KEY_EXPRESSION_STG": "CAST(stg.GESCHAEFTSSCHRITT_ID AS VARCHAR(255))",
+  "DOMAIN": "ZEMIS",
+  "fk_definitions": [
+    {
+      "sk_column": "UZMS01_TAAS_GESCHAEFT_SK_FK",
+      "key_database": "SEM_DEV_DIS_BASE",
+      "key_table": "KEY_UZMS01_TAAS_GESCHAEFT",
+      "natural_key_expr": "CAST(src.GESCHAEFT_ID AS VARCHAR(255))",
+      "domain": "ZEMIS"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+-- ACHTUNG: Löscht Zieltabelle inkl. aller Daten!
+-- Job ID: 60
+
+DROP TABLE SEM_DEV_DIS_BASE.UZMS01_TAAS_GESCHAEFTSSCHRITT_HISTORY;

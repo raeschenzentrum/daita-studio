@@ -26,5 +26,6 @@
       "natural_key_expr": "CAST(src.GESCHAEFT_ID AS VARCHAR(255))",
       "domain": "ZEMIS"
     }
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

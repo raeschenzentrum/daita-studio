@@ -79,5 +79,6 @@
     "CTL_MOD_DAT",
     "VERFAHREN_TCN",
     "VU_KANTON_CD"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

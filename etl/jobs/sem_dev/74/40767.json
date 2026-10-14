@@ -43,5 +43,6 @@
     "CODE_GRUPPE",
     "CTL_ACT_CD",
     "MIDES_EXPORT_JN_CD"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

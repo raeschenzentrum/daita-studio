@@ -39,5 +39,6 @@
     "KEYCD",
     "LANG_CD",
     "TXT"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

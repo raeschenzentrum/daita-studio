@@ -71,5 +71,6 @@
     "CTL_MOD_UID",
     "CTL_MOD_DAT",
     "GESCHAEFT_TCN"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

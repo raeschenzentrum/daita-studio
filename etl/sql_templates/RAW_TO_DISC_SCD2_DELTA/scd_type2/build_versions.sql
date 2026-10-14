@@ -8,8 +8,9 @@
 --      vorherige Ladelauf per LAG bestimmt und die Zeile per Join geholt.
 --   2. Behalten werden Löschungen, Zeilen mit anderem Hash als der Vorgänger
 --      und Zeilen nach einer Löschung. Hashgleiche Folgezeilen entfallen.
---   3. Für die behaltenen Zeilen: Snapshot-Zeit und Art der nächsten Zeile
---      (ergibt VALID_TO, IS_CURRENT und das Lösch-Kennzeichen im Insert).
+--   3. Für die behaltenen Zeilen: Snapshot-Zeit, Art und Ladelauf der nächsten
+--      Zeile (ergibt VALID_TO, IS_CURRENT, das Lösch-Kennzeichen und den
+--      schließenden Ladelauf im Insert).
 --   4. IS_INITIAL_VERSION = 'Y' für die erste Version eines Keys aus dem ersten
 --      Ladelauf des Jobs (Ladestand 0, kleinster Ladelauf im Staging, Key noch
 --      nicht im Ziel). Sie bekommt im Insert den Gültigkeitsbeginn des
@@ -37,7 +38,10 @@ CREATE MULTISET VOLATILE TABLE ${VERSIONS_TABLE} AS (
         ) AS NEXT_SNAPSHOT,
         LEAD(v.${CHANGE_TYPE_COL}) OVER (
             PARTITION BY ${BUSINESS_KEY} ORDER BY v.${LOAD_ID_COL}
-        ) AS NEXT_CHANGE_TYPE
+        ) AS NEXT_CHANGE_TYPE,
+        LEAD(v.${LOAD_ID_COL}) OVER (
+            PARTITION BY ${BUSINESS_KEY} ORDER BY v.${LOAD_ID_COL}
+        ) AS NEXT_LOAD_ID
     FROM (
         SELECT
             stg.*,

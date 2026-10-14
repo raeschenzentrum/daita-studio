@@ -41,5 +41,6 @@
     "SORT_ORDER",
     "AUSWEIS_ASYL_JN_CD",
     "CTL_ACT_CD"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

@@ -43,5 +43,6 @@
     "TXT",
     "TXT_GROSS",
     "ARTIKEL"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

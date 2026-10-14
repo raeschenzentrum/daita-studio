@@ -239,6 +239,12 @@ raw_delta:
     load_id:
       name: "DWH_LOAD_ID"
       type: "BIGINT"
+    # Ladelauf, der die Version geschlossen bzw. als gelöscht markiert hat
+    # (NULL, solange offen); Highwatermark der Folgeschicht: DWH_LOAD_ID oder
+    # DWH_UPDATE_LOAD_ID > Ladestand
+    update_load_id:
+      name: "DWH_UPDATE_LOAD_ID"
+      type: "BIGINT"
     deleted_in_source:
       name: "DWH_DELETED_IN_SOURCE"
       type: "CHAR(1) CHARACTER SET UNICODE"

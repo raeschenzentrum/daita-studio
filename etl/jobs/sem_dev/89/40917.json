@@ -41,5 +41,6 @@
     "LANG_CD",
     "TXT",
     "PRAEFIX"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

@@ -18,5 +18,6 @@
   "NOT_DELETED_VAL": "N",
   "UPDATED_TS_COL": "LAST_UPDATED_TIMESTAMP",
   "UPDATED_BY_COL": "LAST_UPDATED_BY",
-  "fk_definitions": []
+  "fk_definitions": [],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

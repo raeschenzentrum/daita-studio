@@ -212,7 +212,8 @@ class TemplateService:
         deleted = {'name': 'DWH_DELETED_IN_SOURCE', 'type': 'CHAR(1) CHARACTER SET UNICODE',
                    'default': "'N'", 'deleted_value': 'Y', 'not_deleted_value': 'N',
                    **(tc.get('deleted_in_source') or {})}
-        return {'load_id': load_id, 'deleted_in_source': deleted}
+        update_load_id = {'name': 'DWH_UPDATE_LOAD_ID', 'type': 'BIGINT', **(tc.get('update_load_id') or {})}
+        return {'load_id': load_id, 'update_load_id': update_load_id, 'deleted_in_source': deleted}
 
     def _raw_delta_target_columns(self, raw_delta: dict) -> List[tuple]:
         """[(name, DDL-Definition)] der Zielspalten des Delta-Sets."""
@@ -255,6 +256,7 @@ class TemplateService:
             'OPEN_VALID_TO':    raw_delta.get('open_valid_to', '9999-12-31 23:59:59.999999'),
             'MAX_LOAD_ID':      str(raw_delta.get('max_load_id', 9223372036854775807)),
             'DWH_LOAD_ID_COL':  target_cfg['load_id']['name'],
+            'DWH_UPDATE_LOAD_ID_COL': target_cfg['update_load_id']['name'],
             'DELETED_COL':      target_cfg['deleted_in_source']['name'],
             'DELETED_VAL':      target_cfg['deleted_in_source']['deleted_value'],
             'NOT_DELETED_VAL':  target_cfg['deleted_in_source']['not_deleted_value'],

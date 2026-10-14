@@ -41,5 +41,6 @@
     "SORT_ORDER",
     "CTL_ACT_CD",
     "INIT_GS_KAT_JN_CD"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

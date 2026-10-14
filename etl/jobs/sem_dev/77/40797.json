@@ -43,5 +43,6 @@
     "TXT",
     "TX_SORT",
     "TXT_DOKUMENTE"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

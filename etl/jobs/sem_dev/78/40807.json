@@ -75,5 +75,6 @@
     "GEBURTSORT_CH_JN_CD",
     "GK_N1",
     "GK_N2"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

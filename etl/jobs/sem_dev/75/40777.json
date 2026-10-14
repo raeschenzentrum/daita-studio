@@ -41,5 +41,6 @@
     "LANG_CD",
     "TXT",
     "TXT_KURZ"
-  ]
+  ],
+  "DWH_UPDATE_LOAD_ID_COL": "DWH_UPDATE_LOAD_ID"
 }

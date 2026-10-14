@@ -9,6 +9,8 @@
 --   IS_CURRENT    = aktuell, wenn keine nächste Zeile folgt
 --   Lösch-Kennz.  = gesetzt, wenn die nächste Zeile eine Löschung ist
 --   Ladelauf      = Ladelauf der RAW-Zeile
+--   Schließender Ladelauf = Ladelauf der nächsten Zeile (Version oder
+--                   Löschung), sonst NULL (ADR-0015: DWH_UPDATE_LOAD_ID)
 -- Surrogate Key und Parent-SKs kommen aus den KEY-Tabellen (KEY-Modus),
 -- damit hängen sie nicht von der Version des Parents ab.
 --
@@ -21,7 +23,7 @@
 --   ${INITIAL_VALID_FROM_EXPR}
 --   ${GUELTIGVON_COL}, ${GUELTIGBIS_COL}, ${IST_AKTUELL_COL}, ${IST_AKTUELL_VAL},
 --   ${IST_AKTUELL_GESCHLOSSEN}, ${DELETED_COL}, ${DELETED_VAL}, ${NOT_DELETED_VAL},
---   ${DWH_LOAD_ID_COL}, ${RECORD_HASH_COL}, ${CREATED_TS_COL}, ${UPDATED_TS_COL},
+--   ${DWH_LOAD_ID_COL}, ${DWH_UPDATE_LOAD_ID_COL}, ${RECORD_HASH_COL}, ${CREATED_TS_COL}, ${UPDATED_TS_COL},
 --   ${CREATED_BY_COL}, ${UPDATED_BY_COL}
 -- ============================================================================
 
@@ -35,6 +37,7 @@ ${FK_INSERT_COLUMNS}
     ${IST_AKTUELL_COL},
     ${DELETED_COL},
     ${DWH_LOAD_ID_COL},
+    ${DWH_UPDATE_LOAD_ID_COL},
     ${RECORD_HASH_COL},
     ${CREATED_TS_COL},
     ${UPDATED_TS_COL},
@@ -53,6 +56,7 @@ ${FK_SK_COLUMNS}
     CASE WHEN src.NEXT_CHANGE_TYPE = '${CT_DELETE}'
          THEN '${DELETED_VAL}' ELSE '${NOT_DELETED_VAL}' END,
     src.${LOAD_ID_COL},
+    src.NEXT_LOAD_ID,
     src.${RECORD_HASH_COL},
     CURRENT_TIMESTAMP(6),
     CURRENT_TIMESTAMP(6),

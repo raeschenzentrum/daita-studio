@@ -44,6 +44,11 @@ paths:
   # Diagramm-Layouts (ERD)
   diagrams: 'diagrams'
 
+  # Dashboard-Definitionen (katalog.yml, <id>.yml, sql/, geo/) – relativ zu
+  # install_root. Kundenspezifische Dashboards liegen im Kunden-Workspace,
+  # z. B. '../<kunde>-lakehouse/dashboards'. Default: neutrales Beispiel.
+  dashboards: 'cfg/dashboards_beispiel'
+
 # ==========================================================================
 # Logging
 # ==========================================================================
@@ -104,6 +109,12 @@ auth:
 
     # Quellsysteme (Sources / TPT)
     sources:
+      view:   Viewer
+      edit:   Editor
+      delete: Admin
+
+    # Dashboards (ansehen; edit = Cache leeren)
+    dashboards:
       view:   Viewer
       edit:   Editor
       delete: Admin

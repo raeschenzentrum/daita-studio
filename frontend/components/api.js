@@ -325,6 +325,22 @@
     };
 
     // ----------------------------------------------------------------
+    // dashboards  – /api/dashboards/*  (YAML-Definitionen, nur SELECT)
+    // ----------------------------------------------------------------
+    api.dashboards = {
+        list:           ()                  => get('/dashboards'),
+        get:            (id)                => get(`/dashboards/${encodeURIComponent(id)}`),
+        /** Ergebnis {columns, rows, meta}; filter = { filterId: wert } */
+        data:           (id, widgetId, filter) =>
+            get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/data`, filter),
+        status:         (id)                => get(`/dashboards/${encodeURIComponent(id)}/status`),
+        catalog:        ()                  => get('/dashboards/catalog'),
+        catalogStatus:  ()                  => get('/dashboards/catalog/status'),
+        geo:            (name)              => get(`/dashboards/geo/${encodeURIComponent(name)}`),
+        refresh:        (id)                => post(`/dashboards/${encodeURIComponent(id)}/refresh`),
+    };
+
+    // ----------------------------------------------------------------
     // health  – /
     // ----------------------------------------------------------------
     api.health = () => _fetch('/'.replace('/api', ''), { headers: {} });

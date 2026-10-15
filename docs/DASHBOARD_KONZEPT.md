@@ -1,6 +1,6 @@
 # Dashboard-Konzept
 
-> Status: Konzept (noch nicht umgesetzt)
+> Status: Schritte 1–2 umgesetzt (2026-10-15), Schritte 3–4 offen
 > Stand: 2026-10-15
 > Ziel: Ein modulares Dashboard-System als eigener Tab in daita-studio. Die Dashboards werden deklarativ konfiguriert; Inhalte, Datenbanknamen und SQL kommen aus dem Kunden-Workspace.
 
@@ -86,6 +86,7 @@ Die Übersichtsseite (Abschnitt 5) nutzt ECharts nicht: Kästen mit Attributlist
 |---|---|---|
 | `GET /api/dashboards` | Viewer | Liste: id, Titel, Gruppe, Reihenfolge |
 | `GET /api/dashboards/catalog` | Viewer | Katalog der Bereiche und Elemente (ohne SQL) |
+| `GET /api/dashboards/catalog/status` | Viewer | je `quelle` im Katalog: existiert, Art, Zeilenzahl |
 | `GET /api/dashboards/{id}` | Viewer | Definition ohne SQL: Layout, Widgets, Filter |
 | `GET /api/dashboards/{id}/widgets/{wid}/data` | Viewer | `{columns, rows, meta: {datenstand, zeilen, cache}}`; Filterwerte als Query-Parameter |
 | `GET /api/dashboards/geo/{name}` | Viewer | GeoJSON für Karten-Widgets aus `dashboards/geo/` |
@@ -105,11 +106,14 @@ Die Übersichtsseite (Abschnitt 5) nutzt ECharts nicht: Kästen mit Attributlist
 
 | Platzhalter | Auflösung |
 |---|---|
-| `${DB:<layer>}` | Datenbank des Layers der aktiven Umgebung aus `META_LAYER` / `META_DATABASE` |
 | `${META_SCHEMA}` | Meta-Schema der aktiven Umgebung |
-| `${FILTER:<name>}` | Bind-Parameter des Filters (wird zu `?`) |
+| `${DB_<LAYER_CODE>}` | Datenbank des Layers aus `META_LAYER.layer_code` / `META_DATABASE`, z. B. `${DB_RAW}`, `${DB_CONS}` (je Layer die erste Datenbank) |
+| `${<NAME>}` | eigene Variable aus `umgebungen.yml` (Abschnitt 4) |
+| `${FILTER:<id>}` | Bind-Parameter des Filters (wird zu `?`); nur Filter, die das Widget unter `filter:` freigibt |
 
-Gerendert wird mit `backend/app/services/template_engine.py`. Dieselbe Definition läuft damit in jeder Umgebung.
+Syntax wie in `backend/app/services/template_engine.py`; die Ersetzung macht `backend/app/services/dashboard_service.py` selbst, weil Filter als Bind-Parameter laufen. Ein nicht auflösbarer Platzhalter ist ein Fehler. Dieselbe Definition läuft damit in jeder Umgebung.
+
+Ausgeführt wird über `backend/app/services/td_readonly.py`: genau ein Statement, nur `SELECT`/`WITH` (optional `LOCKING … FOR ACCESS` davor), Zeilenlimit (Default 5000, je Widget `optionen.max_zeilen`), Cache je Umgebung über SQL-Text und Parameter (Widgets mit gleicher Abfrage teilen sich ein Ergebnis; TTL je Dashboard `cache_ttl`, Default 300 s).
 
 ## 4. Konfiguration
 
@@ -117,10 +121,23 @@ Ablage unter `paths.dashboards` im Kunden-Workspace:
 
 ```
 dashboards/
-  katalog.yml          # Bereiche, Elemente, Plan-Status, Verweise auf DB-Objekte
-  uebersicht.yml       # Dashboard-Definitionen, je Datei eines
-  <id>.yml
+  umgebungen.yml       # optional: eigene Variablen je Umgebung
+  katalog.yml          # optional: Bereiche, Elemente, Plan-Status, Verweise auf DB-Objekte
+  <id>.yml             # je Dashboard eine Datei
   sql/<datei>.sql      # Widget-SQL mit Platzhaltern
+  geo/<name>.json      # GeoJSON für Karten
+```
+
+### Variablen (`umgebungen.yml`)
+
+Für Datenbanken, die nicht in `META_DATABASE` stehen (z. B. View- oder Access-Datenbanken eines Layers). `default` gilt immer, der Abschnitt mit der Umgebungs-ID (`cfg/environments.yml`) überschreibt. Werte dürfen die eingebauten Platzhalter verwenden.
+
+```yaml
+variablen:
+  default:
+    DB_ZUGRIFF: ${DB_CONS}
+  umgebung_a:
+    DB_ZUGRIFF: KUNDE_A_CON_ACCESS
 ```
 
 daita-studio liefert ein neutrales Beispiel unter `cfg/dashboards_beispiel/` mit, das nur das Meta-Schema liest (Dashboard „ETL-Betrieb“ auf `META_ETL_JOB_RUN`). Damit lässt sich das Framework ohne Kundendaten testen.
@@ -139,7 +156,7 @@ min_zelle: 5
 conformed_dimensionen:
   - id: zeit
     titel: Zeit
-    quelle: ${DB:consumable_access}.V_DIM_DATUM
+    quelle: ${DB_ZUGRIFF}.V_DIM_DATUM
     attribute: [Datum, Jahr, Quartal, Monat]
 
 bereiche:
@@ -152,13 +169,13 @@ bereiche:
     fakten:
       - id: fakt_a
         titel: Fakt A
-        quelle: ${DB:consumable_access}.V_FACT_A
+        quelle: ${DB_ZUGRIFF}.V_FACT_A
         dimensionen: [zeit, dim_x]
         kennzahlen:
           - {id: anzahl, titel: Anzahl, status: ableitbar}
           - {id: quote, titel: Quote, status: fehlt, luecke: "Gruppierung fehlt"}
     dimensionen:
-      - {id: dim_x, titel: Dim X, quelle: ${DB:consumable_access}.V_DIM_X}
+      - {id: dim_x, titel: Dim X, quelle: ${DB_ZUGRIFF}.V_DIM_X}
     produkte:
       - {id: "A.1", titel: Produkt 1, pilot: true, dashboard: bereich_a}
 
@@ -166,7 +183,7 @@ bereiche:
     art: subject_area
     titel: Subject Area 1
     entitaeten:
-      - {id: e1, titel: Entität 1, quelle: ${DB:reusable_base}.E1, kern: true}
+      - {id: e1, titel: Entität 1, quelle: ${DB_REUS}.E1, kern: true}
       - {id: e2, titel: Entität 2, status: fehlt}
 ```
 
@@ -176,10 +193,18 @@ bereiche:
 
 ### Dashboard (`<id>.yml`)
 
+Die ID ist der Dateiname. Vollständiges Beispiel: `cfg/dashboards_beispiel/etl_betrieb.yml`.
+
 ```yaml
-id: bereich_a
 titel: Bereich A
+beschreibung: Kurzer Text unter dem Titel
 gruppe: Statistik
+reihenfolge: 10                  # Sortierung der Reiter
+cache_ttl: 300                   # Sekunden
+datenstand: sql/a_datenstand.sql # optional: erste Spalte der ersten Zeile
+min_zelle: 5                     # optional, sonst aus katalog.yml
+objekte:                         # optional: Objekte für /status
+  - ${DB_ZUGRIFF}.V_FACT_A
 filter:
   - {id: jahr_von, typ: jahr, default: 2015}
   - {id: jahr_bis, typ: jahr, default: aktuell}
@@ -197,8 +222,25 @@ widgets:
       x: JAHR
       y: ANZAHL
       serie: KATEGORIE
+      serien:                            # optional: Reihenfolge, Beschriftung, Farbe je Serienwert
+        - {wert: K1, titel: Kategorie 1, farbe: viz-series-1}
+        - {wert: K9, titel: Fehler, farbe: status-critical}
+      zelle_spalten: [ANZAHL]            # Werte < min_zelle werden ausgeblendet
       echarts: {legend: {top: bottom}}   # optional, wird in die ECharts-Option gemischt
 ```
+
+**Filtertypen:** `jahr` (Default auch `aktuell`, `aktuell-1`), `zahl` (`min`, `max`), `datum` (Default auch `heute`), `auswahl` (`werte: [{wert, titel}]`), `text` (max. 200 Zeichen). Der Zustand steht im URL-Hash (`#d=<id>&<filter>=<wert>`), Links lassen sich also teilen.
+
+**Widget-Optionen (umgesetzt):**
+
+| Typ | Optionen |
+|---|---|
+| `kpi` | `wert`, `format` (`zahl`, `prozent`, `dauer_s`), `vergleich`, `vergleich_titel`, `status` (`{warning, serious, critical}` – ab Schwelle Symbol und Text) |
+| `table` | `spalten`, `titel` (`{SPALTE: Text}`), `format` (`{SPALTE: …}`), `max_anzeige` |
+| `bar` | `x`, `y` (Spalte oder Liste), `serie`, `serien`, `gestapelt`, `horizontal`, `format`, `renderer`, `echarts` |
+| `line` | `x`, `y`, `serie`, `serien`, `flaeche`, `zoom` (Default ab 60 Punkten), `format`, `renderer`, `echarts` |
+
+Jedes Diagramm hat eine Umschaltung auf die Tabellenansicht derselben Daten (Barrierefreiheit, Kontrast) und einen PNG-Export. Ab 9 Serien werden die kleinsten zu „Übrige“ zusammengefasst; die Farbreihenfolge ist fest (`--viz-series-1` … `--viz-series-8` in `frontend/style.css`, CVD-geprüft).
 
 ## 5. Übersichtsseite
 
@@ -229,12 +271,16 @@ Klick auf eine Kachel wechselt den Stern; Klick auf ein Produkt mit `dashboard:`
 
 ## 6. Umsetzungsschritte
 
-1. Read-only-Helfer, Router, Service, Platzhalter und Cache.
-2. ECharts als Vendor-Datei, Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“. Weitere Diagrammtypen (`pie`, `heatmap`, `boxplot`, `sankey`, `map`) nach Bedarf.
-3. Übersichtsseite: `area-map`, `star-map`, `subject-map` und `/status`.
+1. ✅ Read-only-Helfer, Router, Service, Platzhalter und Cache.
+2. ✅ ECharts als Vendor-Datei, Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“. Weitere Diagrammtypen (`pie`, `heatmap`, `boxplot`, `sankey`, `map`) nach Bedarf.
+3. Übersichtsseite: `area-map`, `star-map`, `subject-map`. Die Endpunkte `/catalog`, `/catalog/status` und `/{id}/status` stehen schon.
 4. Kundendashboards im Kunden-Workspace.
 
 ## 7. Offene Punkte
+
+- Dark Mode: Die Studio-Oberfläche hat keinen; die Diagrammfarben sind nur für hellen Hintergrund geprüft.
+- `meta_service.py` und `td_readonly.py` haben gleichartige Verbindungs- und Cache-Helfer; zusammenführen.
+- Weitere Diagrammtypen (`pie`, `heatmap`, `boxplot`, `sankey`, `map`) nach Bedarf der Kundendashboards.
 
 - Eigener Read-only-User je Umgebung für das Dashboard.
 - Zuordnung Schutzniveau → Rolle.

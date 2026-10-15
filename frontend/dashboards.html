@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>daita-studio – Dashboards</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="components/auth.js"></script>
+    <script src="components/api.js"></script>
+    <script src="components/nav-header.js"></script>
+    <!-- Diagramme: Apache ECharts, lokal (air-gapped), Version in vendor/echarts/VERSION -->
+    <script src="vendor/echarts/echarts.min.js"></script>
+    <script src="components/dashboard-widgets.js"></script>
+    <script src="components/widgets/widget-echarts.js"></script>
+    <script src="components/widgets/widget-kpi.js"></script>
+    <script src="components/widgets/widget-table.js"></script>
+    <script src="components/widgets/widget-bar.js"></script>
+    <script src="components/widgets/widget-line.js"></script>
+    <script src="components/dashboard-shell.js"></script>
+    <style>
+        body { margin: 0; background: var(--bg-color, #f5f5f5); }
+    </style>
+</head>
+<body>
+    <studio-nav active="dashboards"></studio-nav>
+    <main>
+        <studio-dashboard-shell></studio-dashboard-shell>
+    </main>
+</body>
+</html>

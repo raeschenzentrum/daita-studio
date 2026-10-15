@@ -85,6 +85,10 @@ teradatasql>=20.0.0
    Prüfe zusätzlich alle Frontend-Dateien (`*.html`, `*.js`) auf weitere
    `https://`-Referenzen (CDNs, Fonts) und lokalisiere sie ebenfalls.
 
+   **Bereits lokal:** Apache ECharts für die Dashboards liegt unter
+   `frontend/vendor/echarts/echarts.min.js` (Version in `VERSION`, Lizenz in
+   `LICENSE`/`NOTICE`) und braucht keinen Download.
+
 2. **`teradatasql`** braucht ggf. plattformspezifische Wheels → beim Download die
    Zielplattform beachten (siehe PREP-Schritt zu `pip download`).
 

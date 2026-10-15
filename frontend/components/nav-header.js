@@ -6,7 +6,7 @@
  *   <studio-nav active="flow"></studio-nav>
  *
  * Attribute:
- *   active  – Key des aktiven Menüpunkts (flow | modeler | jobs | lineage | sources)
+ *   active  – Key des aktiven Menüpunkts (flow | modeler | jobs | lineage | sources | dashboards)
  *
  * Custom Events (gefeuert auf document):
  *   studio:nav-ready  – nach dem ersten Render
@@ -27,6 +27,7 @@
         { key: 'lineage', label: 'Lineage', icon: '↗', href: 'lineage.html' },
         { key: 'dataflow',label: 'Dataflow',icon: '⤳', href: 'lineage-flow.html' },
         { key: 'sources', label: 'Sources', icon: '⇄', href: 'sources.html' },
+        { key: 'dashboards', label: 'Dashboards', icon: '▦', href: 'dashboards.html' },
     ];
 
     const BRAND_HREF = 'index.html';

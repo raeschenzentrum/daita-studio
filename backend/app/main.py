@@ -36,6 +36,7 @@ from .api import diagrams as diagrams_router
 from .api import import_td as import_router
 from .api import lineage_flow as lineage_flow_router
 from .api import environments as environments_router
+from .api import dashboards as dashboards_router
 
 # Auth / RBAC
 from .auth import router as auth_router
@@ -97,6 +98,7 @@ app.include_router(modeler_router.router, dependencies=[Depends(module_guard("mo
 app.include_router(diagrams_router.router, dependencies=[Depends(module_guard("modeler"))])
 app.include_router(import_router.router, dependencies=[Depends(module_guard("modeler"))])
 app.include_router(lineage_flow_router.router, dependencies=[Depends(module_guard("lineage"))])  # Lineage-Flow (Dataflow-Graph, Phase 1)
+app.include_router(dashboards_router.router, dependencies=[Depends(module_guard("dashboards"))])  # Dashboards (YAML-Definitionen, nur SELECT)
 app.include_router(environments_router.router)  # nur Login noetig (Depends in der Route selbst)
 
 # Services

@@ -56,6 +56,8 @@ PATHS = {
     "etl_jobs":      _install_root / _paths_config.get('etl_jobs', 'etl/jobs'),
     "log":           _install_root / _paths_config.get('log', 'log'),
     "diagrams":      _install_root / _paths_config.get('diagrams', 'diagrams'),
+    # Dashboard-Definitionen (YAML/SQL); liegt normalerweise im Kunden-Workspace
+    "dashboards":    _install_root / _paths_config.get('dashboards', 'cfg/dashboards_beispiel'),
 }
 
 # Ensure all output directories exist

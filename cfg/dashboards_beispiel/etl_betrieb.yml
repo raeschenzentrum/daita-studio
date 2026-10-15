@@ -1,0 +1,88 @@
+# Neutrales Beispiel-Dashboard: liest nur das Meta-Schema der aktiven Umgebung.
+# Format: docs/DASHBOARD_KONZEPT.md, Abschnitt 4.
+titel: ETL-Betrieb
+beschreibung: Läufe, Erfolgsquote und Laufzeiten der ETL-Jobs im gewählten Zeitraum
+gruppe: Betrieb
+reihenfolge: 900
+cache_ttl: 120
+datenstand: sql/etl_datenstand.sql
+
+objekte:
+  - ${META_SCHEMA}.META_ETL_JOB
+  - ${META_SCHEMA}.META_ETL_JOB_RUN
+
+filter:
+  - {id: tage, titel: Zeitraum (Tage), typ: auswahl, default: 30,
+     werte: [{wert: 7, titel: "7 Tage"}, {wert: 30, titel: "30 Tage"}, {wert: 90, titel: "90 Tage"}, {wert: 365, titel: "1 Jahr"}]}
+
+widgets:
+  - id: kpi_laeufe
+    typ: kpi
+    titel: Läufe
+    sql: sql/etl_kpi.sql
+    filter: [tage]
+    pos: {x: 0, y: 0, b: 3, h: 1}
+    optionen: {wert: LAEUFE}
+
+  - id: kpi_erfolg
+    typ: kpi
+    titel: Erfolgsquote
+    sql: sql/etl_kpi.sql
+    filter: [tage]
+    pos: {x: 3, y: 0, b: 3, h: 1}
+    optionen: {wert: ERFOLGSQUOTE, format: prozent}
+
+  - id: kpi_fehler
+    typ: kpi
+    titel: Fehlgeschlagen
+    sql: sql/etl_kpi.sql
+    filter: [tage]
+    pos: {x: 6, y: 0, b: 3, h: 1}
+    optionen: {wert: FEHLER, status: {critical: 1}}
+
+  - id: kpi_dauer
+    typ: kpi
+    titel: Ø Laufzeit
+    sql: sql/etl_kpi.sql
+    filter: [tage]
+    pos: {x: 9, y: 0, b: 3, h: 1}
+    optionen: {wert: DAUER_AVG_S, format: dauer_s}
+
+  - id: laeufe_je_tag
+    typ: bar
+    titel: Läufe je Tag nach Status
+    sql: sql/etl_laeufe_je_tag.sql
+    filter: [tage]
+    pos: {x: 0, y: 1, b: 7, h: 3}
+    optionen:
+      x: TAG
+      y: LAEUFE
+      serie: STATUS
+      gestapelt: true
+      serien:
+        - {wert: SUCCESS, titel: erfolgreich, farbe: viz-series-1}
+        - {wert: FAILED,  titel: fehlgeschlagen, farbe: status-critical}
+        - {wert: RUNNING, titel: läuft, farbe: status-warning}
+
+  - id: dauer_je_job
+    typ: bar
+    titel: Ø Laufzeit je Job (Top 15, Sekunden)
+    sql: sql/etl_dauer_je_job.sql
+    filter: [tage]
+    pos: {x: 7, y: 1, b: 5, h: 3}
+    optionen: {x: JOB_NAME, y: DAUER_AVG_S, horizontal: true}
+
+  - id: laufzeit_verlauf
+    typ: line
+    titel: Ø Laufzeit je Tag (Sekunden)
+    sql: sql/etl_laufzeit_verlauf.sql
+    filter: [tage]
+    pos: {x: 0, y: 4, b: 6, h: 3}
+    optionen: {x: TAG, y: DAUER_AVG_S}
+
+  - id: letzte_fehler
+    typ: table
+    titel: Letzte fehlgeschlagene Läufe
+    sql: sql/etl_letzte_fehler.sql
+    filter: [tage]
+    pos: {x: 6, y: 4, b: 6, h: 3}

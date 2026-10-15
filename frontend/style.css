@@ -13,6 +13,29 @@
     --text-secondary: #666666;
     --border-color: #e0e0e0;
     --code-bg: #f4f4f4;
+
+    /* Datenvisualisierung (Dashboards): Reihenfolge der Kategorien ist fest
+       und CVD-geprüft – nie zyklisch erweitern, ab Slot 9 „Übrige“ bilden. */
+    --viz-series-1: #2a78d6;
+    --viz-series-2: #eb6834;
+    --viz-series-3: #1baf7a;
+    --viz-series-4: #eda100;
+    --viz-series-5: #e87ba4;
+    --viz-series-6: #008300;
+    --viz-series-7: #4a3aa7;
+    --viz-series-8: #e34948;
+    --viz-seq-100: #cde2fb;
+    --viz-seq-700: #0d366b;
+    --viz-text-primary: #0b0b0b;
+    --viz-text-secondary: #52514e;
+    --viz-muted: #898781;
+    --viz-grid: #e1e0d9;
+    --viz-axis: #c3c2b7;
+    /* Status – reserviert, immer mit Symbol und Text */
+    --status-good: #0ca30c;
+    --status-warning: #fab219;
+    --status-serious: #ec835a;
+    --status-critical: #d03b3b;
 }
 
 * {

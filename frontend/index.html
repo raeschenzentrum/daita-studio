@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="components/auth.js"></script>
-    <script src="components/api.js"></script>
-    <script src="components/nav-header.js"></script>
+    <script src="components/api.js?v=20261015b"></script>
+    <script src="components/nav-header.js?v=20261015b"></script>
     <style>
         body { margin: 0; background: var(--bg-color, #f0f2f5); }
         .home-page { display: flex; flex-direction: column; min-height: 100vh; }
@@ -112,6 +112,7 @@
         .icon-lineage  { background: linear-gradient(135deg, #f39c1222, #e17055221); color: #f39c12; }
         .icon-sources  { background: linear-gradient(135deg, #74b9ff22, #0984e322); color: #0984e3; }
         .icon-meta     { background: linear-gradient(135deg, #a29bfe22, #6c5ce722); color: #6c5ce7; }
+        .icon-dash     { background: linear-gradient(135deg, #2a78d622, #1baf7a22); color: #2a78d6; }
 
         /* ── Quick-Actions ───────────────────────────────────────── */
         .section-title {
@@ -240,6 +241,21 @@
                     <div class="module-stats"><div class="module-stat module-stat-loading">In Planung</div></div>
                 </div>
                 <div class="module-card-footer"><span>Noch nicht verfügbar</span><span class="module-card-arrow" style="color:#ccc">→</span></div>
+            </a>
+
+            <!-- Dashboards -->
+            <a class="module-card" href="dashboards.html">
+                <div class="module-card-header">
+                    <div class="module-card-icon icon-dash">▦</div>
+                    <div>
+                        <div class="module-card-title">Dashboards</div>
+                        <div class="module-card-subtitle">Statistiken & Übersichten</div>
+                    </div>
+                </div>
+                <div class="module-card-body">
+                    <div class="module-card-desc">Konfigurierbare Dashboards je Umgebung: Kennzahlen, Diagramme, Tabellen und Übersicht der geplanten Statistiken mit ihrer Speisung.</div>
+                </div>
+                <div class="module-card-footer"><span>Kennzahlen, Übersicht, Abdeckung</span><span class="module-card-arrow">→</span></div>
             </a>
 
             <!-- Sources -->

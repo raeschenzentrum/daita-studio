@@ -430,6 +430,42 @@ def _katalog_quellen(widget: dict) -> list[str]:
     return list(dict.fromkeys(roh))
 
 
+def _katalog_elemente(widget: dict) -> list[dict]:
+    """Flache Liste der Katalog-Elemente, die das Widget zeigt (für Tabellen/Export)."""
+    path = _root() / "katalog.yml"
+    if not path.exists():
+        return []
+    kat = _load_yaml(path)
+    zeilen: list[dict] = []
+
+    def add(bereich, art, el):
+        zeilen.append({"bereich": bereich, "art": art, "element": el.get("titel") or el.get("id"),
+                       "status": el.get("status") or "", "quelle": el.get("quelle") or "",
+                       "luecke": el.get("luecke") or ""})
+
+    bereiche = kat.get("bereiche") or []
+    if widget.get("typ") == "subject-map":
+        for b in (x for x in bereiche if x.get("art") == "subject_area"):
+            for e in b.get("entitaeten") or []:
+                add(b.get("titel") or b.get("id"), "Entität", e)
+    else:
+        for d in kat.get("conformed_dimensionen") or []:
+            add("Conformed Dimensions", "Conformed Dimension", d)
+        for b in (x for x in bereiche if x.get("art") == "mart"):
+            name = f"{b.get('nr', '')} {b.get('titel') or b.get('id')}".strip()
+            for f in b.get("fakten") or []:
+                add(name, "Fakt", {"titel": f.get("titel"), "quelle": f.get("quelle"), "status": f.get("status")})
+                for k in f.get("kennzahlen") or []:
+                    add(name, "Kennzahl", k)
+            for d in b.get("dimensionen") or []:
+                add(name, "Dimension", d)
+            for u in b.get("umsetzung") or []:
+                add(name, "Umsetzung heute", u)
+            for p in b.get("produkte") or []:
+                add(name, "Datenprodukt", {**p, "titel": f"{p.get('id', '')} {p.get('titel', '')}".strip()})
+    return zeilen
+
+
 def _katalog_info(dash: dict, widget: dict, info: dict, zeilen: bool) -> dict:
     """Info-Panel für Übersichts-Widgets: Katalog-Objekte, Herkunft, Statusprüfung als SQL und R."""
     info["erlaeuterung"] = info["erlaeuterung"] or _KATALOG_ERLAEUTERUNG.get(
@@ -470,7 +506,8 @@ def _katalog_info(dash: dict, widget: dict, info: dict, zeilen: bool) -> dict:
     try:
         umg = _root() / "umgebungen.yml"
         r_umg = (_load_yaml(umg).get("r_umgebungen") or {}) if umg.exists() else {}
-        info["r_code"] = r_skelett.erzeuge_katalog(dash, widget, roh, info["erlaeuterung"], r_umg, variables, _root())
+        info["r_code"] = r_skelett.erzeuge_katalog(dash, widget, roh, info["erlaeuterung"], r_umg, variables,
+                                                   _root(), _katalog_elemente(widget))
     except Exception as e:
         logger.warning("R-Gerüst Katalog %s: %s", dash["id"], e)
         info["r_code_fehler"] = str(e)[:200]

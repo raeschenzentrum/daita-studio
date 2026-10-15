@@ -273,8 +273,20 @@ def erzeuge(dashboard: dict, widget: dict, vorlage: str, filterwerte: dict,
     })
 
 
+def _katalog_tabelle(elemente: list[dict]) -> str:
+    """Katalog-Elemente als R-data.frame-Literal (Spalten wie in katalog.yml)."""
+    spalten = [("BEREICH", "bereich"), ("ELEMENTART", "art"), ("ELEMENT", "element"),
+               ("PLAN_STATUS", "status"), ("QUELLE", "quelle"), ("LUECKE", "luecke")]
+    teile = []
+    for r_name, key in spalten:
+        werte = ",\n      ".join(_r_str(e.get(key, "")) for e in elemente)
+        teile.append(f"    {r_name} = c(\n      {werte}\n    )")
+    return "data.frame(\n" + ",\n".join(teile) + ",\n    stringsAsFactors = FALSE\n  )"
+
+
 def erzeuge_katalog(dashboard: dict, widget: dict, objekte: list[str], erlaeuterung: str,
-                    r_umg: dict, variablen_fn, ablage: Optional[Path] = None) -> str:
+                    r_umg: dict, variablen_fn, ablage: Optional[Path] = None,
+                    elemente: Optional[list] = None) -> str:
     """R-Skript für Übersichts-Widgets (Vorlage katalog.R): je Katalog-Objekt Existenz
     und Zeilenzahl – dieselbe Statusprüfung wie die Übersichtsseite."""
     namen = sorted({m.group(1) for o in objekte for m in _PH.finditer(o) if m.group(2) is None})
@@ -287,6 +299,7 @@ def erzeuge_katalog(dashboard: dict, widget: dict, objekte: list[str], erlaeuter
         "UMGEBUNG_AKTIV": _aktiv(zuordnung),
         "DEF_UMGEBUNGEN": _umgebungen_def(namen, zuordnung, variablen_fn),
         "OBJEKTE": ",\n".join(f"    {_r_str(o)}" for o in objekte),
+        "KATALOG_TABELLE": _katalog_tabelle(elemente or []),
         "DASHBOARD_ID": dashboard["id"],
         "WIDGET_ID": widget["id"],
         "DATUM": _dt.date.today().isoformat(),

@@ -29,6 +29,7 @@ Platzhalter brechen mit Fehler ab.
 | `${SQL_VORLAGE}` | SQL-Datei des Widgets mit Platzhaltern (nur `widget.R`) |
 | `${PLOT_VORSCHLAG}` | auskommentierter ggplot2-Vorschlag passend zum Widget-Typ (nur `widget.R`) |
 | `${OBJEKTE}` | Objektliste aus dem Katalog (nur `katalog.R`) |
+| `${KATALOG_TABELLE}` | Katalog-Elemente der Seite als `data.frame(…)`-Literal: `BEREICH`, `ELEMENTART`, `ELEMENT`, `PLAN_STATUS`, `QUELLE` (mit Platzhaltern), `LUECKE` (nur `katalog.R`) |
 | `${DASHBOARD_ID}`, `${WIDGET_ID}` | Kennungen, z. B. für Dateinamen |
 | `${DATENSTAND_SQL}` | Datenstand-Abfrage des Dashboards mit Platzhaltern, leer wenn keine (nur `widget.R`) |
 | `${DATUM}` | Erzeugungsdatum |

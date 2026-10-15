@@ -14,7 +14,7 @@ Dieses Dokument beschreibt nur das kundenneutrale Framework. Welche Dashboards e
 |---|---|---|
 | Frontend | Vanilla JS mit Web Components, kein Build. Jeder Tab ist eine eigene HTML-Seite mit `<studio-nav>`; die Menüeinträge stehen in `NAV_ITEMS` in `frontend/components/nav-header.js` | neue Seite plus ein Eintrag in `NAV_ITEMS` |
 | Ältere Dashboard-Seiten | `frontend/etl-dashboard.js` und `frontend/metadata-dashboard.js` arbeiten mit globalen Variablen, `innerHTML`, `onclick` und rohem `fetch` | **nicht** als Muster verwenden; stattdessen BACKLOG A1–A3: eine Komponente je Funktion, Events mit Präfix `studio:`, Zugriffe nur über `frontend/components/api.js` |
-| Charts | keine Chart-Bibliothek vorhanden; Zielserver sind air-gapped (`docs/AIRGAP_DEPLOYMENT_PROMPT.md`) | eigene SVG-Widgets nach dem Muster von `frontend/components/lineage-graph.js` |
+| Charts | keine Chart-Bibliothek vorhanden; Zielserver sind air-gapped (`docs/AIRGAP_DEPLOYMENT_PROMPT.md`), Bibliotheken dürfen aber als Datei mitgeliefert werden | Apache ECharts als Vendor-Datei (Abschnitt 2, „Chart-Bibliothek“) |
 | Backend | FastAPI; Router in `backend/app/api/`, je Router `module_guard("<modul>")`; Rechte-Matrix `auth.modules` in `cfg/config.yml` | neuer Router mit eigenem Modul `dashboards` |
 | DB-Zugriff | kein gemeinsamer Query-Service. `backend/app/services/meta_service.py` hat `_query()` und `_cached()` (TTL, Schlüssel je Umgebung) | daraus einen gemeinsamen Read-only-Helfer herausziehen |
 | Umgebungen | `cfg/environments.yml` beschreibt Meta-Schemas; die Datenbanken der Layer stehen in `META_LAYER` und `META_DATABASE` | Datenbanknamen in Definitionen nur als Platzhalter, aufgelöst über die aktive Umgebung |
@@ -33,8 +33,14 @@ Dieses Dokument beschreibt nur das kundenneutrale Framework. Welche Dashboards e
 | `frontend/components/dashboard-widgets.js` | Registry: `studioWidgets.register(typ, { render(el, daten, optionen) })` |
 | `frontend/components/widgets/widget-kpi.js` | Kennzahl mit Vergleichswert |
 | `frontend/components/widgets/widget-table.js` | Tabelle mit Sortierung |
-| `frontend/components/widgets/widget-bar.js` | Balken (gruppiert, gestapelt) als SVG |
-| `frontend/components/widgets/widget-line.js` | Zeitreihe als SVG |
+| `frontend/components/widgets/widget-echarts.js` | gemeinsame Basis aller Diagramm-Widgets: Instanz anlegen, Theme, Resize, Datenübergabe als `dataset`, PNG-Export |
+| `frontend/components/widgets/widget-bar.js` | Balken (gruppiert, gestapelt), ECharts |
+| `frontend/components/widgets/widget-line.js` | Zeitreihe mit Zoom über die Zeitachse, ECharts |
+| `frontend/components/widgets/widget-pie.js` | Anteile (Ring), ECharts |
+| `frontend/components/widgets/widget-heatmap.js` | Matrix zweier Dimensionen, z. B. Monat × Kategorie, ECharts |
+| `frontend/components/widgets/widget-boxplot.js` | Verteilung, z. B. Durchlaufzeiten, ECharts |
+| `frontend/components/widgets/widget-sankey.js` | Flüsse zwischen Zuständen, ECharts |
+| `frontend/components/widgets/widget-map.js` | Choroplethenkarte aus einer lokal abgelegten GeoJSON-Datei, ECharts |
 | `frontend/components/widgets/widget-area-map.js` | Übersichtskarte der Bereiche (siehe Abschnitt 5) |
 | `frontend/components/widgets/widget-star-map.js` | Stern eines Bereichs: Fakt in der Mitte, Dimensionen darum (siehe Abschnitt 5) |
 | `frontend/components/widgets/widget-subject-map.js` | Bereiche mit ihren Entitäten als Kästen (siehe Abschnitt 5) |
@@ -45,7 +51,23 @@ Dieses Dokument beschreibt nur das kundenneutrale Framework. Welche Dashboards e
 - Kommunikation über Events: `studio:dashboard-filter-changed`, `studio:dashboard-refresh`, `studio:dashboard-drilldown` (Detail: Ziel-Dashboard, Bereich, Element).
 - Detailansichten als Side-Panel, keine Modale (`docs/FLOW_UX_KONZEPT.md`).
 - Farben nur über die CSS-Variablen aus `frontend/style.css`; die Status-Farben (vorhanden, teilweise, fehlt) als eigene Variablen dort ergänzen.
-- Ein Widget-Typ kennt nur `{columns, rows, meta}`. Eine spätere Chart-Bibliothek aus `frontend/vendor/` lässt sich je Typ austauschen, ohne Shell oder Definitionen zu ändern.
+- Ein Widget-Typ kennt nur `{columns, rows, meta}`. Die Shell und die Definitionen hängen nicht von ECharts ab; die Bibliothek steckt nur in `widget-echarts.js` und den Diagramm-Widgets.
+
+### Chart-Bibliothek
+
+| Punkt | Festlegung |
+|---|---|
+| Bibliothek | Apache ECharts, eine Datei `echarts.min.js` (ca. 1 MB), Apache-2.0, keine Abhängigkeiten |
+| Ablage | `frontend/vendor/echarts/echarts.min.js` mit `LICENSE` und `VERSION`; feste Version, kein CDN. Eintrag in `docs/AIRGAP_DEPLOYMENT_PROMPT.md` |
+| Einbindung | klassisches `<script>` in `frontend/dashboards.html`, globales `echarts` |
+| Renderer | `svg` als Standard (scharf beim Drucken und Export); `canvas` je Widget wählbar bei vielen Punkten |
+| Theme | `widget-echarts.js` registriert ein Theme `studio` aus den CSS-Variablen von `frontend/style.css` (Farben, Schrift); Status-Farben ebenfalls von dort |
+| Daten | Ergebnis der API als `dataset` (`source: rows`, `dimensions: columns`); Achsen und Serien per `encode` aus den Widget-Optionen |
+| Feinsteuerung | `optionen.echarts` im YAML wird unverändert in die ECharts-Option gemischt; nur Daten, keine Funktionen (kein JS aus Konfiguration) |
+| Karten | GeoJSON-Dateien liegen im Kunden-Workspace unter `dashboards/geo/` und werden über `GET /api/dashboards/geo/{name}` ausgeliefert, dann mit `echarts.registerMap` angemeldet |
+| Export | Toolbox `saveAsImage` (PNG) je Diagramm |
+
+Die Übersichtsseite (Abschnitt 5) nutzt ECharts nicht: Kästen mit Attributlisten sind als HTML genauer zu setzen; die Verbindungslinien sind ein SVG-Overlay.
 
 ## 3. Backend
 
@@ -66,6 +88,7 @@ Dieses Dokument beschreibt nur das kundenneutrale Framework. Welche Dashboards e
 | `GET /api/dashboards/catalog` | Viewer | Katalog der Bereiche und Elemente (ohne SQL) |
 | `GET /api/dashboards/{id}` | Viewer | Definition ohne SQL: Layout, Widgets, Filter |
 | `GET /api/dashboards/{id}/widgets/{wid}/data` | Viewer | `{columns, rows, meta: {datenstand, zeilen, cache}}`; Filterwerte als Query-Parameter |
+| `GET /api/dashboards/geo/{name}` | Viewer | GeoJSON für Karten-Widgets aus `dashboards/geo/` |
 | `GET /api/dashboards/{id}/status` | Viewer | je referenziertem DB-Objekt: existiert, Zeilenzahl, Datenstand |
 | `POST /api/dashboards/{id}/refresh` | Editor | Cache dieses Dashboards leeren |
 
@@ -170,7 +193,11 @@ widgets:
     sql: sql/a_je_jahr.sql
     filter: [jahr_von, jahr_bis]
     pos: {x: 0, y: 1, b: 12, h: 3}
-    optionen: {x: JAHR, y: ANZAHL, serie: KATEGORIE}
+    optionen:
+      x: JAHR
+      y: ANZAHL
+      serie: KATEGORIE
+      echarts: {legend: {top: bottom}}   # optional, wird in die ECharts-Option gemischt
 ```
 
 ## 5. Übersichtsseite
@@ -203,7 +230,7 @@ Klick auf eine Kachel wechselt den Stern; Klick auf ein Produkt mit `dashboard:`
 ## 6. Umsetzungsschritte
 
 1. Read-only-Helfer, Router, Service, Platzhalter und Cache.
-2. Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“.
+2. ECharts als Vendor-Datei, Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“. Weitere Diagrammtypen (`pie`, `heatmap`, `boxplot`, `sankey`, `map`) nach Bedarf.
 3. Übersichtsseite: `area-map`, `star-map`, `subject-map` und `/status`.
 4. Kundendashboards im Kunden-Workspace.
 

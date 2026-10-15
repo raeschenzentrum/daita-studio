@@ -12,37 +12,70 @@
 # Dashboards (user, password, optional host), z. B. ein User mit Konsumenten-
 # Leserolle auf der ACCESS-Datenbank. Ohne Angabe lesen die Dashboards mit
 # user/password der Umgebung.
+# Reihenfolge = Reihenfolge in der Auswahlliste. Beispiel mit zwei Standorten:
+#   INT - …  Kunden-Umgebung (z. B. airgapped, von der Entwicklung aus nicht
+#            erreichbar; Zugangsdaten dort pflegen)
+#   XTD - …  externe Entwicklungsumgebung
 # ============================================================================
 
 environments:
-  - id: mdp01
-    label: "MDP01 (Produktiv-Meta)"
-    host: '192.168.114.21'
-    user: 'tdops'
-    password: 'tdops'
+  - id: int_sem_dev
+    label: "INT - SEM_DEV (Airgapped Remote)"
+    host: '<int-host>'
+    user: '<user>'
+    password: '<passwort>'
+    schema: 'SEM_DEV_MET_BASE'
+    dashboards: '../<kunde>-lakehouse/dashboards'
+
+  - id: int_sem_dev01
+    label: "INT - SEM_DEV01 (Airgapped Remote)"
+    host: '<int-host>'
+    user: '<user>'
+    password: '<passwort>'
+    schema: 'SEM_DEV01_MET_BASE'
+    dashboards: '../<kunde>-lakehouse/dashboards'
+
+  - id: int_mdp01
+    label: "INT - MDP01 (Airgapped Remote)"
+    host: '<int-host>'
+    user: '<user>'
+    password: '<passwort>'
     schema: 'MDP01_META'
 
   - id: sem_dev
-    label: "SEM_DEV (Entwicklung)"
-    host: '192.168.114.21'
-    user: 'tdops'
-    password: 'tdops'
+    label: "XTD - SEM_DEV (Extern DEV)"
+    host: '<dev-host>'
+    user: '<user>'
+    password: '<passwort>'
     schema: 'SEM_DEV_MET_BASE'
+    dashboards: '../<kunde>-lakehouse/dashboards'
+    dashboards_db:
+      user: '<lese-user>'
+      password: '<passwort>'
 
   - id: sem_dev01
-    label: "SEM_DEV01"
-    host: '192.168.114.21'
-    user: 'tdops'
-    password: 'tdops'
+    label: "XTD - SEM_DEV01 (Extern DEV)"
+    host: '<dev-host>'
+    user: '<user>'
+    password: '<passwort>'
     schema: 'SEM_DEV01_MET_BASE'
+    dashboards: '../<kunde>-lakehouse/dashboards'
+
+  - id: mdp01
+    label: "XTD - MDP01 (Extern DEV)"
+    host: '<dev-host>'
+    user: '<user>'
+    password: '<passwort>'
+    schema: 'MDP01_META'
 
   - id: sem_tst
-    label: "SEM_TST (Test)"
-    host: '192.168.114.21'
-    user: 'tdops'
-    password: 'tdops'
+    label: "XTD - SEM_TST (Extern DEV)"
+    host: '<dev-host>'
+    user: '<user>'
+    password: '<passwort>'
     schema: 'SEM_TST_MET_BASE'
+    dashboards: '../<kunde>-lakehouse/dashboards'
 
 # Environment-ID, die verwendet wird, wenn das Frontend keinen (oder einen
 # unbekannten) X-Env-Id-Header schickt.
-default: mdp01
+default: sem_dev

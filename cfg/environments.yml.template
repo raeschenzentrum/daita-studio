@@ -12,6 +12,9 @@
 # Dashboards (user, password, optional host), z. B. ein User mit Konsumenten-
 # Leserolle auf der ACCESS-Datenbank. Ohne Angabe lesen die Dashboards mit
 # user/password der Umgebung.
+# Optional "einspielen_db": eigener User (user, password, optional host) für
+# tools/paket/einspielen.py - Rollen, GRANTs und DDL brauchen meist mehr Rechte
+# als der Betriebs-User. Ohne Angabe spielt der Einspieler mit user/password ein.
 # Reihenfolge = Reihenfolge in der Auswahlliste. Beispiel mit zwei Standorten:
 #   INT - …  Kunden-Umgebung (z. B. airgapped, von der Entwicklung aus nicht
 #            erreichbar; Zugangsdaten dort pflegen)

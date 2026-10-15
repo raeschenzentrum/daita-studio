@@ -34,3 +34,6 @@ tmp/
 .idea/
 *.swp
 *.swo
+
+# Protokolle des Paket-Einspielers (tools/paket/einspielen.py), enthalten ggf. Zugangsdaten
+log/paket/

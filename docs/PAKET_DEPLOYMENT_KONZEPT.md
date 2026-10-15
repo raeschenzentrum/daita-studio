@@ -1,6 +1,6 @@
 # Paket-Deployment auf air-gapped Zielserver
 
-> Status: Konzept, noch nicht umgesetzt. Grundsatzfragen geklärt 2026-10-15 (Abschnitt 11)
+> Status: Stufe 1 gebaut (2026-10-15, `tools/paket/`, Bedienung in `tools/paket/README.md`); auf dem Ziel noch nicht eingesetzt. Abweichungen vom ersten Entwurf in Abschnitt 12
 > Stand: 2026-10-15
 > Ziel: daita-studio und die Inhalte eines Lakehouse-Einsatzes (Strukturen, ETL-Jobs, Vorlagen, Rechte, Dashboards) als Dateipakete auf einen Zielserver ohne Netzverbindung zur Entwicklung bringen und dort wiederholt einspielen.
 
@@ -62,7 +62,8 @@ Pfade sind relativ zum Workspace-Root (das Verzeichnis, das `daita-studio/`, `da
 
 | Nr | Art (`art`) | Inhalt | Ziel auf dem Server | Einspielen |
 |---|---|---|---|---|
-| 1 | `software` | daita-studio-Baum ohne `cfg/*.yml` mit Zugangsdaten, ohne `etl/jobs/`, ohne `etl/sql_templates/`; `uv.lock`, `requirements.lock.txt`, `wheels/` (cp311, manylinux), lokale Vendor-Libs; DDL des Meta-Schemas | Verzeichnis `releases/<version>/` neben dem aktiven Stand, Umschalten per Verweis `current` | Dateien + venv per uv offline; Meta-Schema: fehlende Tabellen anlegen, fehlende Spalten per `ALTER` |
+| 1 | `software` | versionierte Dateien von daita-studio ohne Standort-Konfiguration (`cfg/*.yml`, `frontend/config.js`), ohne `etl/jobs/`, ohne `etl/sql_templates/`; `requirements.lock.txt` (gepinnt), Wheels (cp311, manylinux) | die bestehende Installation (daita-studio-Root, in dem der Einspieler läuft) | Dateien je Prüfsumme (ersetzte Dateien gesichert); Wheels per `uv pip install --no-index` in die venv des Einspielers, wenn sich die Abhängigkeiten geändert haben |
+| 1a | `metaschema` | `SHOW TABLE`/`SHOW VIEW` des Meta-Schemas | Meta-Schema | wie `strukturen`: fehlende Tabellen anlegen, neue Spalten per `ALTER`, Views ersetzen |
 | 2 | `strukturen` | `SHOW TABLE`/`SHOW VIEW` aller Objekte im Umfang (Tabellen, Key-Tabellen, Business-Views, Views der Kette BASV → VIEW → ACCESS); Startdaten (z. B. `-1`-Zeilen „keine Angabe“, Codelisten) | Datenbanken des Einsatzes | Abgleich gegen `dbc` (Abschnitt 7) |
 | 3 | `jobs` | META-Zeilen des Entwicklungsinhalts (Abschnitt 5) und Step-Parameter-Dateien inkl. `*.ddl`, `cleanup/*.sql` je Job | Meta-Schema; `etl/jobs/<env_id>/` | Abgleich je Zeile über ID und fachlichen Schlüssel |
 | 4 | `vorlagen` | `META_ETL_JOB_TEMPLATE`, `META_ETL_JOB_STEP_TEMPLATE`, Baum `etl/sql_templates/` | Meta-Schema; `paths.sql_templates` | Abgleich je Zeile; Dateien je Prüfsumme |
@@ -119,9 +120,9 @@ Der Inhalts-Hash je Objekt ist zugleich die Grundlage für den Vergleich auf dem
 
 | Klasse | Tabellen | Behandlung |
 |---|---|---|
-| Entwicklungsinhalt (Paket `jobs`) | `META_LAYER`, `META_AREA_CATEGORY`, `META_AREA`, `META_BUSINESS_OBJECT`, `META_DATABASE`, `META_DATATYPE`, `META_DATATYPE_MAPPING`, `META_SOURCE_SYSTEM`, `META_TABLE`, `META_COLUMN`, `META_INDEX`, `META_INDEX_COLUMN`, `META_FOREIGN_KEY`, `META_ETL_JOB`, `META_ETL_JOB_STEP`, `META_ETL_JOB_PARAMETER`, `META_ETL_DEPENDENCY`, `META_ETL_COLUMN_MAPPING`, `META_ETL_TEST`, `META_DATA_QUALITY_RULE`, `META_LINEAGE`, `META_VIEW_LINEAGE`, `META_ETL_PARSED_COLUMN_LINEAGE` | Soll-Stand: neu → `INSERT`, geändert → `UPDATE`, im Umfang aber nicht mehr im Paket → Löschung nur mit `--loeschen` |
+| Entwicklungsinhalt (Paket `jobs`) | `META_LAYER`, `META_AREA_CATEGORY`, `META_AREA`, `META_BUSINESS_OBJECT`, `META_DATABASE`, `META_DATATYPE`, `META_DATATYPE_MAPPING`, `META_SOURCE_SYSTEM`, `META_TABLE`, `META_COLUMN`, `META_INDEX`, `META_INDEX_COLUMN`, `META_FOREIGN_KEY`, `META_ETL_JOB`, `META_ETL_JOB_STEP`, `META_ETL_JOB_PARAMETER`, `META_ETL_DEPENDENCY`, `META_ETL_COLUMN_MAPPING`, `META_ETL_TEST`, `META_DATA_QUALITY_RULE`, `META_LINEAGE`, `META_ETL_PARSED_COLUMN_LINEAGE` | Soll-Stand: neu → `INSERT`, geändert → `UPDATE`, im Umfang aber nicht mehr im Paket → Löschung nur mit `--loeschen` |
 | Vorlagen (Paket `vorlagen`) | `META_ETL_JOB_TEMPLATE`, `META_ETL_JOB_STEP_TEMPLATE` | wie oben, Schlüssel `TEMPLATE_CODE` bzw. `TEMPLATE_CODE` + `STEP_CODE` |
-| Zielbetrieb (nie im Paket) | `META_ETL_JOB_RUN`, `META_ETL_JOB_STEP_RUN`, `META_ETL_RUN`, `META_ETL_TEST_RESULT`, `META_ETL_NOTIFICATION`, `META_USER`, `META_ETL_LOAD_STATE`, `META_ETL_SCHEDULE`, `META_DEPLOY` (neu) | unberührt; Ausnahme: Löschen eines Jobs mit Laufhistorie wird verweigert, stattdessen `is_active = 'N'` |
+| Zielbetrieb (nie im Paket) | `META_ETL_JOB_RUN`, `META_ETL_JOB_STEP_RUN`, `META_ETL_RUN`, `META_ETL_TEST_RESULT`, `META_ETL_NOTIFICATION`, `META_USER`, `META_ETL_LOAD_STATE`, `META_ETL_SCHEDULE`, `META_VIEW_LINEAGE` (Cache), `META_DEPLOY` (neu) | unberührt; Ausnahme: Löschen eines Jobs mit Laufhistorie wird verweigert, stattdessen `is_active = 'N'` |
 | Laufzeit-Spalten | `META_TABLE.row_count`, `permanent_space`, `temp_space`, `last_alter_timestamp` u. ä. | vom Vergleich ausgenommen, nie überschrieben |
 
 Neue Tabelle `META_DEPLOY` (Teil des Meta-Schemas, kommt mit Paketart 1): eine Zeile je Einspiel-Lauf mit Paketname, Art, Version, Inhalts-Hash, Umfang, Zeitpunkt, Benutzer, Modus (Dry-Run/Ausführung), Ergebnis, Pfad zum Protokoll. Daraus liest der Einspieler den eingespielten Stand je Art.
@@ -199,7 +200,8 @@ ZIP und `.sha256` per freigegebenem Weg; keine Zugangsdaten im Paket.
 | Schritt | Inhalt | hängt ab von |
 |---|---|---|
 | 0 Vorprüfung | Prüfsummen, Manifest, Ziel-`env_id` in `cfg/environments.yml` vorhanden und Meta-Schema passt, Verbindung, Datenbanken vorhanden, RAW-Voraussetzungen, Mindestversion, Basis bei Delta | – |
-| 1 Software | Release entpacken, venv offline, Meta-Schema (`CREATE`/`ALTER`), Umschalten, Neustart | 0 |
+| 1 Software | Dateien abgleichen, Wheels offline in die venv, danach Neustart von Hand | 0 |
+| 1a Meta-Schema | fehlende META-Tabellen anlegen, neue Spalten per `ALTER`, Views ersetzen | 0 |
 | 2 Rechte | Rollen, Datenbank-Rechte (`WITH GRANT OPTION` für die View-Ketten) | 0 |
 | 3 Strukturen | Tabellen, dann Views in Schichtreihenfolge (DIS → REU → CON-BASV → CON-VIEW → CON-ACCESS), dann Startdaten | 2 |
 | 4 Vorlagen | Template-Zeilen, `etl/sql_templates/` | 1 |
@@ -213,7 +215,7 @@ Je Schritt: Plan zeigen → mit `--ausfuehren` anwenden → Protokoll → Zeile 
 
 | Teil | Sicherung vor dem Ändern | Rücknahme |
 |---|---|---|
-| Software | vorheriges Release bleibt liegen | Verweis `current` zurücksetzen, Neustart |
+| Software | ersetzte Dateien im Protokollordner | Dateien zurückkopieren, neue entfernen, Neustart; Python-Pakete nicht automatisch |
 | META-Zeilen | betroffene Zeilen (vorher) als NDJSON im Protokollordner | Einspieler `--zuruecknehmen <lauf>` spielt den Vorher-Stand ein |
 | Dateien (Step-JSONs, SQL-Templates, Dashboards) | ersetzte Dateien in den Protokollordner | zurückkopieren |
 | Views | `SHOW VIEW` vorher | `REPLACE VIEW` mit altem Text |
@@ -275,21 +277,33 @@ Offen:
 
 ---
 
-## 12. Bausteine (geplant)
+## 12. Bausteine (Stand Stufe 1)
 
 | Ort | Datei | Aufgabe |
 |---|---|---|
-| `daita-studio/tools/paket/` | `format.py` | Manifest, Prüfsummen, ZIP lesen/schreiben, NDJSON-Werte (aus `tools/meta_transfer/_meta_common.py`) |
-| | `export_meta.py` | Paketarten `jobs`, `vorlagen` (Zeilen + Dateien) |
-| | `export_software.py` | Paketart `software` (Baum, Lock, Wheels, Meta-Schema-DDL) |
-| | `export_dateien.py` | Paketart `dashboards` |
-| | `einspielen.py` | Ziel: Vorprüfung, Plan, Ausführen, Protokoll, `META_DEPLOY`, Rücknahme; alle Arten |
-| | `abnahme.py` | Abschnitt 10; auch einzeln aufrufbar |
-| `daita-lakehouse-db/tools/` | `export_struktur.py` | Paketart `strukturen` (aus `clone_layer_struktur.py`, ohne Namensumsetzung, plus Startdaten) |
-| | `rechte_sem.py` | zusätzlicher Modus „SQL-Datei schreiben“ für Paketart `rechte` |
-| | `datenbanken_sem.py` | vorhanden (2026-10-15): fehlende Datenbanken der Soll-Hierarchie auf dem Ziel anlegen, Dry-Run, Protokoll, Prüfung |
-| `<kunde>-lakehouse/deploy/` | `paket_<kunde>.py` | Aufrufskript mit DEF-Block: Umgebungen DEV/INT/PRD je Präfix, Meta-Schema, Quell- und Ziel-`env_id`, Pfade; Umfang je Art; Startdaten-Regeln; Paketablage |
-| | `migrationen/` | freigegebene Migrationen befüllter Tabellen |
+| `daita-studio/tools/paket/` | `paket_format.py` | Manifest, Prüfsummen, ZIP lesen/schreiben, NDJSON-Werte, Zerlegen von `SHOW TABLE`/`SHOW VIEW` |
+| | `meta_modell.py` | Klassen der META-Tabellen (Abschnitt 5), ID und fachlicher Schlüssel (Abschnitt 6), Laufzeit-Spalten, DDL `META_DEPLOY` |
+| | `studio_umgebung.py` | Konfiguration der Installation wie das Backend (Pfade, Umgebungen) |
+| | `export.py` | Export aller Teile (Bibliothek): `software`, `metaschema`/`strukturen`, `rechte`, `vorlagen`/`jobs`, `dashboards` |
+| | `einspielen.py` | Ziel: Prüfsummen, Plan, Ausführen, Protokoll, `META_DEPLOY`, Abnahme, Rücknahme |
+| | `abnahme.py` | Abschnitt 10; auch einzeln aufrufbar; schreibt den Abnahmebericht |
+| | `README.md` | Bedienung |
+| `daita-lakehouse-db/tools/` | `rechte_sem.py` | liefert Rollen und GRANTs (`plan_erstellen`) für den Teil `rechte` |
+| | `datenbanken_sem.py` | fehlende Datenbanken der Soll-Hierarchie auf dem Ziel anlegen (läuft vor dem ersten Einspielen) |
+| `<kunde>-lakehouse/deploy/` | `paket_<kunde>.py` | Aufrufskript mit DEF-Block: Stände je Präfix, Meta-Schema und `env_id`; Pfade; Umfang je Teil; Startdaten; Lese-User |
 | | `lieferungen.md` | gelieferte und per Abnahmebericht bestätigte Pakete je Ziel |
 
-Der Einspieler braucht auf dem Ziel keine Anpassung: Zielumgebung und Umfang kommen aus dem Manifest, Zugangsdaten aus `cfg/environments.yml`, Pfade relativ zum daita-studio-Root. Sein DEF-Block enthält nur Allgemeines (Protokollordner, Batchgröße).
+Abweichungen vom ersten Entwurf:
+
+| Entwurf | gebaut | Grund |
+|---|---|---|
+| Meta-Schema-DDL im Teil `software` | eigener Teil `metaschema` mit derselben Abgleichslogik wie `strukturen` | Meta-Schema ist DB-Inhalt; Abgleich und `ALTER` wie bei den Strukturen |
+| Struktur-Export in `daita-lakehouse-db/tools/export_struktur.py` | in `daita-studio/tools/paket/export.py` | generisch, und der Einspieler auf dem Ziel braucht dieselbe Zerlegung der DDL; auf dem Ziel liegt nur daita-studio |
+| Software als `releases/<version>/` mit Verweis `current` | Abgleich in der bestehenden Installation, ersetzte Dateien gesichert | auf dem Ziel läuft bereits eine Installation mit eigener venv; Umstellung auf Releases ist eine spätere Ausbaustufe |
+| `META_VIEW_LINEAGE` als Entwicklungsinhalt | Zielbetrieb | Cache, den daita-studio beim Anzeigen der Lineage selbst neu schreibt |
+| Migrationen aus `<kunde>-lakehouse/deploy/migrationen/` | noch nicht umgesetzt; der Plan meldet „Migration nötig“ als Konflikt | erst bauen, wenn der erste Fall auftritt |
+| Rendern jedes Steps in der Abnahme | noch nicht umgesetzt; geprüft werden SQL-Template-Dateien, Step-Dateien, Quell-/Zieltabellen | Laufzeit-Parameter der Templates sind ohne Lauf nicht bekannt |
+
+Rechte: Der Plan prüft die Rechte des Einspiel-Users vorab (Konflikt statt Abbruch mitten im Lauf). Für Rollen, GRANTs, CON-Views und Tabellen im Meta-Schema reicht der Betriebs-User meist nicht; dafür gibt es den optionalen Eintrag `einspielen_db` je Umgebung in `cfg/environments.yml`.
+
+Der Einspieler braucht auf dem Ziel keine Anpassung: Zielumgebung und Umfang kommen aus dem Manifest, Zugangsdaten aus `cfg/environments.yml` (ohne die Datei: Umgebung `default` aus `cfg/database.yml`, wie im Backend), Pfade relativ zum daita-studio-Root. Sein DEF-Block enthält nur Allgemeines (Protokollordner, Batchgröße, Aufruf von `uv`, Prüfordner der Software).

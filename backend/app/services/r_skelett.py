@@ -19,10 +19,14 @@ umgebungen.yml der Dashboard-Ablage:
 
     r_umgebungen:
       DEV: umgebung_a                  # ID aus cfg/environments.yml
+      TST:                             # Studio-Umgebung plus Zusatzangaben
+        studio: umgebung_b
+        dir: ""
       INT:                             # oder direkt (ohne Studio-Umgebung):
         host: db-int.example.org
         logmech: KRB5                  # Kerberos statt user/password
         variablen: {DB_ZUGRIFF: KUNDE_INT_CON_ACCESS}
+        dir: "P:/Austausch/Dashboards" # Zusatzangaben landen 1:1 im DEF-Eintrag
 
 Ohne Angabe wird die aktive Umgebung als DEV eingetragen.
 """
@@ -67,11 +71,22 @@ def _kommentar(text: str, breite: int = 76) -> list[str]:
     return zeilen
 
 
+# Schlüssel in r_umgebungen, die das Framework selbst auswertet; alle anderen
+# (z. B. dir) werden als Zusatzangaben 1:1 in den DEF-Eintrag übernommen
+_R_UMG_SCHLUESSEL = {"studio", "host", "logmech", "user", "password", "variablen"}
+
+
 def _umgebungs_zuordnung(r_umg: dict) -> dict:
     zuordnung = {k: v for k, v in (r_umg or {}).items() if k in R_UMGEBUNGEN}
     if not zuordnung:
         zuordnung = {"DEV": cfg.get_active_env_id()}
     return zuordnung
+
+
+def _studio_id(eintrag) -> Optional[str]:
+    if isinstance(eintrag, dict):
+        return eintrag.get("studio")
+    return eintrag
 
 
 def _variablen_fuer(env_id: Optional[str], namen: list[str], variablen_fn) -> dict:
@@ -128,13 +143,16 @@ def _umgebungen_def(namen: list[str], zuordnung: dict, variablen_fn) -> str:
     eintraege = []
     for r_env in R_UMGEBUNGEN:
         eintrag = zuordnung.get(r_env)
-        if isinstance(eintrag, dict):          # direkte Angaben aus umgebungen.yml
-            env_id, env = None, eintrag
+        extra = {k: v for k, v in eintrag.items() if k not in _R_UMG_SCHLUESSEL} if isinstance(eintrag, dict) else {}
+        env_id = _studio_id(eintrag)
+        if isinstance(eintrag, dict) and not env_id:   # direkte Angaben aus umgebungen.yml
+            env = eintrag
             werte = {n: v for n, v in (eintrag.get("variablen") or {}).items() if n in namen}
             kommentar = "   # aus umgebungen.yml (r_umgebungen)"
         else:
-            env_id = eintrag
-            env = cfg.ENVIRONMENTS.get(env_id, {}) if env_id else {}
+            env = dict(cfg.ENVIRONMENTS.get(env_id, {})) if env_id else {}
+            if isinstance(eintrag, dict):              # Studio-Umgebung, Angaben aus r_umgebungen haben Vorrang
+                env.update({k: v for k, v in eintrag.items() if k in ("host", "logmech")})
             werte = _variablen_fuer(env_id, namen, variablen_fn) if env_id else {}
             kommentar = f"   # Studio-Umgebung {env_id}" if env_id else "   # TODO: Host und Datenbanken eintragen"
         host = env.get("host") or "TODO"
@@ -143,10 +161,11 @@ def _umgebungen_def(namen: list[str], zuordnung: dict, variablen_fn) -> str:
         else:
             db = f"list(host = {_r_str(host)}, user = \"TODO\", password = \"TODO\")"
         dbs = ",\n".join(f"        {n} = {_r_str(werte.get(n, 'TODO'))}" for n in namen) or "        # keine"
+        zusatz = "".join(f",\n      {k} = {_r_str(v)}" for k, v in extra.items())
         eintraege.append(
             f"    {r_env} = list({kommentar}\n"
             f"      db = {db},\n"
-            f"      datenbanken = list(\n{dbs}\n      )\n"
+            f"      datenbanken = list(\n{dbs}\n      ){zusatz}\n"
             f"    )")
     return ",\n".join(eintraege)
 
@@ -218,7 +237,7 @@ def _def_filter(filter_ids: list[str], filterwerte: dict, filter_defs: dict) -> 
 
 
 def _aktiv(zuordnung: dict) -> str:
-    return next((k for k, v in zuordnung.items() if v == cfg.get_active_env_id()), "DEV")
+    return next((k for k, v in zuordnung.items() if _studio_id(v) == cfg.get_active_env_id()), "DEV")
 
 
 # ---------------------------------------------------------------------------
@@ -226,9 +245,10 @@ def _aktiv(zuordnung: dict) -> str:
 # ---------------------------------------------------------------------------
 
 def erzeuge(dashboard: dict, widget: dict, vorlage: str, filterwerte: dict,
-            filter_defs: dict, r_umg: dict, variablen_fn, ablage: Optional[Path] = None) -> str:
+            filter_defs: dict, r_umg: dict, variablen_fn, ablage: Optional[Path] = None,
+            datenstand_sql: str = "") -> str:
     """R-Skript zu einem Widget mit SQL-Datei (Vorlage widget.R)."""
-    namen = sorted({m.group(1) for m in _PH.finditer(vorlage) if m.group(2) is None})
+    namen = sorted({m.group(1) for m in _PH.finditer(vorlage + "\n" + datenstand_sql) if m.group(2) is None})
     filter_ids: list[str] = []
     for m in _PH.finditer(vorlage):
         if m.group(1) == "FILTER" and m.group(2) and m.group(2) not in filter_ids:
@@ -237,6 +257,7 @@ def erzeuge(dashboard: dict, widget: dict, vorlage: str, filterwerte: dict,
     plot = _ggplot_vorschlag(widget, [])
     return _fuelle(_vorlage("widget", ablage), {
         "TITEL": widget.get("titel") or widget.get("id"),
+        "TITEL_R": _r_str(widget.get("titel") or widget.get("id")),
         "HERKUNFT": _herkunft(dashboard, widget),
         "SQL_DATEI_KOMMENTAR": f"# SQL-Vorlage: {widget['sql']} (Dashboard-Ablage)\n" if widget.get("sql") else "",
         "ERLAEUTERUNG_KOMMENTAR": _erlaeuterung_kommentar(widget.get("erlaeuterung"), widget.get("hinweise")),
@@ -245,6 +266,9 @@ def erzeuge(dashboard: dict, widget: dict, vorlage: str, filterwerte: dict,
         "DEF_FILTER": _def_filter(filter_ids, filterwerte, filter_defs),
         "SQL_VORLAGE": vorlage.rstrip(),
         "PLOT_VORSCHLAG": "\n".join(plot) if plot else "# (kein Darstellungsvorschlag für diesen Widget-Typ)",
+        "DATENSTAND_SQL": datenstand_sql.rstrip(),
+        "DASHBOARD_ID": dashboard["id"],
+        "WIDGET_ID": widget["id"],
         "DATUM": _dt.date.today().isoformat(),
     })
 
@@ -257,10 +281,13 @@ def erzeuge_katalog(dashboard: dict, widget: dict, objekte: list[str], erlaeuter
     zuordnung = _umgebungs_zuordnung(r_umg)
     return _fuelle(_vorlage("katalog", ablage), {
         "TITEL": dashboard.get("titel", dashboard["id"]),
+        "TITEL_R": _r_str(dashboard.get("titel", dashboard["id"])),
         "HERKUNFT": _herkunft(dashboard, widget),
         "ERLAEUTERUNG_KOMMENTAR": _erlaeuterung_kommentar(erlaeuterung, []),
         "UMGEBUNG_AKTIV": _aktiv(zuordnung),
         "DEF_UMGEBUNGEN": _umgebungen_def(namen, zuordnung, variablen_fn),
         "OBJEKTE": ",\n".join(f"    {_r_str(o)}" for o in objekte),
+        "DASHBOARD_ID": dashboard["id"],
+        "WIDGET_ID": widget["id"],
         "DATUM": _dt.date.today().isoformat(),
     })

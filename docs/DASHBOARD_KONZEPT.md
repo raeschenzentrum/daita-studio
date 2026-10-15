@@ -344,6 +344,8 @@ r_umgebungen:
 
 Ohne Angabe wird die aktive Umgebung als DEV eingetragen.
 
+Einträge in `r_umgebungen` dürfen weitere Schlüssel tragen (z. B. `dir`); sie erscheinen 1:1 im DEF-Eintrag der Umgebung und stehen eigenen Vorlagen zur Verfügung. Ein Eintrag kann eine Studio-Umgebung mit Zusatzangaben verbinden (`studio: <id>`, `dir: ""`).
+
 Der **Rahmen** des Skripts steht in R-Vorlagen unter `cfg/r_vorlagen/` (`widget.R` für Widgets mit SQL, `katalog.R` für Übersichts-Widgets; Platzhalter und Regeln in `cfg/r_vorlagen/README.md`). Ein Einsatz ersetzt eine Vorlage, indem er eine gleichnamige Datei in `<Dashboard-Ablage>/r_vorlagen/` ablegt, z. B. mit eigenen Paketen oder einem Excel-Export. `r_skelett.py` bereitet nur die Werte auf (`${DEF_UMGEBUNGEN}`, `${DEF_FILTER}`, `${SQL_VORLAGE}`, `${PLOT_VORSCHLAG}`, …) und setzt sie in einem Durchgang ein; `$${…}` ergibt ein wörtliches `${…}`, unbekannte Platzhalter brechen ab.
 
 ```yaml

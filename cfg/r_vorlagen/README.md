@@ -19,6 +19,7 @@ Platzhalter brechen mit Fehler ab.
 | Platzhalter | Inhalt |
 |---|---|
 | `${TITEL}` | Titel des Widgets bzw. Dashboards |
+| `${TITEL_R}` | derselbe Titel als R-String-Literal (mit Anführungszeichen, maskiert) |
 | `${HERKUNFT}` | Dashboard, Widget, Erzeugungsdatum |
 | `${SQL_DATEI_KOMMENTAR}` | Kommentarzeile mit der SQL-Datei (oder leer) |
 | `${ERLAEUTERUNG_KOMMENTAR}` | Erläuterung und Hinweise als Kommentarzeilen (oder leer) |
@@ -28,4 +29,12 @@ Platzhalter brechen mit Fehler ab.
 | `${SQL_VORLAGE}` | SQL-Datei des Widgets mit Platzhaltern (nur `widget.R`) |
 | `${PLOT_VORSCHLAG}` | auskommentierter ggplot2-Vorschlag passend zum Widget-Typ (nur `widget.R`) |
 | `${OBJEKTE}` | Objektliste aus dem Katalog (nur `katalog.R`) |
+| `${DASHBOARD_ID}`, `${WIDGET_ID}` | Kennungen, z. B. für Dateinamen |
+| `${DATENSTAND_SQL}` | Datenstand-Abfrage des Dashboards mit Platzhaltern, leer wenn keine (nur `widget.R`) |
 | `${DATUM}` | Erzeugungsdatum |
+
+**Zusatzangaben je Umgebung:** Einträge in `r_umgebungen` (umgebungen.yml der
+Dashboard-Ablage) dürfen weitere Schlüssel tragen, z. B. `dir`. Sie erscheinen
+1:1 im DEF-Eintrag der Umgebung (`dir = "…"`) und stehen eigenen Vorlagen zur
+Verfügung. Ein Eintrag kann eine Studio-Umgebung (`studio: <id>`) mit
+Zusatzangaben verbinden.

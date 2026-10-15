@@ -392,7 +392,7 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
         for fid in fdefs:   # auch Filter, die nicht im SQL stehen, mit Default füllen
             if fid not in alle_filter and fid in (widget.get("filter") or []):
                 alle_filter[fid] = _filter_value(fdefs[fid], raw_filters.get(fid))
-        info["r_code"] = r_skelett.erzeuge(dash, widget, vorlage, alle_filter, fdefs, r_umg, variables)
+        info["r_code"] = r_skelett.erzeuge(dash, widget, vorlage, alle_filter, fdefs, r_umg, variables, _root())
     except Exception as e:
         logger.warning("R-Gerüst %s/%s: %s", dashboard_id, widget_id, e)
         info["r_code_fehler"] = str(e)[:200]
@@ -468,7 +468,7 @@ def _katalog_info(dash: dict, widget: dict, info: dict, zeilen: bool) -> dict:
     try:
         umg = _root() / "umgebungen.yml"
         r_umg = (_load_yaml(umg).get("r_umgebungen") or {}) if umg.exists() else {}
-        info["r_code"] = r_skelett.erzeuge_katalog(dash, widget, roh, info["erlaeuterung"], r_umg, variables)
+        info["r_code"] = r_skelett.erzeuge_katalog(dash, widget, roh, info["erlaeuterung"], r_umg, variables, _root())
     except Exception as e:
         logger.warning("R-Gerüst Katalog %s: %s", dash["id"], e)
         info["r_code_fehler"] = str(e)[:200]

@@ -319,7 +319,7 @@ Jede Widget-Kachel hat ein Info-Symbol (ⓘ). Es öffnet rechts ein Seitenpanel 
 | Herkunft | Baum von der gelesenen View bis zu den Tabellen; mehrfach erreichte Objekte einmal aufgelöst („siehe oben“) | View-Definitionen aus `DBC.TablesV.RequestText` (lange Texte: `DBC.TableTextV`), über die Verbindung der Umgebung, nicht über `dashboards_db`; Cache 30 min |
 | SQL | umschaltbar: mit eingesetzten Filterwerten / Vorlage mit Platzhaltern; Kopieren | gerendertes SQL; die Werte sind nur zur Anzeige eingesetzt, ausgeführt wird weiter mit Bind-Parametern |
 | Letzter Lauf | Datenstand, Zeilen, Laufzeit, Cache | Rückgabedaten des Widgets |
-| R-Gerüst | lauffähiges R-Skript zum Kopieren oder Speichern (`<dashboard>_<widget>.R`) als Basis für weitere Auswertungen | `backend/app/services/r_skelett.py` aus SQL-Vorlage, Filtern und Umgebungen |
+| R-Gerüst | lauffähiges R-Skript zum Kopieren oder Speichern (`<dashboard>_<widget>.R`) als Basis für weitere Auswertungen | R-Vorlage `cfg/r_vorlagen/widget.R` bzw. `katalog.R`, gefüllt von `backend/app/services/r_skelett.py` aus SQL, Filtern und Umgebungen |
 
 - Das SQL ist für alle Rollen sichtbar. Der Client kann weiterhin kein SQL senden.
 - Zeilenzahlen großer Views können Sekunden dauern: Das Panel lädt erst ohne (`_zeilen=0`) und setzt die Zahlen nach.
@@ -343,6 +343,8 @@ r_umgebungen:
 ```
 
 Ohne Angabe wird die aktive Umgebung als DEV eingetragen.
+
+Der **Rahmen** des Skripts steht in R-Vorlagen unter `cfg/r_vorlagen/` (`widget.R` für Widgets mit SQL, `katalog.R` für Übersichts-Widgets; Platzhalter und Regeln in `cfg/r_vorlagen/README.md`). Ein Einsatz ersetzt eine Vorlage, indem er eine gleichnamige Datei in `<Dashboard-Ablage>/r_vorlagen/` ablegt, z. B. mit eigenen Paketen oder einem Excel-Export. `r_skelett.py` bereitet nur die Werte auf (`${DEF_UMGEBUNGEN}`, `${DEF_FILTER}`, `${SQL_VORLAGE}`, `${PLOT_VORSCHLAG}`, …) und setzt sie in einem Durchgang ein; `$${…}` ergibt ein wörtliches `${…}`, unbekannte Platzhalter brechen ab.
 
 ```yaml
   - id: quoten

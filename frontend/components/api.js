@@ -130,6 +130,7 @@
             status: ()                  => get('/etl/simulation/status'),
             start:  (body)              => post('/etl/simulation/start', body),
             stop:   ()                  => post('/etl/simulation/stop', {}),
+            reset:  (body)              => post('/etl/simulation/reset', body),
         },
         /** Tabellen einer Datenbank */
         dbTables:   (dbId)              => get(`/etl/databases/${dbId}/tables`),

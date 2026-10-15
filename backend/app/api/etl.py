@@ -23,6 +23,7 @@ from ..models.etl_models import (
 from ..services.etl_service import ETLService, get_etl_service
 from ..services.metadata_sync_service import MetadataSyncService, create_metadata_sync_service
 from ..config import PATHS
+from ..auth.dependencies import get_current_user, required_role_for, role_at_least
 
 # Dependency für MetadataSyncService
 _metadata_sync_service = None
@@ -560,15 +561,23 @@ async def get_load_ids(refresh: bool = False, etl_service: ETLService = Depends(
 
 class SimulationStartRequest(BaseModel):
     """Tagessimulation: Kette bis zu dieser Lade-ID laden."""
-    bis_lade_id: int
-    tag_fuer_tag: bool = True   # jede Lade-ID ein eigener Tag; False = ein Lauf bis bis_lade_id
+    bis_lade_id: Optional[int] = None   # entfällt, wenn nur Layer mit Folge-Jobs gewählt sind
+    tag_fuer_tag: bool = True           # jede Lade-ID ein eigener Tag; False = ein Lauf bis bis_lade_id
+    layer_ids: Optional[List[int]] = None   # None = alle Layer
+
+
+class SimulationResetRequest(BaseModel):
+    """Zurücksetzen: gewählte Layer (und nachgelagerte) leeren; ohne ausfuehren nur Vorschau."""
+    layer_ids: List[int]
+    ausfuehren: bool = False
 
 
 @router.get("/simulation")
 async def get_simulation(etl_service: ETLService = Depends(get_etl_service)):
     """
-    Tagessimulation: beteiligte Jobs in Reihenfolge, Ladestand der Kette
-    (kleinster Ladestand der Jobs mit Obergrenze), Lade-IDs, nächster Tag, Zustand.
+    Tagessimulation: beteiligte Jobs in Reihenfolge (mit Layer), Layer mit
+    Ladestand, Lade-IDs, nächster Tag, Zustand. Ladestand der Kette = kleinster
+    Ladestand der Jobs mit Obergrenze.
     """
     from ..services import simulation_service as sim
     try:
@@ -577,12 +586,21 @@ async def get_simulation(etl_service: ETLService = Depends(get_etl_service)):
         staende = {j['job_id']: j for j in daten['jobs']}
         for j in folge:
             j['ladestand'] = staende.get(j['job_id'], {}).get('ladestand')
-        werte = [j['ladestand'] for j in folge if j['obergrenze']]
-        ladestand = None if not werte or any(w is None for w in werte) else min(werte)
+        def kleinster(jobs):
+            werte = [j['ladestand'] for j in jobs]
+            return None if not werte or any(w is None for w in werte) else min(werte)
+        layer = sim.layer_liste(folge)
+        for l in layer:
+            jl = [j for j in folge if j['layer']['id'] == l['id']]
+            l['ladestand_min'] = kleinster(jl)
+            l['ladestand_max'] = max((j['ladestand'] for j in jl if j['ladestand'] is not None), default=None)
+            l['ladestand'] = kleinster([j for j in jl if j['obergrenze']]) if l['obergrenze'] else None
+        ladestand = kleinster([j for j in folge if j['obergrenze']])
         ids = [l['lade_id'] for l in daten['lade_ids']]
         naechster = next((i for i in ids if ladestand is None or i > ladestand), None)
         return {
             'jobs': folge,
+            'layer': layer,
             'ladestand': ladestand,
             'naechster_tag': naechster,
             'lade_ids': daten['lade_ids'],
@@ -606,11 +624,34 @@ async def start_simulation(request: SimulationStartRequest):
     """Startet die Tagessimulation im Hintergrund (je Umgebung höchstens eine)."""
     from ..services import simulation_service as sim
     try:
-        return sim.start(ETLService, request.bis_lade_id, request.tag_fuer_tag)
+        return sim.start(ETLService, request.bis_lade_id, request.tag_fuer_tag, request.layer_ids)
     except (RuntimeError, ValueError) as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.error(f"Error starting simulation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/simulation/reset")
+async def reset_simulation(request: SimulationResetRequest, etl_service: ETLService = Depends(get_etl_service),
+                           user=Depends(get_current_user)):
+    """
+    Zurücksetzen für die Simulation ab Tag 1: leert Ziel- und Schlüsseltabellen
+    der Jobs der gewählten Layer und aller nachgelagerten Layer und löscht deren
+    Ladestände. Ohne ausfuehren=true nur Vorschau (Tabellen, Zeilen, Ladestände).
+    Ausführen verlangt die Rolle für „delete" im Modul etl.
+    """
+    from ..services import simulation_service as sim
+    if request.ausfuehren:
+        noetig = required_role_for("etl", "delete")
+        if not role_at_least(user.role, noetig):
+            raise HTTPException(status_code=403, detail=f"Zurücksetzen erfordert Rolle '{noetig}' (vorhanden: '{user.role}')")
+    try:
+        return sim.reset(etl_service, request.layer_ids, request.ausfuehren)
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error resetting simulation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

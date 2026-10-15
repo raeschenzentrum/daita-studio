@@ -67,6 +67,8 @@
                     width: 18px; height: 18px; line-height: 15px; padding: 0; font-size: 0.72em; font-weight: 600;
                     color: var(--viz-muted, #898781); font-family: Georgia, serif; flex: none; }
         .dsh-card__info:hover { color: var(--primary-color, #667eea); border-color: var(--primary-color, #667eea); }
+        .dsh-card { position: relative; }
+        .dsh-card__info--frei { position: absolute; top: 12px; right: 14px; z-index: 2; background: var(--card-bg, #fff); }
         .dsh-card__body { flex: 1; min-height: 0; position: relative; margin-top: 4px; }
         .dsh-card[data-auto] .dsh-card__body { position: static; }
         .dsh-card__foot { font-size: 0.72em; color: var(--viz-muted, #898781); min-height: 1.2em; }
@@ -203,6 +205,7 @@
                         ${W().get(w.typ)?.tabelle !== false ? '<button class="dsh-card__ansicht" title="Zwischen Diagramm und Tabelle wechseln">Tabelle</button>' : ''}
                         ${window.studioDashboardInfo ? '<button class="dsh-card__info" title="Erläuterung, Datenmodell und SQL" aria-label="Informationen zum Widget">i</button>' : ''}
                     </div>
+                    ${w.titel === '' && window.studioDashboardInfo ? '<button class="dsh-card__info dsh-card__info--frei" title="Erläuterung, Objekte und Prüf-SQL" aria-label="Informationen zur Übersicht">i</button>' : ''}
                     <div class="dsh-card__body"><div class="dsh-loading">Lade …</div></div>
                     <div class="dsh-card__foot"></div>
                 </section>`;
@@ -241,7 +244,7 @@
                     const w = this.def.widgets.find(x => x.id === card.dataset.w);
                     const filter = {};
                     for (const fid of w.filter || []) filter[fid] = this.filter[fid];
-                    window.studioDashboardInfo.open({ dashboard: this.def.id, widget: w.id, titel: w.titel,
+                    window.studioDashboardInfo.open({ dashboard: this.def.id, widget: w.id, titel: w.titel || this.def.titel,
                         typ: w.typ, filter, meta: card._daten?.meta });
                 }));
             this.root.querySelectorAll('.dsh-card__ansicht').forEach(b =>

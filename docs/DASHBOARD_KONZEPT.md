@@ -324,7 +324,12 @@ Jede Widget-Kachel hat ein Info-Symbol (ⓘ). Es öffnet rechts ein Seitenpanel 
 - Das SQL ist für alle Rollen sichtbar. Der Client kann weiterhin kein SQL senden.
 - Zeilenzahlen großer Views können Sekunden dauern: Das Panel lädt erst ohne (`_zeilen=0`) und setzt die Zahlen nach.
 - Die Analyse ist bewusst einfach (reguläre Ausdrücke): `FROM` in Funktionen (`EXTRACT(YEAR FROM …)`) wird übersprungen; Teradata-View-Texte trennen Zeilen mit `\r`.
-- Übersichts-Widgets (`daten: katalog`) haben kein SQL; das Panel nennt dann den Katalog als Quelle (die Übersichtsseiten blenden den Kartenkopf und damit das Symbol aus).
+- Übersichts-Widgets (`daten: katalog`) haben kein eigenes SQL. Ihr Panel zeigt (Info-Symbol frei oben rechts, weil der Kartenkopf ausgeblendet ist):
+  - Erläuterung der Seite (Standardtext je Typ `area-map`, `star-map`, `subject-map`, überschreibbar mit `erlaeuterung:`),
+  - alle `quelle`-Objekte der gezeigten Katalog-Teile (Consumable: Conformed Dimensions und Bereiche `art: mart`; Reusable: Bereiche `art: subject_area`) mit Status und Zeilen, Hinweis auf Objekte, die in der Datenbank fehlen,
+  - deren Herkunft bis zu den Tabellen,
+  - als SQL die Abfragen der Statusprüfung (`DBC.TablesV`, `COUNT(*)` je Objekt),
+  - ein R-Gerüst, das dieselbe Statusprüfung macht (Existenz, Art, Zeilen je Objekt; ohne Leserecht `NA`).
 
 **R-Gerüst:** folgt den Skriptregeln der Einsätze – ein DEF-Block als einzige Anpassstelle (aktive Umgebung, Umgebungen DEV/INT/PRD mit Verbindung und Datenbanknamen, Filterwerte), keine Umgebungsvariablen, keine interaktiven Eingaben, keine Zugangsdaten im Code (Einträge „TODO“; das Skript bricht mit Hinweis auf die DEF-Stelle ab, solange einer offen ist). Das SQL steht als Vorlage im Skript (`${NAME}` aus `DEF$umgebungen$<UMG>$datenbanken`, `${FILTER:id}` aus `DEF$filter`), Verbindung über `teradatasql`, das ausgeführte SQL wird ausgegeben. Am Ende ein auskommentierter `ggplot2`-Vorschlag passend zum Widget-Typ (bar, line, boxplot). Welche Studio-Umgebung zu DEV/INT/PRD gehört, steht optional in `umgebungen.yml`:
 

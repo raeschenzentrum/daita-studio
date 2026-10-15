@@ -357,10 +357,7 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
             info["hinweise"].append(info["katalog"]["luecke"])
 
     if widget.get("daten") == "katalog":
-        info["erlaeuterung"] = info["erlaeuterung"] or (
-            "Erzeugt aus dem Katalog (katalog.yml) und dem live geprüften Stand der dort "
-            "genannten DB-Objekte; kein eigenes SQL.")
-        return info
+        return _katalog_info(dash, widget, info, zeilen)
     if not widget.get("sql"):
         return info
 
@@ -398,6 +395,82 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
         info["r_code"] = r_skelett.erzeuge(dash, widget, vorlage, alle_filter, fdefs, r_umg, variables)
     except Exception as e:
         logger.warning("R-Gerüst %s/%s: %s", dashboard_id, widget_id, e)
+        info["r_code_fehler"] = str(e)[:200]
+    return info
+
+
+_KATALOG_ERLAEUTERUNG = {
+    "area-map": ("Data-Mart-Bereiche aus dem Katalog (katalog.yml): je Bereich Produkte, Priorität, "
+                 "Schutzniveau und Abdeckung (Anteil der Kennzahlen, die vorhanden oder ableitbar sind; "
+                 "teilweise zählt halb). Der Status jedes Elements verbindet den Plan aus dem Katalog mit "
+                 "dem live geprüften Ist-Stand seines DB-Objekts (existiert, Zeilen, Lesezugriff)."),
+    "star-map": ("Stern eines Data-Mart-Bereichs aus dem Katalog: Fakt mit Kennzahlen, Dimensionen, "
+                 "heutige Umsetzung und Datenprodukte, jeweils mit Plan-Status und live geprüftem Ist-Stand."),
+    "subject-map": ("Business-Objekt-Modell aus dem Katalog: Subject Areas mit ihren Entitäten. Status je "
+                    "Entität = Plan aus dem Katalog kombiniert mit dem live geprüften Ist-Stand der "
+                    "umgesetzten Tabelle; Linien = Beziehungen aus dem Katalog."),
+}
+
+
+def _katalog_quellen(widget: dict) -> list[str]:
+    """Rohe 'quelle'-Angaben (mit Platzhaltern) der Katalog-Teile, die das Widget zeigt."""
+    path = _root() / "katalog.yml"
+    if not path.exists():
+        return []
+    kat = _load_yaml(path)
+    bereiche = kat.get("bereiche") or []
+    if widget.get("typ") == "subject-map":
+        teile = [b for b in bereiche if b.get("art") == "subject_area"]
+    else:
+        teile = (kat.get("conformed_dimensionen") or []) + [b for b in bereiche if b.get("art") == "mart"]
+    roh: list = []
+    _collect_sources(teile, roh)
+    return list(dict.fromkeys(roh))
+
+
+def _katalog_info(dash: dict, widget: dict, info: dict, zeilen: bool) -> dict:
+    """Info-Panel für Übersichts-Widgets: Katalog-Objekte, Herkunft, Statusprüfung als SQL und R."""
+    info["erlaeuterung"] = info["erlaeuterung"] or _KATALOG_ERLAEUTERUNG.get(
+        widget.get("typ"), "Erzeugt aus dem Katalog (katalog.yml); kein eigenes SQL.")
+    roh = _katalog_quellen(widget)
+    if not roh:
+        return info
+    werte = variables()
+    status = object_status(roh, zaehlen=zeilen)
+    objs = []
+    for r in roh:
+        name = _substitute(r, werte, strict=False).upper()
+        st = status.get(r, {})
+        o = {"objekt": name, "db": name.split(".")[0], "name": name.split(".")[-1], "aliase": [],
+             "art": sql_analyse.art(name.split(".")[-1])}
+        o.update({k: st.get(k) for k in ("existiert", "zeilen", "zugriff", "fehler") if k in st})
+        objs.append(o)
+    info["objekte"] = objs
+    info["hinweise"] = info["hinweise"] or []
+    ohne = [o["name"] for o in objs if o.get("existiert") is False]
+    if ohne:
+        info["hinweise"].append("Im Katalog genannt, aber nicht in der Datenbank: " + ", ".join(ohne))
+    try:
+        info["herkunft"] = sql_analyse.herkunft([o["objekt"] for o in objs if o.get("existiert") is not False])
+    except Exception as e:
+        info["herkunft_fehler"] = str(e).splitlines()[0][:200]
+    kopf = ("-- Statusprüfung der Übersicht: je DB-Objekt aus katalog.yml Existenz und Art,\n"
+            "-- danach die Zeilenzahl (über die Verbindung der Umgebung, bei fehlendem\n"
+            "-- Leserecht über die Lese-Verbindung der Dashboards).\n"
+            "SELECT TableKind FROM DBC.TablesV WHERE DatabaseName = '<DB>' AND TableName = '<OBJEKT>';\n\n")
+    info["sql"] = {
+        "datei": "katalog.yml (Statusprüfung)",
+        "vorlage": kopf + "\n".join(f"LOCKING ROW FOR ACCESS SELECT COUNT(*) FROM {r};" for r in roh),
+        "gerendert": kopf + "\n".join(f"LOCKING ROW FOR ACCESS SELECT COUNT(*) FROM {o['objekt']};" for o in objs),
+        "parameter": {},
+    }
+    info["sql"]["mit_werten"] = info["sql"]["gerendert"]
+    try:
+        umg = _root() / "umgebungen.yml"
+        r_umg = (_load_yaml(umg).get("r_umgebungen") or {}) if umg.exists() else {}
+        info["r_code"] = r_skelett.erzeuge_katalog(dash, widget, roh, info["erlaeuterung"], r_umg, variables)
+    except Exception as e:
+        logger.warning("R-Gerüst Katalog %s: %s", dash["id"], e)
         info["r_code_fehler"] = str(e)[:200]
     return info
 

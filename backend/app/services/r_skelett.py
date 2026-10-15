@@ -118,6 +118,34 @@ def _ggplot_vorschlag(widget: dict, spalten: list[str]) -> list[str]:
     return zeilen
 
 
+def _umgebungen_def(namen: list[str], zuordnung: dict, variablen_fn) -> str:
+    """R-Einträge DEV/INT/PRD für DEF$umgebungen."""
+    eintraege = []
+    for r_env in R_UMGEBUNGEN:
+        eintrag = zuordnung.get(r_env)
+        if isinstance(eintrag, dict):          # direkte Angaben aus umgebungen.yml
+            env_id, env = None, eintrag
+            werte = {n: v for n, v in (eintrag.get("variablen") or {}).items() if n in namen}
+            kommentar = "   # aus umgebungen.yml (r_umgebungen)"
+        else:
+            env_id = eintrag
+            env = cfg.ENVIRONMENTS.get(env_id, {}) if env_id else {}
+            werte = _variablen_fuer(env_id, namen, variablen_fn) if env_id else {}
+            kommentar = f"   # Studio-Umgebung {env_id}" if env_id else "   # TODO: Host und Datenbanken eintragen"
+        host = env.get("host") or "TODO"
+        if env.get("logmech"):
+            db = f"list(host = {_r_str(host)}, logmech = {_r_str(env['logmech'])})"
+        else:
+            db = f"list(host = {_r_str(host)}, user = \"TODO\", password = \"TODO\")"
+        dbs = ",\n".join(f"        {n} = {_r_str(werte.get(n, 'TODO'))}" for n in namen) or "        # keine"
+        eintraege.append(
+            f"    {r_env} = list({kommentar}\n"
+            f"      db = {db},\n"
+            f"      datenbanken = list(\n{dbs}\n      )\n"
+            f"    )")
+    return ",\n".join(eintraege)
+
+
 def erzeuge(dashboard: dict, widget: dict, vorlage: str, filterwerte: dict,
             filter_defs: dict, r_umg: dict, variablen_fn) -> str:
     """R-Skript als Text."""
@@ -166,30 +194,7 @@ def erzeuge(dashboard: dict, widget: dict, vorlage: str, filterwerte: dict,
           "",
           "  ## -- Umgebungen: DB-Verbindung und Datenbanknamen ---------------------------",
           "  umgebungen = list("]
-    eintraege = []
-    for r_env in R_UMGEBUNGEN:
-        eintrag = zuordnung.get(r_env)
-        if isinstance(eintrag, dict):          # direkte Angaben aus umgebungen.yml
-            env_id, env = None, eintrag
-            werte = {n: v for n, v in (eintrag.get("variablen") or {}).items() if n in namen}
-            kommentar = "   # aus umgebungen.yml (r_umgebungen)"
-        else:
-            env_id = eintrag
-            env = cfg.ENVIRONMENTS.get(env_id, {}) if env_id else {}
-            werte = _variablen_fuer(env_id, namen, variablen_fn) if env_id else {}
-            kommentar = f"   # Studio-Umgebung {env_id}" if env_id else "   # TODO: Host und Datenbanken eintragen"
-        host = env.get("host") or "TODO"
-        if env.get("logmech"):
-            db = f"list(host = {_r_str(host)}, logmech = {_r_str(env['logmech'])})"
-        else:
-            db = f"list(host = {_r_str(host)}, user = \"TODO\", password = \"TODO\")"
-        dbs = ",\n".join(f"        {n} = {_r_str(werte.get(n, 'TODO'))}" for n in namen) or "        # keine"
-        eintraege.append(
-            f"    {r_env} = list({kommentar}\n"
-            f"      db = {db},\n"
-            f"      datenbanken = list(\n{dbs}\n      )\n"
-            f"    )")
-    z.append(",\n".join(eintraege))
+    z.append(_umgebungen_def(namen, zuordnung, variablen_fn))
     z += ["  ),", ""]
     if filter_ids:
         z.append("  ## -- Filter (Werte wie im Dashboard beim Erzeugen) ---------------------------")
@@ -284,3 +289,107 @@ def erzeuge(dashboard: dict, widget: dict, vorlage: str, filterwerte: dict,
           ""]
     z += _ggplot_vorschlag(widget, [])
     return "\n".join(z) + "\n"
+
+
+def erzeuge_katalog(dashboard: dict, widget: dict, objekte: list[str], erlaeuterung: str,
+                    r_umg: dict, variablen_fn) -> str:
+    """R-Skript für Übersichts-Widgets: prüft je Katalog-Objekt Existenz und Zeilenzahl
+    (dieselbe Statusprüfung wie die Übersichtsseite)."""
+    namen = sorted({m.group(1) for o in objekte for m in _PH.finditer(o) if m.group(2) is None})
+    zuordnung = _umgebungs_zuordnung(r_umg)
+    aktiv = next((k for k, v in zuordnung.items() if v == cfg.get_active_env_id()), "DEV")
+    titel = dashboard.get("titel", dashboard["id"])
+    z = [f"# {titel}: Statusprüfung der Katalog-Objekte ----",
+         "#",
+         f"# R-Gerüst aus daita-studio: Dashboard \"{titel}\" ({dashboard['id']}), Widget "
+         f"\"{widget['id']}\", erzeugt {_dt.date.today().isoformat()}.",
+         "#"]
+    z += _kommentar(erlaeuterung)
+    z += ["#",
+          "# Je Objekt aus katalog.yml: existiert es, Art (Tabelle/View), Zeilenzahl.",
+          "# ALLE Einstellungen stehen im Definitionsblock (1) – keine Umgebungsvariablen,",
+          "# keine interaktiven Eingaben. Zugangsdaten als \"TODO\" eintragen (oder logmech = \"KRB5\").",
+          "",
+          "suppressPackageStartupMessages({",
+          "  library(DBI)",
+          "  library(dplyr)",
+          "})",
+          "",
+          "## ===========================================================================",
+          "## 1) DEFINITIONEN – die einzige Anpassstelle",
+          "## ===========================================================================",
+          "",
+          "DEF <- list(",
+          "",
+          f"  umgebung = {_r_str(aktiv)},   # \"DEV\" | \"INT\" | \"PRD\" – HIER umstellen",
+          "",
+          "  ## -- Umgebungen: DB-Verbindung und Datenbanknamen ---------------------------",
+          "  umgebungen = list(",
+          _umgebungen_def(namen, zuordnung, variablen_fn),
+          "  ),",
+          "",
+          "  ## -- Objekte aus katalog.yml (${NAME} = Datenbank aus der Umgebung) --------",
+          "  objekte = c(",
+          ",\n".join(f"    {_r_str(o)}" for o in objekte),
+          "  )",
+          ")",
+          "",
+          "## ===========================================================================",
+          "## 2) FUNKTIONEN",
+          "## ===========================================================================",
+          "",
+          "resolve_umgebung <- function(def) {",
+          "  u <- def$umgebungen[[def$umgebung]]",
+          "  if (is.null(u)) stop(\"DEF$umgebung = '\", def$umgebung, \"' ist nicht in DEF$umgebungen definiert.\")",
+          "  offen <- c(names(Filter(function(x) identical(x, \"TODO\") || identical(x, \"\"), u$db)),",
+          "             names(Filter(function(x) identical(x, \"TODO\"), u$datenbanken)))",
+          "  if (length(offen) > 0) stop(\"In DEF$umgebungen$\", def$umgebung, \" noch ausfüllen: \",",
+          "                              paste(offen, collapse = \", \"))",
+          "  u",
+          "}",
+          "",
+          "objekt_name <- function(o, u) {",
+          "  for (n in names(u$datenbanken)) o <- gsub(paste0(\"${\", n, \"}\"), u$datenbanken[[n]], o, fixed = TRUE)",
+          "  o",
+          "}",
+          "",
+          "status_eines <- function(con, objekt) {",
+          "  teile <- strsplit(objekt, \".\", fixed = TRUE)[[1]]",
+          "  art <- dbGetQuery(con, sprintf(",
+          "    \"SELECT TableKind FROM DBC.TablesV WHERE DatabaseName = '%s' AND TableName = '%s'\",",
+          "    teile[1], teile[2]))",
+          "  if (nrow(art) == 0) return(tibble(OBJEKT = objekt, EXISTIERT = FALSE, ART = NA_character_, ZEILEN = NA_real_))",
+          "  zeilen <- tryCatch(",
+          "    dbGetQuery(con, sprintf(\"LOCKING ROW FOR ACCESS SELECT COUNT(*) AS N FROM %s\", objekt))$N,",
+          "    error = function(e) NA_real_)   # z. B. kein Leserecht (Fehler 3523)",
+          "  tibble(OBJEKT = objekt, EXISTIERT = TRUE,",
+          "         ART = ifelse(trimws(art$TableKind[1]) == \"V\", \"View\", \"Tabelle\"), ZEILEN = as.numeric(zeilen))",
+          "}",
+          "",
+          "verbinden <- function(db) {",
+          "  do.call(dbConnect, c(list(teradatasql::TeradataDriver()), db))",
+          "}",
+          "",
+          "## ===========================================================================",
+          "## 3) MAIN",
+          "## ===========================================================================",
+          "",
+          "main <- function(def) {",
+          "  u <- resolve_umgebung(def)",
+          "  message(\"Umgebung: \", def$umgebung, \" | Host: \", u$db$host)",
+          "  con <- verbinden(u$db)",
+          "  on.exit(dbDisconnect(con), add = TRUE)",
+          "  bind_rows(lapply(def$objekte, function(o) status_eines(con, objekt_name(o, u))))",
+          "}",
+          "",
+          "status <- main(DEF)",
+          "print(status, n = Inf)",
+          "",
+          "## ===========================================================================",
+          "## 4) AB HIER WEITER",
+          "## ===========================================================================",
+          "",
+          "# z. B. fehlende oder leere Objekte:",
+          "# status %>% filter(!EXISTIERT | ZEILEN == 0)",
+          ""]
+    return "\n".join(z)

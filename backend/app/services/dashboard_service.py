@@ -34,7 +34,7 @@ from typing import Any, Optional
 import yaml
 
 from app.config import META_SCHEMA, PATHS, get_active_env, get_active_env_id
-from app.services import sql_analyse, td_readonly
+from app.services import r_skelett, sql_analyse, td_readonly
 
 logger = logging.getLogger(__name__)
 
@@ -387,6 +387,18 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
         "mit_werten": sql_analyse.mit_werten(sql, params),
         "parameter": {k: str(v) for k, v in used.items()},
     }
+    try:
+        umg = _root() / "umgebungen.yml"
+        r_umg = (_load_yaml(umg).get("r_umgebungen") or {}) if umg.exists() else {}
+        fdefs = {f["id"]: f for f in dash.get("filter") or [] if f.get("id")}
+        alle_filter = dict(used)
+        for fid in fdefs:   # auch Filter, die nicht im SQL stehen, mit Default füllen
+            if fid not in alle_filter and fid in (widget.get("filter") or []):
+                alle_filter[fid] = _filter_value(fdefs[fid], raw_filters.get(fid))
+        info["r_code"] = r_skelett.erzeuge(dash, widget, vorlage, alle_filter, fdefs, r_umg, variables)
+    except Exception as e:
+        logger.warning("R-Gerüst %s/%s: %s", dashboard_id, widget_id, e)
+        info["r_code_fehler"] = str(e)[:200]
     return info
 
 

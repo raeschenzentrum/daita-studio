@@ -3,7 +3,8 @@
  *
  * Seitenpanel rechts (kein Modal, docs/FLOW_UX_KONZEPT.md) mit Erläuterung,
  * Hinweisen, beteiligten Fakten/Dimensionen samt Joins, Herkunft bis zu den
- * Tabellen und dem SQL (mit eingesetzten Filterwerten oder als Vorlage).
+ * Tabellen, dem SQL (mit eingesetzten Filterwerten oder als Vorlage) und einem
+ * R-Gerüst (DEF-Block, SQL-Vorlage, Verbindung) zum Kopieren oder Speichern.
  *
  * Verwendung:
  *   studioDashboardInfo.open({ dashboard: 'id', widget: 'wid', filter: {...}, meta: {...} });
@@ -49,6 +50,7 @@
         .dsi__btn[aria-pressed="true"] { border-color: var(--primary-color, #667eea); color: var(--primary-color, #667eea); }
         .dsi__sql { background: var(--bg-color, #f5f5f5); border-radius: 6px; padding: 8px 10px; margin: 6px 0 0;
                     font-family: ui-monospace, monospace; font-size: 0.85em; white-space: pre-wrap; word-break: break-word; }
+        .dsi__r { white-space: pre; overflow-x: auto; word-break: normal; max-height: 60vh; }
         .dsi__meta { color: var(--viz-muted, #898781); }
         .dsi__msg { color: var(--viz-muted, #898781); padding: 8px 0; }
         .dsi__msg--fehler { color: var(--status-critical, #d03b3b); }
@@ -138,6 +140,17 @@
                 + `<pre class="dsi__sql">${esc(info.sql.mit_werten)}</pre>`
                 + `<div class="dsi__meta" style="margin-top:4px">Datei ${esc(info.sql.datei)}${p ? ` · Filter ${esc(p)}` : ''}</div></div>`);
         }
+        if (info.r_code) {
+            teile.push(`<div class="dsi__abschnitt"><div class="dsi__h"><span>R-Gerüst</span>`
+                + `<button class="dsi__btn dsi__r-zeigen" aria-expanded="false">Anzeigen</button>`
+                + `<button class="dsi__btn dsi__kopieren" data-ziel="r" title="R-Code in die Zwischenablage">Kopieren</button>`
+                + `<button class="dsi__btn dsi__r-speichern" title="Als .R-Datei speichern">Als .R speichern</button></div>`
+                + `<div class="dsi__meta">Lauffähiges Skript mit DEF-Block (DEV/INT/PRD), SQL-Vorlage und Verbindung über teradatasql; `
+                + `Zugangsdaten als „TODO“ eintragen. Basis für die weitere Auswertung in R.</div>`
+                + `<pre class="dsi__sql dsi__r" hidden>${esc(info.r_code)}</pre></div>`);
+        } else if (info.r_code_fehler) {
+            teile.push(`<div class="dsi__abschnitt"><div class="dsi__h"><span>R-Gerüst</span></div><div class="dsi__msg dsi__msg--fehler">${esc(info.r_code_fehler)}</div></div>`);
+        }
         const lauf = [];
         if (meta?.datenstand) lauf.push('Datenstand ' + W().fmt.datum(meta.datenstand));
         if (meta?.zeilen !== undefined) lauf.push(W().fmt.zahl(meta.zeilen) + ' Zeilen');
@@ -147,22 +160,40 @@
 
         root.querySelector('.dsi__body').innerHTML = teile.join('') || '<div class="dsi__msg">Keine Angaben zu diesem Widget.</div>';
 
-        const pre = root.querySelector('.dsi__sql');
+        const pre = root.querySelector('.dsi__sql:not(.dsi__r)');
+        const rPre = root.querySelector('.dsi__r');
         root.querySelectorAll('[data-sql]').forEach(b => b.addEventListener('click', () => {
             root.querySelectorAll('[data-sql]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
             pre.textContent = info.sql[b.dataset.sql];
         }));
-        root.querySelector('.dsi__kopieren')?.addEventListener('click', async e => {
+        root.querySelectorAll('.dsi__kopieren').forEach(knopf => knopf.addEventListener('click', async e => {
             const btn = e.currentTarget;
+            const quelle = btn.dataset.ziel === 'r' ? rPre : pre;
+            const text = btn.dataset.ziel === 'r' ? info.r_code : quelle.textContent;
             try {
-                await navigator.clipboard.writeText(pre.textContent);
-            } catch (_) {   // ohne sicheren Kontext (http): Text markieren
-                const r = document.createRange(); r.selectNodeContents(pre);
+                await navigator.clipboard.writeText(text);
+            } catch (_) {   // ohne sicheren Kontext (http): Text markieren und kopieren
+                const war = quelle.hidden; quelle.hidden = false;
+                const r = document.createRange(); r.selectNodeContents(quelle);
                 const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
                 document.execCommand('copy');
+                sel.removeAllRanges(); quelle.hidden = war;
             }
             btn.textContent = 'Kopiert';
             setTimeout(() => { btn.textContent = 'Kopieren'; }, 1500);
+        }));
+        root.querySelector('.dsi__r-zeigen')?.addEventListener('click', e => {
+            rPre.hidden = !rPre.hidden;
+            e.currentTarget.textContent = rPre.hidden ? 'Anzeigen' : 'Ausblenden';
+            e.currentTarget.setAttribute('aria-expanded', String(!rPre.hidden));
+        });
+        root.querySelector('.dsi__r-speichern')?.addEventListener('click', () => {
+            const blob = new Blob([info.r_code], { type: 'text/plain;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `${info.dashboard}_${info.widget}.R`;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
         });
     }
 

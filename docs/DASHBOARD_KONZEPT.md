@@ -319,11 +319,25 @@ Jede Widget-Kachel hat ein Info-Symbol (ⓘ). Es öffnet rechts ein Seitenpanel 
 | Herkunft | Baum von der gelesenen View bis zu den Tabellen; mehrfach erreichte Objekte einmal aufgelöst („siehe oben“) | View-Definitionen aus `DBC.TablesV.RequestText` (lange Texte: `DBC.TableTextV`), über die Verbindung der Umgebung, nicht über `dashboards_db`; Cache 30 min |
 | SQL | umschaltbar: mit eingesetzten Filterwerten / Vorlage mit Platzhaltern; Kopieren | gerendertes SQL; die Werte sind nur zur Anzeige eingesetzt, ausgeführt wird weiter mit Bind-Parametern |
 | Letzter Lauf | Datenstand, Zeilen, Laufzeit, Cache | Rückgabedaten des Widgets |
+| R-Gerüst | lauffähiges R-Skript zum Kopieren oder Speichern (`<dashboard>_<widget>.R`) als Basis für weitere Auswertungen | `backend/app/services/r_skelett.py` aus SQL-Vorlage, Filtern und Umgebungen |
 
 - Das SQL ist für alle Rollen sichtbar. Der Client kann weiterhin kein SQL senden.
 - Zeilenzahlen großer Views können Sekunden dauern: Das Panel lädt erst ohne (`_zeilen=0`) und setzt die Zahlen nach.
 - Die Analyse ist bewusst einfach (reguläre Ausdrücke): `FROM` in Funktionen (`EXTRACT(YEAR FROM …)`) wird übersprungen; Teradata-View-Texte trennen Zeilen mit `\r`.
 - Übersichts-Widgets (`daten: katalog`) haben kein SQL; das Panel nennt dann den Katalog als Quelle (die Übersichtsseiten blenden den Kartenkopf und damit das Symbol aus).
+
+**R-Gerüst:** folgt den Skriptregeln der Einsätze – ein DEF-Block als einzige Anpassstelle (aktive Umgebung, Umgebungen DEV/INT/PRD mit Verbindung und Datenbanknamen, Filterwerte), keine Umgebungsvariablen, keine interaktiven Eingaben, keine Zugangsdaten im Code (Einträge „TODO“; das Skript bricht mit Hinweis auf die DEF-Stelle ab, solange einer offen ist). Das SQL steht als Vorlage im Skript (`${NAME}` aus `DEF$umgebungen$<UMG>$datenbanken`, `${FILTER:id}` aus `DEF$filter`), Verbindung über `teradatasql`, das ausgeführte SQL wird ausgegeben. Am Ende ein auskommentierter `ggplot2`-Vorschlag passend zum Widget-Typ (bar, line, boxplot). Welche Studio-Umgebung zu DEV/INT/PRD gehört, steht optional in `umgebungen.yml`:
+
+```yaml
+r_umgebungen:
+  DEV: umgebung_a                 # ID aus cfg/environments.yml
+  INT:                            # oder direkt, wenn es keine Studio-Umgebung gibt
+    host: db-int.example.org
+    logmech: KRB5                 # Kerberos statt user/password
+    variablen: {DB_ZUGRIFF: KUNDE_INT_CON_ACCESS}
+```
+
+Ohne Angabe wird die aktive Umgebung als DEV eingetragen.
 
 ```yaml
   - id: quoten
@@ -342,7 +356,7 @@ Jede Widget-Kachel hat ein Info-Symbol (ⓘ). Es öffnet rechts ein Seitenpanel 
 2. ✅ ECharts als Vendor-Datei, Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“. Weitere Diagrammtypen (`pie`, `heatmap`, `sankey`, `map`) nach Bedarf; `boxplot` ist mit den Pilot-Dashboards dazugekommen.
 3. ✅ Übersichtsseite: `area-map`, `star-map`, `subject-map` (`frontend/components/widgets/widget-katalog.js` als gemeinsame Basis).
 4. ✅ Kundendashboards im Kunden-Workspace (erste: Pilot-Dashboards eines Einsatzes).
-5. ✅ Info-Panel je Widget (Abschnitt 5a).
+5. ✅ Info-Panel je Widget (Abschnitt 5a), mit R-Gerüst.
 
 ## 7. Offene Punkte
 

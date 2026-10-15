@@ -52,10 +52,11 @@
         .dsh-btn:hover { background: rgba(102,126,234,0.08); }
 
         .dsh-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr));
-                    grid-auto-rows: ${ROW_HEIGHT}px; gap: 14px; }
+                    grid-auto-rows: minmax(${ROW_HEIGHT}px, auto); gap: 14px; }
         .dsh-card { background: var(--card-bg, #fff); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.07);
                     display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 12px 14px 8px; }
         .dsh-card__head { display: flex; align-items: baseline; gap: 8px; }
+        .dsh-card__head[hidden] { display: none; }
         .dsh-card__titel { font-size: 0.88em; font-weight: 600; color: var(--viz-text-secondary, #52514e); flex: 1;
                     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .dsh-card__untertitel { font-size: 0.75em; color: var(--viz-muted, #898781); }
@@ -63,6 +64,7 @@
                     color: var(--viz-muted, #898781); padding: 0 2px; }
         .dsh-card__ansicht:hover { color: var(--primary-color, #667eea); }
         .dsh-card__body { flex: 1; min-height: 0; position: relative; margin-top: 4px; }
+        .dsh-card[data-auto] .dsh-card__body { position: static; }
         .dsh-card__foot { font-size: 0.72em; color: var(--viz-muted, #898781); min-height: 1.2em; }
 
         .dsh-msg { color: var(--viz-muted, #898781); font-size: 0.85em; padding: 8px 0; }
@@ -88,6 +90,7 @@
         @media (max-width: 900px) {
             .dsh-grid { grid-template-columns: 1fr; grid-auto-rows: auto; }
             .dsh-card { grid-column: 1 / -1 !important; grid-row: auto !important; height: var(--dsh-h); }
+            .dsh-card[data-auto] { height: auto; }
         }
     `;
 
@@ -113,7 +116,11 @@
     }
 
     function writeHash(id, filter) {
-        const p = new URLSearchParams({ d: id, ...filter });
+        // weitere Parameter (z. B. bereich= eines Widgets) bleiben erhalten, solange das Dashboard gleich ist
+        const alt = new URLSearchParams(location.hash.slice(1));
+        const p = alt.get('d') === id ? alt : new URLSearchParams();
+        p.set('d', id);
+        for (const [k, v] of Object.entries(filter)) p.set(k, v);
         history.replaceState(null, '', '#' + p.toString());
     }
 
@@ -180,11 +187,12 @@
             const darfRefresh = !window.studioAuth || window.studioAuth.hasRole('Editor');
             const cards = d.widgets.map(w => {
                 const p = w.pos || {};
-                const h = p.h || 2;
+                const auto = p.h === 'auto';   // Höhe nach Inhalt (z. B. Übersichtsseiten)
+                const h = auto ? 1 : (p.h || 2);
                 return `
-                <section class="dsh-card" data-w="${esc(w.id)}"
+                <section class="dsh-card" data-w="${esc(w.id)}" ${auto ? 'data-auto="1"' : ''}
                     style="grid-column:${(p.x || 0) + 1} / span ${p.b || 6};grid-row:${(p.y || 0) + 1} / span ${h};--dsh-h:${h * ROW_HEIGHT}px">
-                    <div class="dsh-card__head">
+                    <div class="dsh-card__head" ${w.titel === '' ? 'hidden' : ''}>
                         <span class="dsh-card__titel" title="${esc(w.titel || w.id)}">${esc(w.titel || w.id)}</span>
                         ${w.untertitel ? `<span class="dsh-card__untertitel">${esc(w.untertitel)}</span>` : ''}
                         ${W().get(w.typ)?.tabelle !== false ? '<button class="dsh-card__ansicht" title="Zwischen Diagramm und Tabelle wechseln">Tabelle</button>' : ''}
@@ -292,7 +300,7 @@
                 return;
             }
             const host = document.createElement('div');
-            host.style.cssText = 'position:absolute;inset:0;';
+            host.style.cssText = card.dataset.auto ? '' : 'position:absolute;inset:0;';
             body.appendChild(host);
             try {
                 card._instanz = impl.render(host, daten, typ === 'table' && card.dataset.tabelle ? {} : (w.optionen || {}), { widget: w, dashboard: this.def });
@@ -304,7 +312,7 @@
 
         fuss(card, meta = {}) {
             const teile = [];
-            if (meta.zeilen !== undefined && card._widget.typ !== 'kpi') teile.push(`${W().fmt.zahl(meta.zeilen)} Zeilen`);
+            if (meta.zeilen !== undefined && card._widget.typ !== 'kpi' && card._widget.daten !== 'katalog') teile.push(`${W().fmt.zahl(meta.zeilen)} Zeilen`);
             if (meta.abgeschnitten) teile.push('gekürzt');
             if (meta.unterdrueckt) teile.push(`${W().fmt.zahl(meta.unterdrueckt)} kleine Werte ausgeblendet`);
             if (meta.cache && card._widget.typ !== 'kpi') teile.push('aus Cache');

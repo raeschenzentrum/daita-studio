@@ -1,8 +1,9 @@
 """
 DashboardService – deklarative Dashboards aus YAML-Dateien.
 
-Ablage (PATHS["dashboards"], in cfg/config.yml → paths.dashboards; liegt
-normalerweise im Kunden-Workspace):
+Ablage: je Environment `dashboards:` in cfg/environments.yml (lokal, nicht
+im Repo – zeigt typischerweise in den Kunden-Workspace), sonst
+PATHS["dashboards"] (cfg/config.yml → paths.dashboards, neutrales Beispiel):
 
     <root>/
       umgebungen.yml     optional: Variablen je Environment
@@ -31,7 +32,7 @@ from typing import Any, Optional
 
 import yaml
 
-from app.config import META_SCHEMA, PATHS, get_active_env_id
+from app.config import META_SCHEMA, PATHS, get_active_env, get_active_env_id
 from app.services import td_readonly
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,9 @@ class DashboardError(Exception):
 # ---------------------------------------------------------------------------
 
 def _root() -> Path:
+    eigen = get_active_env().get("dashboards")
+    if eigen:
+        return Path(PATHS["root"]) / eigen  # absolut oder relativ zu install_root
     return Path(PATHS["dashboards"])
 
 
@@ -279,6 +283,8 @@ def _min_zelle(dash: dict) -> Optional[int]:
 def widget_data(dashboard_id: str, widget_id: str, raw_filters: dict) -> dict:
     dash = _load_dashboard(dashboard_id)
     widget = _widget(dash, widget_id)
+    if widget.get("daten") == "katalog":
+        return _katalog_daten()
     if not widget.get("sql"):
         raise DashboardError(400, f"Widget '{widget_id}' hat keine SQL-Datei")
     sql, params, used = _render_sql(dash, widget, widget["sql"], raw_filters)
@@ -337,8 +343,9 @@ def datenstand(dashboard_id: str, dash: Optional[dict] = None) -> Optional[str]:
 
 
 def refresh(dashboard_id: str) -> int:
+    """Cache des Dashboards und den Objektstatus (Katalog/Übersicht) leeren."""
     _safe_id(dashboard_id)
-    return td_readonly.invalidate(f"dash::{dashboard_id}::")
+    return td_readonly.invalidate(f"dash::{dashboard_id}::") + td_readonly.invalidate("dashboards::status::")
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +381,8 @@ def catalog() -> dict:
 
 
 def object_status(refs: list[str]) -> dict:
-    """Je 'DB.OBJEKT': {existiert, art, zeilen, fehler}. Nicht auflösbare Verweise → fehler."""
+    """Je 'DB.OBJEKT': {objekt, existiert, art, zeilen | zugriff=False | fehler}.
+    Nicht auflösbare Verweise → fehler."""
     values = variables()
     out: dict = {}
     targets: dict = {}
@@ -388,26 +396,60 @@ def object_status(refs: list[str]) -> dict:
 
     def _load():
         res = {}
-        for ref, (db, obj) in targets.items():
-            entry = {"objekt": f"{db}.{obj}", "existiert": False}
-            try:
-                kind = td_readonly.query(
-                    "SELECT TableKind FROM DBC.TablesV WHERE DatabaseName = ? AND TableName = ?",
-                    [db, obj], 1)["rows"]
-                if kind:
-                    entry["existiert"] = True
-                    entry["art"] = {"T": "Tabelle", "O": "Tabelle", "V": "View"}.get(kind[0][0], kind[0][0])
-                    entry["zeilen"] = td_readonly.query(
-                        f"LOCKING ROW FOR ACCESS SELECT COUNT(*) FROM {db}.{obj}", (), 1)["rows"][0][0]
-            except Exception as e:
-                entry["fehler"] = str(e).splitlines()[0][:200]
-            res[ref] = entry
+        if not targets:
+            return res
+        with td_readonly.connection() as conn:
+            # Existenz und Art für alle Objekte in einer Abfrage
+            dbs = sorted({db for db, _ in targets.values()})
+            kinds = {}
+            rows = td_readonly.query(
+                "SELECT TRIM(DatabaseName), TRIM(TableName), TableKind FROM DBC.TablesV "
+                f"WHERE DatabaseName IN ({', '.join('?' * len(dbs))})", dbs, 100000, conn)["rows"]
+            for db, obj, kind in rows:
+                kinds[(db.upper(), obj.upper())] = kind
+            for ref, (db, obj) in targets.items():
+                res[ref] = _status_eines(conn, db, obj, kinds.get((db, obj)))
         return res
 
     key = "dashboards::status::" + json.dumps(sorted(targets.items()))
     found, _ = td_readonly.cached(key, _load)
     out.update(found)
     return out
+
+
+def _status_eines(conn, db: str, obj: str, kind: Optional[str]) -> dict:
+    entry = {"objekt": f"{db}.{obj}", "existiert": kind is not None}
+    if kind is None:
+        return entry
+    entry["art"] = {"T": "Tabelle", "O": "Tabelle", "V": "View"}.get(kind, kind)
+    try:
+        entry["zeilen"] = td_readonly.query(
+            f"LOCKING ROW FOR ACCESS SELECT COUNT(*) FROM {db}.{obj}", (), 1, conn)["rows"][0][0]
+    except Exception as e:
+        msg = str(e)
+        if "[Error 3523]" in msg:  # existiert, aber dem Studio-User fehlt SELECT
+            entry["zugriff"] = False
+        else:
+            entry["fehler"] = msg.splitlines()[0][:200]
+    return entry
+
+
+def _katalog_daten() -> dict:
+    """Daten für Übersichts-Widgets: Katalog, Objektstatus, vorhandene Dashboards."""
+    try:
+        status = catalog_status()
+    except DashboardError:
+        raise
+    except Exception as e:
+        logger.exception("Katalogstatus")
+        raise DashboardError(502, f"Objektstatus nicht lesbar: {e}")
+    return {
+        "columns": [], "rows": [],
+        "katalog": catalog(),
+        "status": status,
+        "dashboards": [d["id"] for d in list_dashboards()],
+        "meta": {"zeilen": len(status), "abgeschnitten": False, "cache": False, "unterdrueckt": 0},
+    }
 
 
 def catalog_status() -> dict:

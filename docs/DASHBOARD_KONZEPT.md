@@ -1,6 +1,6 @@
 # Dashboard-Konzept
 
-> Status: Schritte 1–2 umgesetzt (2026-10-15), Schritte 3–4 offen
+> Status: Schritte 1–3 umgesetzt (2026-10-15), Schritt 4 (Kundendashboards mit Kennzahlen) offen
 > Stand: 2026-10-15
 > Ziel: Ein modulares Dashboard-System als eigener Tab in daita-studio. Die Dashboards werden deklarativ konfiguriert; Inhalte, Datenbanknamen und SQL kommen aus dem Kunden-Workspace.
 
@@ -41,8 +41,8 @@ Dieses Dokument beschreibt nur das kundenneutrale Framework. Welche Dashboards e
 | `frontend/components/widgets/widget-boxplot.js` | Verteilung, z. B. Durchlaufzeiten, ECharts |
 | `frontend/components/widgets/widget-sankey.js` | Flüsse zwischen Zuständen, ECharts |
 | `frontend/components/widgets/widget-map.js` | Choroplethenkarte aus einer lokal abgelegten GeoJSON-Datei, ECharts |
-| `frontend/components/widgets/widget-area-map.js` | Übersichtskarte der Bereiche (siehe Abschnitt 5) |
-| `frontend/components/widgets/widget-star-map.js` | Stern eines Bereichs: Fakt in der Mitte, Dimensionen darum (siehe Abschnitt 5) |
+| `frontend/components/widgets/widget-katalog.js` | gemeinsame Basis der Übersicht: Status aus Plan und Ist, Abdeckung, Legende, Linien, Side-Panel |
+| `frontend/components/widgets/widget-area-map.js` | Übersichtskarte der Bereiche und Stern eines Bereichs (`area-map`, `star-map`; siehe Abschnitt 5) |
 | `frontend/components/widgets/widget-subject-map.js` | Bereiche mit ihren Entitäten als Kästen (siehe Abschnitt 5) |
 
 ### Regeln
@@ -117,7 +117,7 @@ Ausgeführt wird über `backend/app/services/td_readonly.py`: genau ein Statemen
 
 ## 4. Konfiguration
 
-Ablage unter `paths.dashboards` im Kunden-Workspace:
+Die Ablage wird je Umgebung gewählt: `dashboards:` am Eintrag in `cfg/environments.yml` (lokale Datei, nicht im Repo; relativ zu `install_root` oder absolut, z. B. `'../<kunde>-lakehouse/dashboards'`). Ohne Angabe gilt `paths.dashboards` aus `cfg/config.yml` (neutrales Beispiel). So bleibt der Pfad zum Kunden-Workspace aus dem Framework-Repo heraus.
 
 ```
 dashboards/
@@ -150,7 +150,8 @@ Der Katalog beschreibt, was es geben soll und woraus es gespeist wird. Er kennt 
 - `art: subject_area` für Reusable-Bereiche mit Entitäten.
 
 ```yaml
-schutzniveaus: [oeffentlich, sn1, sn2]
+titel_consumable: Data-Mart-Bereiche (Consumable)   # Überschrift Reiter Consumable
+titel_reusable: Business-Objekt-Modell (Reusable)   # Überschrift Reiter Reusable
 min_zelle: 5
 
 conformed_dimensionen:
@@ -166,16 +167,20 @@ bereiche:
     titel: Bereich A
     prioritaet: hoch
     schutzniveau: oeffentlich
+    produkte_anzahl: 3             # geplante Produkte insgesamt (auch wenn nicht alle benannt)
+    luecke: "Notiz zum Bereich"
     fakten:
       - id: fakt_a
         titel: Fakt A
-        quelle: ${DB_ZUGRIFF}.V_FACT_A
-        dimensionen: [zeit, dim_x]
+        schluessel: [ZeitSK, DimXSK]
+        dimensionen: [zeit, dim_x]   # IDs aus conformed_dimensionen oder dimensionen des Bereichs
         kennzahlen:
           - {id: anzahl, titel: Anzahl, status: ableitbar}
           - {id: quote, titel: Quote, status: fehlt, luecke: "Gruppierung fehlt"}
     dimensionen:
-      - {id: dim_x, titel: Dim X, quelle: ${DB_ZUGRIFF}.V_DIM_X}
+      - {id: dim_x, titel: Dim X, quelle: ${DB_ZUGRIFF}.V_DIM_X, attribute: [DimXSK, Code, Text]}
+    umsetzung:                     # heutige physische Objekte des Bereichs
+      - {titel: V_FACT_A, quelle: ${DB_ZUGRIFF}.V_FACT_A}
     produkte:
       - {id: "A.1", titel: Produkt 1, pilot: true, dashboard: bereich_a}
 
@@ -185,11 +190,25 @@ bereiche:
     entitaeten:
       - {id: e1, titel: Entität 1, quelle: ${DB_REUS}.E1, kern: true}
       - {id: e2, titel: Entität 2, status: fehlt}
+      - {id: e3, titel: Entität 3, quelle: ${DB_REUS}.E3, zusatz: true}   # umgesetzt, nicht in der Vorlage
+
+beziehungen:
+  - {von: e1, nach: e3, kard: "1:n"}
 ```
 
-- `status` im YAML ist der **Plan** (`vorhanden`, `ableitbar`, `fehlt`).
-- Der **Ist-Stand** kommt live aus der Datenbank: Ein Element mit `quelle` gilt als vorhanden, wenn das Objekt existiert und Zeilen hat.
-- Weichen Plan und Ist ab, zeigt das Widget beides.
+- `status` im YAML ist der **Plan**: `vorhanden`, `ableitbar`, `teilweise`, `fehlt`.
+- Der **Ist-Stand** kommt live aus der Datenbank (`/catalog/status`, eine Verbindung für alle Objekte, Cache je Umgebung):
+
+  | Ist-Stand der `quelle` | angezeigter Status |
+  |---|---|
+  | existiert nicht | `fehlt` |
+  | existiert, 0 Zeilen | `leer` |
+  | existiert, Zeilen > 0 | Plan-Status (Default `vorhanden`) |
+  | existiert, kein SELECT-Recht für den Studio-User | Plan-Status, Hinweis „kein Lesezugriff“, ohne Zeilenzahl |
+  | ohne `quelle` | Plan-Status (Default `fehlt`) |
+
+- Abdeckung eines Bereichs: Anteil seiner Kennzahlen mit `vorhanden`/`ableitbar` (`teilweise` zählt halb); ohne Kennzahlen seine eigenen Dimensionen. Conformed Dimensions zählen nicht mit.
+- Status wird immer mit Form und Text gezeigt (● vorhanden, ◉ ableitbar, ◐ teilweise, ○ leer, ✕ fehlt), nie nur über Farbe.
 
 ### Dashboard (`<id>.yml`)
 
@@ -246,34 +265,50 @@ Jedes Diagramm hat eine Umschaltung auf die Tabellenansicht derselben Daten (Bar
 
 Die Startseite des Tabs ist eine Übersicht, die der Katalog vollständig erzeugt. Sie ist so aufgebaut wie die übliche Architekturgrafik „Data-Mart-Bereiche plus Business-Objekt-Modell“ und hat zwei Reiter.
 
-### Reiter „Consumable“ (`widget-area-map` und `widget-star-map`)
+### Reiter „Consumable“ (Widget-Typ `area-map`; `star-map` zeigt nur den Stern)
 
 | Zone | Inhalt |
 |---|---|
 | Kopfzeile | eine Kachel je Bereich `art: mart` in der Reihenfolge `nr`: Nummer, Titel, Anzahl Produkte, Priorität, Schutzniveau. Die Rahmenfarbe zeigt den Abdeckungsgrad (vorhanden / teilweise / fehlt) |
 | linke Spalte | Conformed Dimensionen mit ihren Attributen und ihrem Status |
-| Mitte | Stern des gewählten Bereichs: Fakt in der Mitte mit Schlüsseln und Kennzahlen, Dimensionen darum, Linien zu den Conformed Dimensionen. Jedes Element trägt einen Status-Punkt, die Zeilenzahl und die Quelle als Tooltip |
-| darunter | Liste der Produkte des Bereichs mit Häkchen (Dashboard vorhanden) oder Lücke |
+| Mitte | Stern des gewählten Bereichs: Fakt in der Mitte mit Schlüsseln und Kennzahlen, Dimensionen darum, Linien zu den Conformed Dimensionen. Jedes Element trägt Status (Symbol und Text), umgesetztes Objekt und Zeilenzahl |
+| darunter | „Umsetzung heute“ (Objekte aus `umsetzung`) und die Datenprodukte mit Status, Pilot-Kennzeichen und Link aufs Dashboard |
 | Fußzeile | kompakte Kästen der übrigen Bereiche (Fakt, Dimensionen, Kennzahlen, Anzahl Produkte, Schutzniveau) |
 
 Klick auf eine Kachel wechselt den Stern; Klick auf ein Produkt mit `dashboard:` öffnet dieses Dashboard. Lücken öffnen ein Side-Panel mit dem Text aus `luecke`.
 
 ### Reiter „Reusable“ (`widget-subject-map`)
 
-- Ein Kasten je Bereich `art: subject_area`, darin die Entitäten mit Status-Punkt und Zeilenzahl.
+- Ein Kasten je Bereich `art: subject_area`, darin die Entitäten mit Status, umgesetzter Tabelle und Zeilenzahl; oben die Summe (laut Vorlage / umgesetzt / fehlen).
 - Entitäten mit `kern: true` sind hervorgehoben.
 - Beziehungen zwischen Entitäten stehen im Katalog unter `beziehungen: [{von, nach, kard}]` und werden als Linien gezeichnet.
 
-### Layout
+### Einbindung
 
-- Automatisch als Raster: Kacheln in einer Reihe, Bereiche in Spalten. Positionen im YAML sind optional (`pos`).
-- Die Seite liest nur Katalog und `/status`; sie braucht kein Widget-SQL.
+Die Reiter sind zwei Dashboards mit je einem Widget ohne SQL:
+
+```yaml
+titel: Übersicht Data Marts
+gruppe: Übersicht
+reihenfolge: 1
+widgets:
+  - id: marts
+    titel: ""            # leer: Kartenkopf ausblenden
+    typ: area-map        # bzw. subject-map, star-map (optionen.bereich)
+    daten: katalog       # liefert {katalog, status, dashboards} statt SQL-Ergebnis
+    pos: {x: 0, y: 0, b: 12, h: auto}   # h: auto = Höhe nach Inhalt
+    optionen: {bereich: m1}             # zuerst gewählter Bereich
+```
+
+- Der gewählte Bereich steht im URL-Hash (`bereich=`); ein Produkt mit `dashboard:` verlinkt auf dieses Dashboard, sobald es existiert.
+- Klick auf ein Element öffnet ein Side-Panel mit Status, Quelle, Ist-Stand, Lücke und Attributen.
+- Unter 1100 px Breite stapeln sich die Spalten, die Verbindungslinien entfallen.
 
 ## 6. Umsetzungsschritte
 
 1. ✅ Read-only-Helfer, Router, Service, Platzhalter und Cache.
 2. ✅ ECharts als Vendor-Datei, Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“. Weitere Diagrammtypen (`pie`, `heatmap`, `boxplot`, `sankey`, `map`) nach Bedarf.
-3. Übersichtsseite: `area-map`, `star-map`, `subject-map`. Die Endpunkte `/catalog`, `/catalog/status` und `/{id}/status` stehen schon.
+3. ✅ Übersichtsseite: `area-map`, `star-map`, `subject-map` (`frontend/components/widgets/widget-katalog.js` als gemeinsame Basis).
 4. Kundendashboards im Kunden-Workspace.
 
 ## 7. Offene Punkte

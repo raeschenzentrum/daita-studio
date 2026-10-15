@@ -5,6 +5,9 @@
 # host/user/password sind PRO Environment ueberschreibbar (koennen also auf
 # unterschiedlichen Teradata-Servern liegen). "schema" ist die META-DB
 # (dort liegen META_TABLE, META_COLUMN, META_ETL_JOB, ...).
+# Optional "dashboards": Ablage der Dashboard-Definitionen fuer diese Umgebung
+# (relativ zu install_root oder absolut), z. B. '../<kunde>-lakehouse/dashboards'.
+# Ohne Angabe gilt paths.dashboards aus config.yml (neutrales Beispiel).
 # ============================================================================
 
 environments:

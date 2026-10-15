@@ -89,14 +89,21 @@ def _connect():
     )
 
 
-def query(sql: str, params: tuple | list = (), max_rows: int = DEFAULT_MAX_ROWS) -> dict:
+def connection():
+    """Eine Verbindung für mehrere Abfragen (with td_readonly.connection() as conn: query(..., conn=conn))."""
+    return _connect()
+
+
+def query(sql: str, params: tuple | list = (), max_rows: int = DEFAULT_MAX_ROWS, conn=None) -> dict:
     """Führt ein geprüftes SELECT aus. Liefert {columns, rows, truncated}."""
     sql = check_select(sql)
-    with _connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, list(params))
-            columns = [d[0] for d in cur.description]
-            rows = cur.fetchmany(max_rows + 1)
+    if conn is None:
+        with _connect() as own:
+            return query(sql, params, max_rows, own)
+    with conn.cursor() as cur:
+        cur.execute(sql, list(params))
+        columns = [d[0] for d in cur.description]
+        rows = cur.fetchmany(max_rows + 1)
     truncated = len(rows) > max_rows
     rows = rows[:max_rows]
     return {

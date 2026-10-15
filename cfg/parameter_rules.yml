@@ -230,7 +230,9 @@ raw_delta:
     update: "UPDATED"
     delete: "DELETED"
   open_valid_to: "9999-12-31 23:59:59.999999"
-  # Obergrenze für den Ladelauf (Step-Parameter MAX_LOAD_ID; für Tests/Nachholläufe senken)
+  # Obergrenze für den Ladelauf (Step-Parameter MAX_LOAD_ID). Je Lauf wählbar über
+  # „Laden bis Lade-ID“ (max_load_id beim Start); der Ladestand rückt dann bis zur
+  # Obergrenze vor, auch ohne Lieferung der Tabelle (confirm_load_state.sql)
   max_load_id: 9223372036854775807
   # Ladestand je Job in der Meta-DB (wird im letzten Step fortgeschrieben)
   load_state_table: "META_ETL_LOAD_STATE"

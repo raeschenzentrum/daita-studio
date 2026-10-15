@@ -180,6 +180,8 @@ class ExecuteJobRequest(BaseModel):
     """Request für Job Execution"""
     initial_load_mode: bool = False
     dry_run: bool = False
+    # Laden bis Lade-ID: Obergrenze des Ladelaufs (None = ohne Obergrenze)
+    max_load_id: Optional[int] = Field(default=None, ge=1)
 
 
 class ExecuteJobResponse(BaseModel):

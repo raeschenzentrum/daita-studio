@@ -39,6 +39,10 @@ from ..models.etl_models import (
 
 logger = logging.getLogger(__name__)
 
+# Cache für get_load_ids je Umgebung: {env_id: (zeitpunkt, ergebnis)}
+_LOAD_IDS_CACHE: Dict[str, tuple] = {}
+_LOAD_IDS_TTL = 300
+
 
 # =============================================================================
 # ETL Service
@@ -1045,13 +1049,15 @@ class ETLService:
     # Job Execution
     # =========================================================================
     
-    def execute_job(self, job_id: int, initial_load_mode: bool = False) -> int:
+    def execute_job(self, job_id: int, initial_load_mode: bool = False,
+                    max_load_id: Optional[int] = None) -> int:
         """
         Führt ETL Job aus.
         
         Args:
             job_id: Job ID
             initial_load_mode: Wenn True, wird die Zieltabelle vor dem Load gelöscht
+            max_load_id: Obergrenze des Ladelaufs (Laden bis Lade-ID); None = ohne
         
         Returns:
             Job Run ID
@@ -1059,9 +1065,110 @@ class ETLService:
         Raises:
             Exception: Bei Ausführungsfehler
         """
-        logger.info(f"Executing job {job_id} via orchestrator (initial_load_mode={initial_load_mode})")
-        return self.orchestrator.execute_job(job_id, initial_load_mode=initial_load_mode)
+        logger.info(f"Executing job {job_id} via orchestrator (initial_load_mode={initial_load_mode}, "
+                    f"max_load_id={max_load_id})")
+        return self.orchestrator.execute_job(job_id, initial_load_mode=initial_load_mode,
+                                             max_load_id=max_load_id)
     
+    def get_load_ids(self, refresh: bool = False) -> Dict[str, Any]:
+        """Verfügbare Lade-IDs und Ladestände für „Laden bis Lade-ID“.
+
+        Quellen sind die Tabellen der Delta-Jobs (Steps mit MAX_LOAD_ID in den
+        Parametern; SOURCE_DATABASE/SOURCE_TABLE, LOAD_ID_COL, SNAPSHOT_COL).
+        Eine Lade-ID ist eine Lieferung über alle Tabellen; nicht jede Tabelle
+        liefert in jedem Ladelauf, deshalb wird über alle Quellen vereinigt.
+        Übergang, solange es kein zentrales Ladelauf-Protokoll gibt.
+        Die Lade-IDs (Abfrage über alle Quellen) sind je Umgebung 5 Minuten
+        gecacht, der Ladestand wird bei jedem Aufruf gelesen.
+        """
+        import time
+        from ..config import get_active_env_id
+
+        key = get_active_env_id()
+        hit = _LOAD_IDS_CACHE.get(key)
+        if refresh or not hit or time.time() - hit[0] >= _LOAD_IDS_TTL:
+            hit = (time.time(), self._scan_load_ids())
+            _LOAD_IDS_CACHE[key] = hit
+        quellen, ids, delta_jobs, job_namen = hit[1]
+
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(f"SELECT etl_job_id, last_load_id, last_snapshot_ts FROM {META_SCHEMA}.META_ETL_LOAD_STATE")
+            staende = {r[0]: (r[1], r[2]) for r in cur.fetchall()}
+        finally:
+            conn.close()
+
+        jobs = []
+        for job_id in sorted(set(delta_jobs) | set(staende)):
+            stand = staende.get(job_id, (None, None))
+            jobs.append({
+                'job_id': job_id,
+                'job_name': job_namen.get(job_id),
+                'obergrenze': job_id in delta_jobs,   # False: folgt den Vorgänger-Jobs
+                'quelle': delta_jobs.get(job_id),
+                'ladestand': stand[0],
+                'ladestand_snapshot': stand[1],
+            })
+        return {
+            'quellen': quellen,
+            'lade_ids': ids,
+            'jobs': jobs,
+            'stand_lade_ids': datetime.fromtimestamp(hit[0]),
+        }
+
+    def _scan_load_ids(self) -> tuple:
+        """(Anzahl Quellen, Lade-IDs, {Delta-Job: Quelle}, {Job: Name}) – siehe get_load_ids."""
+        import re
+        from .template_engine import resolve_step_parameters
+        from ..config import get_etl_jobs_path
+
+        ident = re.compile(r"^[A-Za-z0-9_$#]+$")
+        conn = self._get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(f"""
+                SELECT s.etl_job_step_id, s.etl_job_id, TRIM(j.job_name), s.parameters
+                FROM {META_SCHEMA}.META_ETL_JOB_STEP s
+                JOIN {META_SCHEMA}.META_ETL_JOB j ON j.etl_job_id = s.etl_job_id
+                WHERE s.is_active = 'Y' AND j.is_active = 'Y'
+                ORDER BY s.etl_job_id, s.step_order
+            """)
+            quellen: Dict[tuple, dict] = {}
+            delta_jobs: Dict[int, dict] = {}
+            job_namen: Dict[int, str] = {}
+            for step_id, job_id, job_name, db_params in cur.fetchall():
+                job_namen[job_id] = job_name
+                params = resolve_step_parameters(job_id, step_id, db_params, get_etl_jobs_path())
+                if 'MAX_LOAD_ID' not in params:
+                    continue
+                teile = [params.get(k, '') for k in ('SOURCE_DATABASE', 'SOURCE_TABLE', 'LOAD_ID_COL', 'SNAPSHOT_COL')]
+                if not all(isinstance(t, str) and ident.match(t) for t in teile):
+                    logger.warning(f"Lade-IDs: Step {step_id} ohne gültige Quellangaben übersprungen")
+                    continue
+                quellen.setdefault(tuple(t.upper() for t in teile), {})
+                delta_jobs[job_id] = f"{teile[0]}.{teile[1]}".upper()
+
+            ids: Dict[int, dict] = {}
+            for db, tab, lid, snap in quellen:
+                try:
+                    cur.execute(f"SELECT {lid}, MIN({snap}), COUNT(*) FROM {db}.{tab} GROUP BY 1")
+                except Exception as e:
+                    logger.warning(f"Lade-IDs: {db}.{tab} nicht lesbar: {e}")
+                    continue
+                for lade_id, snapshot, zeilen in cur.fetchall():
+                    if lade_id is None:
+                        continue
+                    e = ids.setdefault(int(lade_id), {'lade_id': int(lade_id), 'snapshot': snapshot,
+                                                      'tabellen': 0, 'zeilen': 0})
+                    if snapshot is not None and (e['snapshot'] is None or snapshot < e['snapshot']):
+                        e['snapshot'] = snapshot
+                    e['tabellen'] += 1
+                    e['zeilen'] += int(zeilen)
+        finally:
+            conn.close()
+        return len(quellen), [ids[k] for k in sorted(ids)], delta_jobs, job_namen
+
     def cleanup_stale_running_jobs(self, hours_threshold: int = 2) -> int:
         """
         Markiert "hängende" RUNNING Jobs und Steps als FAILED.

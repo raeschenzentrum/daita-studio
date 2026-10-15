@@ -222,7 +222,8 @@ class MetadataETLOrchestrator:
                 pass
             self._log_conn = None
     
-    def execute_job(self, job_id: int, execution_mode: str = 'MANUAL', initial_load_mode: bool = False) -> int:
+    def execute_job(self, job_id: int, execution_mode: str = 'MANUAL', initial_load_mode: bool = False,
+                    max_load_id: Optional[int] = None) -> int:
         """
         Führt einen ETL-Job aus.
         
@@ -230,6 +231,8 @@ class MetadataETLOrchestrator:
             job_id: ID des Jobs (META_ETL_JOB.etl_job_id)
             execution_mode: MANUAL, SCHEDULED, API, RETRY
             initial_load_mode: Wenn True, wird die Zieltabelle vor dem Load gelöscht
+            max_load_id: Obergrenze des Ladelaufs (Laden bis Lade-ID, z. B. zur
+                Simulation täglicher Läufe); None = ohne Obergrenze
         
         Returns:
             etl_job_run_id der Ausführung
@@ -238,7 +241,8 @@ class MetadataETLOrchestrator:
             Exception: Bei kritischen Fehlern
         """
         logger.info(f"=" * 80)
-        logger.info(f"Starting ETL Job: job_id={job_id}, mode={execution_mode}, initial_load={initial_load_mode}")
+        logger.info(f"Starting ETL Job: job_id={job_id}, mode={execution_mode}, initial_load={initial_load_mode}, "
+                    f"max_load_id={max_load_id}")
         logger.info(f"=" * 80)
         
         conn = self.get_connection(autocommit=False)
@@ -259,6 +263,8 @@ class MetadataETLOrchestrator:
             # 4. Steps laden (sortiert nach step_order)
             steps = self._load_steps(conn, job_id)
             logger.info(f"Loaded {len(steps)} steps for execution")
+            if max_load_id is not None:
+                self._apply_load_bound(steps, max_load_id)
             
             # 5. Steps ausführen
             last_step_rows = None
@@ -352,6 +358,28 @@ class MetadataETLOrchestrator:
             self._close_log_connection()  # Log-Connection auch schließen
             logger.info("=" * 80)
     
+    @staticmethod
+    def _apply_load_bound(steps: List[ETLJobStep], max_load_id: int) -> None:
+        """Laden bis Lade-ID: setzt die Obergrenze dieses Laufs in die Step-Parameter.
+
+        MAX_LOAD_ID (Filter des Deltas) wird nur dort ersetzt, wo der Step ihn
+        kennt; LOAD_BOUND (Laufzeitparameter, Standard in RUNTIME_DEFAULTS der
+        Template-Engine) erhalten alle Steps – der Bestätigungs-Step schreibt
+        damit den Ladestand bis zur Obergrenze fort. Die Obergrenze steht im
+        ausgeführten SQL der Step-Runs.
+        """
+        n = int(max_load_id)
+        if n < 1:
+            raise ValueError(f"max_load_id muss >= 1 sein: {max_load_id}")
+        for step in steps:
+            params = step.parameters if isinstance(step.parameters, dict) else (
+                load_parameters_from_json(step.parameters) if step.parameters else {})
+            if 'MAX_LOAD_ID' in params:
+                params['MAX_LOAD_ID'] = str(n)
+            params['LOAD_BOUND'] = f"CAST({n} AS BIGINT)"
+            step.parameters = params
+        logger.info(f"Obergrenze des Laufs: Lade-ID {n}")
+
     def _load_job(self, conn: teradatasql.TeradataConnection, job_id: int) -> ETLJob:
         """Lädt Job-Definition aus META_ETL_JOB."""
         cursor = conn.cursor()

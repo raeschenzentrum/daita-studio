@@ -122,6 +122,8 @@
         layers:     ()                  => get('/etl/layers'),
         /** Datenbanken / Schemas */
         databases:  ()                  => get('/etl/databases'),
+        /** Lade-IDs der Quellen und Ladestand je Job (Laden bis Lade-ID) */
+        loadIds:    (params)            => get('/etl/load-ids', params),
         /** Tabellen einer Datenbank */
         dbTables:   (dbId)              => get(`/etl/databases/${dbId}/tables`),
 

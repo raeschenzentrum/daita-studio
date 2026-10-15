@@ -168,6 +168,10 @@ const STYLE = `
     .jd-progress-text { font-size: 0.77em; color: #888; text-align: center; }
     .jd-init-load { background: #fff8e1; border-left: 3px solid #ff9800; border-radius: 4px; padding: 8px 10px; margin: 8px 0; font-size: 0.82em; }
     .jd-init-load label { cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 600; color: #e65100; }
+    .jd-bound { background: #eef3fb; border-left: 3px solid #2a78d6; border-radius: 4px; padding: 8px 10px; margin: 8px 0; font-size: 0.82em; }
+    .jd-bound label { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #1d4f91; }
+    .jd-bound select { flex: 1; min-width: 0; font-size: 1em; padding: 3px 4px; }
+    .jd-bound-info { color: #555; margin-top: 4px; }
     .jd-init-load-warn { display: none; background: #ffebee; border-radius: 4px; padding: 8px; margin-top: 6px; color: #c62828; font-size: 0.83em; }
     .jd-btn { padding: 5px 12px; border-radius: 5px; border: none; cursor: pointer; font-size: 0.82em; font-weight: 600; transition: opacity 0.15s; display: inline-flex; align-items: center; gap: 5px; }
     .jd-btn:hover { opacity: 0.85; }
@@ -300,6 +304,7 @@ class JobDetail {
         this._steps       = [];
         this._pollTimer   = null;
         this._initialLoad = false;
+        this._maxLoadId = null;
         this._el.innerHTML = `<div class="jd-root"><div class="jd-empty">Kein Job ausgewählt.</div></div>`;
     }
 
@@ -876,6 +881,12 @@ class JobDetail {
                     <strong>🔥 Destruktive Operation!</strong> Alle Daten werden gelöscht.
                 </div>
             </div>
+            <div class="jd-bound" id="jd-bound" style="display:none">
+                <label>Laden bis Lade-ID
+                    <select id="jd-bound-sel"><option value="">alle (ohne Obergrenze)</option></select>
+                </label>
+                <div class="jd-bound-info" id="jd-bound-info"></div>
+            </div>
             <div id="jd-progress-wrap" style="display:none">
                 <div class="jd-progress-bar"><div class="jd-progress-fill" id="jd-progress-fill" style="width:0%"></div></div>
                 <div class="jd-progress-text" id="jd-progress-text"></div>
@@ -904,6 +915,39 @@ class JobDetail {
         this._steps.forEach(s => stepsEl.appendChild(this._buildStepEl(s, null)));
 
         btn.addEventListener('click', () => this._executeJob(body));
+        this._maxLoadId = null;
+        this._renderLoadBound(body);
+    }
+
+    /** Laden bis Lade-ID: Auswahl der Obergrenze (nur für Jobs mit Ladestand). */
+    async _renderLoadBound(body) {
+        const box = body.querySelector('#jd-bound');
+        const sel = body.querySelector('#jd-bound-sel');
+        const info = body.querySelector('#jd-bound-info');
+        let daten;
+        try { daten = await window.api.etl.loadIds(); } catch (e) { return; }
+        const job = (daten.jobs || []).find(j => String(j.job_id) === String(this._jobId));
+        if (!job || !box.isConnected) return;
+        const datum = v => v ? new Date(v).toLocaleString('de-CH', { dateStyle: 'medium', timeStyle: 'short' }) : '–';
+        const stand = job.ladestand == null ? 'Noch kein Ladestand.'
+            : `Geladen bis Lade-ID ${esc(job.ladestand)}`
+              + (job.ladestand_snapshot ? ` · letzte Lieferung der Tabelle ${esc(datum(job.ladestand_snapshot))}` : '') + '.';
+        box.style.display = '';
+        if (!job.obergrenze) {
+            sel.disabled = true;
+            info.innerHTML = `${stand} Dieser Job lädt bis zum kleinsten Ladestand seiner Vorgänger-Jobs; `
+                + `die Obergrenze wird dort gesetzt.`;
+            return;
+        }
+        [...daten.lade_ids].reverse().forEach(l => {
+            const o = document.createElement('option');
+            o.value = l.lade_id;
+            o.textContent = `${l.lade_id} – ${datum(l.snapshot)} (${l.tabellen} Tab., ${l.zeilen.toLocaleString('de-CH')} Z.)`
+                + (job.ladestand != null && l.lade_id <= job.ladestand ? ' · geladen' : '');
+            sel.appendChild(o);
+        });
+        info.innerHTML = `${stand} Quelle ${esc(job.quelle)}; Lade-IDs über ${esc(daten.quellen)} Quelltabellen.`;
+        sel.addEventListener('change', () => { this._maxLoadId = sel.value ? Number(sel.value) : null; });
     }
 
     async _executeJob(body) {
@@ -913,7 +957,8 @@ class JobDetail {
         const progFill  = body.querySelector('#jd-progress-fill');
         const progText  = body.querySelector('#jd-progress-text');
 
-        if (!confirm(`Job "${this._job?.job_name || this._jobId}" starten?${this._initialLoad ? '\n\n⚠️ Initial Load: Alle Daten werden gelöscht!' : ''}`)) return;
+        const bisText = this._maxLoadId ? `\n\nLaden bis Lade-ID ${this._maxLoadId}` : '';
+        if (!confirm(`Job "${this._job?.job_name || this._jobId}" starten?${bisText}${this._initialLoad ? '\n\n⚠️ Initial Load: Alle Daten werden gelöscht!' : ''}`)) return;
 
         btn.disabled = true;
         btn.innerHTML = `<span class="jd-spinner"></span> Starte…`;
@@ -921,7 +966,10 @@ class JobDetail {
         progText.textContent = 'Job wird gestartet…';
 
         try {
-            const result = await window.api.etl.jobs.execute(this._jobId, { initial_load_mode: !!this._initialLoad });
+            const result = await window.api.etl.jobs.execute(this._jobId, {
+                initial_load_mode: !!this._initialLoad,
+                ...(this._maxLoadId ? { max_load_id: this._maxLoadId } : {}),
+            });
             const runId  = result?.etl_job_run_id || result?.run_id;
             document.dispatchEvent(new CustomEvent('studio:job-started', { detail: { job_id: this._jobId, run_id: runId } }));
             cancelBtn.style.display = '';

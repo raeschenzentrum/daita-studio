@@ -490,11 +490,14 @@ async def update_step_parameters(
 # Job Execution Endpoints
 # =============================================================================
 
-async def _execute_job_background(job_id: int, etl_service: ETLService, initial_load_mode: bool = False):
+async def _execute_job_background(job_id: int, etl_service: ETLService, initial_load_mode: bool = False,
+                                  max_load_id: Optional[int] = None):
     """Background Task für Job Execution"""
     try:
-        logger.info(f"Starting background execution of job {job_id} (initial_load_mode={initial_load_mode})")
-        job_run_id = etl_service.execute_job(job_id, initial_load_mode=initial_load_mode)
+        logger.info(f"Starting background execution of job {job_id} (initial_load_mode={initial_load_mode}, "
+                    f"max_load_id={max_load_id})")
+        job_run_id = etl_service.execute_job(job_id, initial_load_mode=initial_load_mode,
+                                             max_load_id=max_load_id)
         logger.info(f"Job {job_id} completed with run_id {job_run_id}")
     except Exception as e:
         logger.error(f"Background job {job_id} failed: {e}")
@@ -523,9 +526,12 @@ async def execute_job(
             raise HTTPException(status_code=400, detail=f"Job {job_id} is not active")
         
         # Background Task starten
-        background_tasks.add_task(_execute_job_background, job_id, etl_service, request.initial_load_mode)
+        background_tasks.add_task(_execute_job_background, job_id, etl_service, request.initial_load_mode,
+                                  request.max_load_id)
         
         mode_info = " (Initial Load Mode - Target wird gelöscht)" if request.initial_load_mode else ""
+        if request.max_load_id is not None:
+            mode_info += f" (bis Lade-ID {request.max_load_id})"
         return ExecuteJobResponse(
             etl_job_run_id=0,  # Wird im Background erstellt
             status="STARTED",
@@ -536,6 +542,19 @@ async def execute_job(
         raise
     except Exception as e:
         logger.error(f"Error executing job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/load-ids")
+async def get_load_ids(refresh: bool = False, etl_service: ETLService = Depends(get_etl_service)):
+    """
+    Verfügbare Lade-IDs (Lieferungen) über alle Quelltabellen der Delta-Jobs
+    und Ladestand je Job – Auswahlliste für „Laden bis Lade-ID“.
+    """
+    try:
+        return etl_service.get_load_ids(refresh=refresh)
+    except Exception as e:
+        logger.error(f"Error reading load ids: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

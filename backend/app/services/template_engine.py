@@ -18,6 +18,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Laufzeitparameter: setzt der Orchestrator je Lauf; ohne Angabe (Vorschau,
+# SQL-Export, Lauf ohne Vorgabe) gilt der Standardwert.
+#   LOAD_BOUND  Obergrenze des Ladelaufs (Laden bis Lade-ID) als BIGINT-Ausdruck
+RUNTIME_DEFAULTS = {
+    'LOAD_BOUND': 'CAST(NULL AS BIGINT)',
+}
+
 
 class SQLTemplateEngine:
     """
@@ -157,6 +164,9 @@ class SQLTemplateEngine:
             params['FK_SK_COLUMNS']     = ''
             params['FK_INSERT_COLUMNS'] = ''
             params['FK_JOINS']          = ''
+
+        for key, value in RUNTIME_DEFAULTS.items():
+            params.setdefault(key, value)
 
         return params
     

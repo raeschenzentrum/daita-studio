@@ -294,12 +294,13 @@ def widget_data(dashboard_id: str, widget_id: str, raw_filters: dict) -> dict:
     digest = hashlib.sha1(f"{sql}|{max_rows}|{json.dumps(params, default=str)}".encode()).hexdigest()
     key = f"dash::{dashboard_id}::{digest}"
     try:
-        result, from_cache = td_readonly.cached(key, lambda: td_readonly.query(sql, params, max_rows), ttl)
+        result, from_cache = td_readonly.cached(
+            key, lambda: td_readonly.query(sql, params, max_rows, art="daten"), ttl)
     except td_readonly.ReadOnlyViolation as e:
         raise DashboardError(500, f"Widget '{widget_id}': {e}")
     except Exception as e:
-        logger.exception("Widget %s/%s", dashboard_id, widget_id)
-        raise DashboardError(502, f"Abfrage fehlgeschlagen: {e}")
+        logger.warning("Widget %s/%s: %s", dashboard_id, widget_id, str(e).splitlines()[0])
+        raise DashboardError(502, f"Abfrage fehlgeschlagen: {str(e).splitlines()[0]}")
 
     rows = result["rows"]
     suppressed = 0
@@ -334,7 +335,7 @@ def datenstand(dashboard_id: str, dash: Optional[dict] = None) -> Optional[str]:
     sql, params, _ = _render_sql(dash, None, dash["datenstand"], {})
     try:
         res, _ = td_readonly.cached(f"dash::{dashboard_id}::__datenstand",
-                                    lambda: td_readonly.query(sql, params, 1),
+                                    lambda: td_readonly.query(sql, params, 1, art="daten"),
                                     int(dash.get("cache_ttl", td_readonly.DEFAULT_TTL)))
     except Exception as e:
         logger.warning("Datenstand %s: %s", dashboard_id, e)
@@ -407,8 +408,13 @@ def object_status(refs: list[str]) -> dict:
                 f"WHERE DatabaseName IN ({', '.join('?' * len(dbs))})", dbs, 100000, conn)["rows"]
             for db, obj, kind in rows:
                 kinds[(db.upper(), obj.upper())] = kind
-            for ref, (db, obj) in targets.items():
-                res[ref] = _status_eines(conn, db, obj, kinds.get((db, obj)))
+            daten = td_readonly.connection("daten") if td_readonly.hat_eigene_datenverbindung() else None
+            try:
+                for ref, (db, obj) in targets.items():
+                    res[ref] = _status_eines(conn, db, obj, kinds.get((db, obj)), daten)
+            finally:
+                if daten is not None:
+                    daten.close()
         return res
 
     key = "dashboards::status::" + json.dumps(sorted(targets.items()))
@@ -417,20 +423,26 @@ def object_status(refs: list[str]) -> dict:
     return out
 
 
-def _status_eines(conn, db: str, obj: str, kind: Optional[str]) -> dict:
+def _status_eines(conn, db: str, obj: str, kind: Optional[str], daten=None) -> dict:
+    """Zeilenzahl über die Meta-Verbindung; fehlt dort das Recht, über die
+    Daten-Verbindung (Lese-User der Dashboards) versuchen."""
     entry = {"objekt": f"{db}.{obj}", "existiert": kind is not None}
     if kind is None:
         return entry
     entry["art"] = {"T": "Tabelle", "O": "Tabelle", "V": "View"}.get(kind, kind)
-    try:
-        entry["zeilen"] = td_readonly.query(
-            f"LOCKING ROW FOR ACCESS SELECT COUNT(*) FROM {db}.{obj}", (), 1, conn)["rows"][0][0]
-    except Exception as e:
-        msg = str(e)
-        if "[Error 3523]" in msg:  # existiert, aber dem Studio-User fehlt SELECT
-            entry["zugriff"] = False
-        else:
-            entry["fehler"] = msg.splitlines()[0][:200]
+    sql = f"LOCKING ROW FOR ACCESS SELECT COUNT(*) FROM {db}.{obj}"
+    for c in [conn] + ([daten] if daten is not None else []):
+        try:
+            entry["zeilen"] = td_readonly.query(sql, (), 1, c)["rows"][0][0]
+            entry.pop("zugriff", None)
+            return entry
+        except Exception as e:
+            msg = str(e)
+            if "[Error 3523]" in msg:  # existiert, aber dieser Verbindung fehlt SELECT
+                entry["zugriff"] = False
+            else:
+                entry["fehler"] = msg.splitlines()[0][:200]
+                return entry
     return entry
 
 

@@ -53,7 +53,7 @@
                 symbol: 'circle',
                 symbolSize: 8,
                 lineStyle: { width: 2 },
-                color: s.farbe,
+                color: C().serienFarbe(s),
                 itemStyle: { borderColor: C().tokens().surface, borderWidth: 2 },
                 areaStyle: opt.flaeche && !mehrere ? { opacity: 0.12 } : undefined,
                 connectNulls: false,

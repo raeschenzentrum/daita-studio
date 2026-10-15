@@ -27,6 +27,9 @@
 
             const numerisch = idx.map(i => daten.rows.some(r => typeof r[i] === 'number')
                 && daten.rows.every(r => r[i] === null || typeof r[i] === 'number'));
+            // Kennungen (Jahr, Code, ID, Nummer) ohne Tausendertrennung anzeigen
+            const kennung = spalten.map(c => /(^|_)(JAHR|ID|CD|CODE|NR|SK)($|_)/i.test(c));
+            const zelle = (k, v) => kennung[k] && typeof v === 'number' ? String(v) : W.fmt.nach(format[spalten[k]], v);
 
             function draw() {
                 let rows = daten.rows;
@@ -44,7 +47,7 @@
                     `<th data-k="${k}" class="${numerisch[k] ? 'num' : ''}" aria-sort="${sortCol === k ? (asc ? 'ascending' : 'descending') : 'none'}">`
                     + `${W.esc(titel[c] || c)}${sortCol === k ? (asc ? ' ▲' : ' ▼') : ''}</th>`).join('');
                 const body = rows.slice(0, max).map(r => '<tr>' + idx.map((i, k) =>
-                    `<td class="${numerisch[k] ? 'num' : ''}">${W.esc(W.fmt.nach(format[spalten[k]], r[i]))}</td>`).join('') + '</tr>').join('');
+                    `<td class="${numerisch[k] ? 'num' : ''}">${W.esc(zelle(k, r[i]))}</td>`).join('') + '</tr>').join('');
                 const mehr = rows.length > max ? `<div class="dsh-table__mehr">${W.fmt.zahl(rows.length - max)} weitere Zeilen nicht angezeigt</div>` : '';
                 el.innerHTML = rows.length
                     ? `<div class="dsh-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>${mehr}</div>`

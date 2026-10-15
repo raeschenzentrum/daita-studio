@@ -8,6 +8,10 @@
 # Optional "dashboards": Ablage der Dashboard-Definitionen fuer diese Umgebung
 # (relativ zu install_root oder absolut), z. B. '../<kunde>-lakehouse/dashboards'.
 # Ohne Angabe gilt paths.dashboards aus config.yml (neutrales Beispiel).
+# Optional "dashboards_db": eigene Lese-Verbindung fuer die Fachdaten der
+# Dashboards (user, password, optional host), z. B. ein User mit Konsumenten-
+# Leserolle auf der ACCESS-Datenbank. Ohne Angabe lesen die Dashboards mit
+# user/password der Umgebung.
 # ============================================================================
 
 environments:

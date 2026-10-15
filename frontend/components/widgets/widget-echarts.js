@@ -156,9 +156,18 @@
         };
     }
 
-    /** Kategoriebeschriftung: ISO-Datum lokal formatieren */
+    /** Kategoriebeschriftung: ISO-Datum lokal formatieren; Zahlen sind hier Kennungen
+     *  (Jahr, Code), also ohne Tausendertrennung */
     function kategorieLabel(v) {
+        if (typeof v === 'number') return String(v);
         return window.studioWidgets.fmt.wert(v);
+    }
+
+    /** Farbe einer Serie: aus optionen.serien, „Übrige“ neutral grau, sonst Palette */
+    function serienFarbe(s) {
+        if (s.farbe) return s.farbe;
+        if (s.name === 'Übrige') return cssVar('--viz-muted', '#898781');
+        return undefined;
     }
 
     function mount(el, option) {
@@ -191,5 +200,5 @@
         return ziel;
     }
 
-    window.studioCharts = { mount, pivot, capSerien, applySerien, baseOption, kategorieLabel, merge, tokens, palette };
+    window.studioCharts = { mount, pivot, capSerien, applySerien, serienFarbe, baseOption, kategorieLabel, merge, tokens, palette };
 })();

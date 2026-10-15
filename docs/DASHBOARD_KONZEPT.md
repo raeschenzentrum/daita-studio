@@ -1,6 +1,6 @@
 # Dashboard-Konzept
 
-> Status: Schritte 1–3 umgesetzt (2026-10-15), Schritt 4 (Kundendashboards mit Kennzahlen) offen
+> Status: Schritte 1–4 umgesetzt (2026-10-15); erste Kundendashboards im Kunden-Workspace
 > Stand: 2026-10-15
 > Ziel: Ein modulares Dashboard-System als eigener Tab in daita-studio. Die Dashboards werden deklarativ konfiguriert; Inhalte, Datenbanknamen und SQL kommen aus dem Kunden-Workspace.
 
@@ -38,7 +38,7 @@ Dieses Dokument beschreibt nur das kundenneutrale Framework. Welche Dashboards e
 | `frontend/components/widgets/widget-line.js` | Zeitreihe mit Zoom über die Zeitachse, ECharts |
 | `frontend/components/widgets/widget-pie.js` | Anteile (Ring), ECharts |
 | `frontend/components/widgets/widget-heatmap.js` | Matrix zweier Dimensionen, z. B. Monat × Kategorie, ECharts |
-| `frontend/components/widgets/widget-boxplot.js` | Verteilung, z. B. Durchlaufzeiten, ECharts |
+| `frontend/components/widgets/widget-boxplot.js` | Verteilung je Kategorie aus vorgerechneten Kennwerten (z. B. Perzentile), ECharts |
 | `frontend/components/widgets/widget-sankey.js` | Flüsse zwischen Zuständen, ECharts |
 | `frontend/components/widgets/widget-map.js` | Choroplethenkarte aus einer lokal abgelegten GeoJSON-Datei, ECharts |
 | `frontend/components/widgets/widget-katalog.js` | gemeinsame Basis der Übersicht: Status aus Plan und Ist, Abdeckung, Legende, Linien, Side-Panel |
@@ -100,7 +100,7 @@ Die Übersichtsseite (Abschnitt 5) nutzt ECharts nicht: Kästen mit Attributlist
 - Ausgeführt werden nur SELECT-Statements, mit `LOCKING ROW FOR ACCESS` und Zeilenlimit.
 - Das Dashboard zeigt Aggregate. Kleine Zellen werden unterdrückt, wenn der Katalog eine Mindestzahl vorgibt (`min_zelle`).
 - Ein Bereich kann ein Schutzniveau tragen; der Service prüft es gegen die Rolle des Users. Die Zuordnung Schutzniveau → Rolle steht in `cfg/config.yml`.
-- Langfristig liest das Dashboard mit einem eigenen Read-only-User je Umgebung. Bis dahin nutzt es die Verbindung der aktiven Umgebung.
+- Eigener Lese-User je Umgebung: `dashboards_db: {user, password, host?}` am Eintrag in `cfg/environments.yml`. Widget-SQL und Datenstand laufen über diese Verbindung (z. B. ein User mit Konsumenten-Leserolle auf der ACCESS-Datenbank); Metadaten und Platzhalter (`META_LAYER`, `DBC`) weiter über die Verbindung der Umgebung. Für den Objektstatus zählt das Framework zuerst über die Umgebungs-Verbindung und bei fehlendem Recht (3523) über den Lese-User. Ohne `dashboards_db` liest alles über die Verbindung der Umgebung.
 
 ### Platzhalter
 
@@ -258,6 +258,7 @@ widgets:
 | `table` | `spalten`, `titel` (`{SPALTE: Text}`), `format` (`{SPALTE: …}`), `max_anzeige` |
 | `bar` | `x`, `y` (Spalte oder Liste), `serie`, `serien`, `gestapelt`, `horizontal`, `format`, `renderer`, `echarts` |
 | `line` | `x`, `y`, `serie`, `serien`, `flaeche`, `zoom` (Default ab 60 Punkten), `format`, `renderer`, `echarts` |
+| `boxplot` | `x`, `werte` (fünf Spalten: unten, Q1, Median, Q3, oben – vom SQL gerechnet), `anzahl`, `einheit`, `beschriftung`, `format`, `echarts` |
 
 Jedes Diagramm hat eine Umschaltung auf die Tabellenansicht derselben Daten (Barrierefreiheit, Kontrast) und einen PNG-Export. Ab 9 Serien werden die kleinsten zu „Übrige“ zusammengefasst; die Farbreihenfolge ist fest (`--viz-series-1` … `--viz-series-8` in `frontend/style.css`, CVD-geprüft).
 
@@ -307,15 +308,16 @@ widgets:
 ## 6. Umsetzungsschritte
 
 1. ✅ Read-only-Helfer, Router, Service, Platzhalter und Cache.
-2. ✅ ECharts als Vendor-Datei, Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“. Weitere Diagrammtypen (`pie`, `heatmap`, `boxplot`, `sankey`, `map`) nach Bedarf.
+2. ✅ ECharts als Vendor-Datei, Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“. Weitere Diagrammtypen (`pie`, `heatmap`, `sankey`, `map`) nach Bedarf; `boxplot` ist mit den Pilot-Dashboards dazugekommen.
 3. ✅ Übersichtsseite: `area-map`, `star-map`, `subject-map` (`frontend/components/widgets/widget-katalog.js` als gemeinsame Basis).
-4. Kundendashboards im Kunden-Workspace.
+4. ✅ Kundendashboards im Kunden-Workspace (erste: Pilot-Dashboards eines Einsatzes).
 
 ## 7. Offene Punkte
 
 - Dark Mode: Die Studio-Oberfläche hat keinen; die Diagrammfarben sind nur für hellen Hintergrund geprüft.
 - `meta_service.py` und `td_readonly.py` haben gleichartige Verbindungs- und Cache-Helfer; zusammenführen.
-- Weitere Diagrammtypen (`pie`, `heatmap`, `boxplot`, `sankey`, `map`) nach Bedarf der Kundendashboards.
+- Weitere Diagrammtypen (`pie`, `heatmap`, `sankey`, `map`) nach Bedarf der Kundendashboards.
+- Teradata erlaubt `PERCENTILE_CONT` nicht in Unterabfragen: Perzentile je Kennzahl in eigener Widget-Abfrage rechnen.
 
 - Eigener Read-only-User je Umgebung für das Dashboard.
 - Zuordnung Schutzniveau → Rolle.

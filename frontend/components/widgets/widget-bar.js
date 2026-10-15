@@ -35,7 +35,8 @@
                 type: 'category',
                 // Beschriftung schon formatiert, damit Achse und Tooltip gleich lesen
                 data: (horizontal ? [...kategorien].reverse() : kategorien).map(C().kategorieLabel),
-                axisLabel: { hideOverlap: true, width: horizontal ? 220 : undefined, overflow: 'truncate' },
+                // bis 12 Kategorien alle beschriften (sonst blendet ECharts Beschriftungen aus)
+                axisLabel: { interval: kategorien.length <= 12 ? 0 : 'auto', hideOverlap: kategorien.length > 12, width: horizontal ? 220 : undefined, overflow: 'truncate' },
             };
             const valAxis = { type: 'value', axisLabel: { formatter: v => W.fmt.zahl(v) } };
             option.xAxis = horizontal ? valAxis : katAxis;
@@ -53,7 +54,7 @@
                 barMaxWidth: 28,
                 barGap: '10%',
                 itemStyle: {
-                    color: s.farbe,
+                    color: C().serienFarbe(s),
                     // gestapelt: nur das oberste Segment rund, 1px Fläche als Trennfuge
                     borderRadius: !opt.gestapelt || i === serien.length - 1 ? radius : 0,
                     borderColor: surface,

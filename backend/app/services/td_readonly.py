@@ -1,7 +1,12 @@
 """
 Read-only-Zugriff auf Teradata für Auswertungen (Dashboards).
 
-- Verbindung immer über das AKTIVE Environment (DB_CONFIG-Proxy, X-Env-Id).
+- Verbindung immer über das AKTIVE Environment (X-Env-Id). Zwei Arten:
+    "meta"  – Verbindung des Environments (DB_CONFIG, Metadaten, DBC)
+    "daten" – eigene Lese-Verbindung für Fachdaten aus `dashboards_db:` des
+              Environments (cfg/environments.yml: user, password, optional host);
+              ohne Angabe dieselbe wie "meta". Zweck: Konsumenten-User mit Leserolle
+              statt des technischen Users.
 - Nur ein einzelnes SELECT (optional mit LOCKING ... FOR ACCESS davor);
   alles andere wird vor der Ausführung abgewiesen.
 - Ergebnis als {columns, rows} mit JSON-tauglichen Werten.
@@ -20,7 +25,7 @@ from typing import Any, Callable, Optional
 
 import teradatasql
 
-from app.config import DB_CONFIG, get_active_env_id
+from app.config import DB_CONFIG, get_active_env, get_active_env_id
 
 DEFAULT_MAX_ROWS = 5000
 DEFAULT_TTL = 300  # Sekunden
@@ -80,7 +85,18 @@ def _json_value(v: Any) -> Any:
     return v
 
 
-def _connect():
+def hat_eigene_datenverbindung() -> bool:
+    return bool((get_active_env().get("dashboards_db") or {}).get("user"))
+
+
+def _connect(art: str = "meta"):
+    eigen = get_active_env().get("dashboards_db") or {}
+    if art == "daten" and eigen.get("user"):
+        return teradatasql.connect(
+            host=eigen.get("host") or DB_CONFIG["host"],
+            user=eigen["user"],
+            password=eigen.get("password", ""),
+        )
     return teradatasql.connect(
         host=DB_CONFIG["host"],
         user=DB_CONFIG["username"],
@@ -89,16 +105,17 @@ def _connect():
     )
 
 
-def connection():
+def connection(art: str = "meta"):
     """Eine Verbindung für mehrere Abfragen (with td_readonly.connection() as conn: query(..., conn=conn))."""
-    return _connect()
+    return _connect(art)
 
 
-def query(sql: str, params: tuple | list = (), max_rows: int = DEFAULT_MAX_ROWS, conn=None) -> dict:
+def query(sql: str, params: tuple | list = (), max_rows: int = DEFAULT_MAX_ROWS, conn=None,
+          art: str = "meta") -> dict:
     """Führt ein geprüftes SELECT aus. Liefert {columns, rows, truncated}."""
     sql = check_select(sql)
     if conn is None:
-        with _connect() as own:
+        with _connect(art) as own:
             return query(sql, params, max_rows, own)
     with conn.cursor() as cur:
         cur.execute(sql, list(params))

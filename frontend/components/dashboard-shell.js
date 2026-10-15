@@ -63,6 +63,10 @@
         .dsh-card__ansicht { border: none; background: none; cursor: pointer; font-size: 0.75em;
                     color: var(--viz-muted, #898781); padding: 0 2px; }
         .dsh-card__ansicht:hover { color: var(--primary-color, #667eea); }
+        .dsh-card__info { border: 1px solid var(--viz-axis, #c3c2b7); background: none; cursor: pointer; border-radius: 50%;
+                    width: 18px; height: 18px; line-height: 15px; padding: 0; font-size: 0.72em; font-weight: 600;
+                    color: var(--viz-muted, #898781); font-family: Georgia, serif; flex: none; }
+        .dsh-card__info:hover { color: var(--primary-color, #667eea); border-color: var(--primary-color, #667eea); }
         .dsh-card__body { flex: 1; min-height: 0; position: relative; margin-top: 4px; }
         .dsh-card[data-auto] .dsh-card__body { position: static; }
         .dsh-card__foot { font-size: 0.72em; color: var(--viz-muted, #898781); min-height: 1.2em; }
@@ -160,6 +164,7 @@
 
         async oeffne(id, filter = {}) {
             this.dispose();
+            window.studioDashboardInfo?.close();
             try {
                 this.def = await window.api.dashboards.get(id);
             } catch (e) {
@@ -196,6 +201,7 @@
                         <span class="dsh-card__titel" title="${esc(w.titel || w.id)}">${esc(w.titel || w.id)}</span>
                         ${w.untertitel ? `<span class="dsh-card__untertitel">${esc(w.untertitel)}</span>` : ''}
                         ${W().get(w.typ)?.tabelle !== false ? '<button class="dsh-card__ansicht" title="Zwischen Diagramm und Tabelle wechseln">Tabelle</button>' : ''}
+                        ${window.studioDashboardInfo ? '<button class="dsh-card__info" title="Erläuterung, Datenmodell und SQL" aria-label="Informationen zum Widget">i</button>' : ''}
                     </div>
                     <div class="dsh-card__body"><div class="dsh-loading">Lade …</div></div>
                     <div class="dsh-card__foot"></div>
@@ -229,6 +235,15 @@
                 try { await window.api.dashboards.refresh(this.def.id); } catch (_) { /* studio:api-error */ }
                 fire('studio:dashboard-refresh', { dashboard: this.def.id });
             });
+            this.root.querySelectorAll('.dsh-card__info').forEach(b =>
+                b.addEventListener('click', () => {
+                    const card = b.closest('.dsh-card');
+                    const w = this.def.widgets.find(x => x.id === card.dataset.w);
+                    const filter = {};
+                    for (const fid of w.filter || []) filter[fid] = this.filter[fid];
+                    window.studioDashboardInfo.open({ dashboard: this.def.id, widget: w.id, titel: w.titel,
+                        typ: w.typ, filter, meta: card._daten?.meta });
+                }));
             this.root.querySelectorAll('.dsh-card__ansicht').forEach(b =>
                 b.addEventListener('click', () => {
                     const card = b.closest('.dsh-card');
@@ -316,6 +331,8 @@
             if (meta.abgeschnitten) teile.push('gekürzt');
             if (meta.unterdrueckt) teile.push(`${W().fmt.zahl(meta.unterdrueckt)} kleine Werte ausgeblendet`);
             if (meta.cache && card._widget.typ !== 'kpi') teile.push('aus Cache');
+            else if (meta.laufzeit_ms !== undefined && meta.laufzeit_ms !== null && card._widget.typ !== 'kpi')
+                teile.push(W().fmt.zahl(meta.laufzeit_ms / 1000, 1) + ' s');
             card.querySelector('.dsh-card__foot').textContent = teile.join(' · ');
         }
 

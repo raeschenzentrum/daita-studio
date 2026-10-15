@@ -42,7 +42,7 @@ class ReadOnlyViolation(ValueError):
 # SQL-Prüfung
 # ---------------------------------------------------------------------------
 
-_COMMENT_RE = re.compile(r"--[^\n]*|/\*.*?\*/", re.S)
+_COMMENT_RE = re.compile(r"--[^\r\n]*|/\*.*?\*/", re.S)
 _STRING_RE = re.compile(r"'(?:[^']|'')*'")
 _FORBIDDEN = re.compile(
     r"\b(INSERT|UPDATE|DELETE|MERGE|UPSERT|DROP|CREATE|REPLACE|ALTER|RENAME|"

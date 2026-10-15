@@ -56,6 +56,15 @@ def get_widget_data(dashboard_id: str, widget_id: str, request: Request):
     return _call(svc.widget_data, dashboard_id, widget_id, dict(request.query_params))
 
 
+@router.get("/{dashboard_id}/widgets/{widget_id}/info")
+def get_widget_info(dashboard_id: str, widget_id: str, request: Request):
+    """Info-Panel: Erläuterung, Hinweise, Fakten/Dimensionen, Joins, Herkunft, SQL.
+    Filterwerte wie beim Datenabruf; das SQL wird nur angezeigt, nie vom Client entgegengenommen."""
+    filter = dict(request.query_params)
+    zeilen = filter.pop("_zeilen", "1") != "0"   # _zeilen=0: ohne Zeilenzahlen (schnell)
+    return _call(svc.widget_info, dashboard_id, widget_id, filter, zeilen)
+
+
 @router.get("/{dashboard_id}/status")
 def get_status(dashboard_id: str):
     """Je Objekt aus 'objekte' der Definition: existiert, Art, Zeilenzahl."""

@@ -338,6 +338,9 @@
         catalogStatus:  ()                  => get('/dashboards/catalog/status'),
         geo:            (name)              => get(`/dashboards/geo/${encodeURIComponent(name)}`),
         refresh:        (id)                => post(`/dashboards/${encodeURIComponent(id)}/refresh`),
+        /** Info-Panel: Erläuterung, Objekte, Herkunft, SQL (nur Anzeige) */
+        info:           (id, widgetId, filter) =>
+            get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/info`, filter),
     };
 
     // ----------------------------------------------------------------

@@ -27,13 +27,14 @@ import hashlib
 import json
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any, Optional
 
 import yaml
 
 from app.config import META_SCHEMA, PATHS, get_active_env, get_active_env_id
-from app.services import td_readonly
+from app.services import sql_analyse, td_readonly
 
 logger = logging.getLogger(__name__)
 
@@ -293,9 +294,14 @@ def widget_data(dashboard_id: str, widget_id: str, raw_filters: dict) -> dict:
     # Schlüssel über SQL und Parameter: Widgets mit gleicher Abfrage teilen sich das Ergebnis
     digest = hashlib.sha1(f"{sql}|{max_rows}|{json.dumps(params, default=str)}".encode()).hexdigest()
     key = f"dash::{dashboard_id}::{digest}"
+    def _laden():
+        t0 = time.monotonic()
+        res = td_readonly.query(sql, params, max_rows, art="daten")
+        res["laufzeit_ms"] = int((time.monotonic() - t0) * 1000)
+        return res
+
     try:
-        result, from_cache = td_readonly.cached(
-            key, lambda: td_readonly.query(sql, params, max_rows, art="daten"), ttl)
+        result, from_cache = td_readonly.cached(key, _laden, ttl)
     except td_readonly.ReadOnlyViolation as e:
         raise DashboardError(500, f"Widget '{widget_id}': {e}")
     except Exception as e:
@@ -322,10 +328,81 @@ def widget_data(dashboard_id: str, widget_id: str, raw_filters: dict) -> dict:
         "cache": from_cache,
         "unterdrueckt": suppressed,
         "filter": {k: str(v) for k, v in used.items()},
+        "laufzeit_ms": result.get("laufzeit_ms"),
     }
     if dash.get("datenstand"):
         meta["datenstand"] = datenstand(dashboard_id, dash)
     return {"columns": result["columns"], "rows": rows, "meta": meta}
+
+
+def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bool = True) -> dict:
+    """Inhalt des Info-Panels: Erläuterung, Hinweise, Objekte (Fakt/Dimension mit
+    Status), Joins, Herkunft bis zu den Tabellen, SQL (Vorlage, eingesetzt, mit Werten)."""
+    dash = _load_dashboard(dashboard_id)
+    widget = _widget(dash, widget_id)
+    info = {
+        "dashboard": dashboard_id,
+        "widget": widget_id,
+        "titel": widget.get("titel", widget_id),
+        "typ": widget.get("typ"),
+        "erlaeuterung": widget.get("erlaeuterung"),
+        "hinweise": list(widget.get("hinweise") or []),
+        "katalog": None,
+        "objekte": [], "joins": [], "herkunft": [],
+        "sql": None,
+    }
+    if widget.get("katalog"):
+        info["katalog"] = _katalog_element(widget["katalog"])
+        if info["katalog"] and info["katalog"].get("luecke") and not info["hinweise"]:
+            info["hinweise"].append(info["katalog"]["luecke"])
+
+    if widget.get("daten") == "katalog":
+        info["erlaeuterung"] = info["erlaeuterung"] or (
+            "Erzeugt aus dem Katalog (katalog.yml) und dem live geprüften Stand der dort "
+            "genannten DB-Objekte; kein eigenes SQL.")
+        return info
+    if not widget.get("sql"):
+        return info
+
+    vorlage = _inside_root(widget["sql"]).read_text(encoding="utf-8")
+    sql, params, used = _render_sql(dash, widget, widget["sql"], raw_filters)
+    info["erlaeuterung"] = info["erlaeuterung"] or sql_analyse.erlaeuterung(vorlage)
+    objs = sql_analyse.objekte(sql)
+    # Zeilenzahlen können bei großen Views Sekunden dauern: der Client lädt sie getrennt nach
+    status = object_status([o["objekt"] for o in objs], zaehlen=zeilen) if objs else {}
+    for o in objs:
+        st = status.get(o["objekt"], {})
+        o.update({k: st.get(k) for k in ("existiert", "zeilen", "zugriff", "fehler") if k in st})
+    info["objekte"] = objs
+    info["joins"] = sql_analyse.joins(sql, objs)
+    try:
+        info["herkunft"] = sql_analyse.herkunft([o["objekt"] for o in objs])
+    except Exception as e:
+        logger.warning("Herkunft %s/%s: %s", dashboard_id, widget_id, str(e).splitlines()[0])
+        info["herkunft_fehler"] = str(e).splitlines()[0][:200]
+    info["sql"] = {
+        "datei": widget["sql"],
+        "vorlage": vorlage,
+        "gerendert": sql,
+        "mit_werten": sql_analyse.mit_werten(sql, params),
+        "parameter": {k: str(v) for k, v in used.items()},
+    }
+    return info
+
+
+def _katalog_element(pfad: str) -> Optional[dict]:
+    """Katalog-Element über Punktpfad aus IDs, z. B. 'm1.fact_asylstatistik.bewilligungsquote'."""
+    kat = catalog()
+    teile = pfad.split(".")
+    knoten_liste = (kat.get("bereiche") or []) + (kat.get("conformed_dimensionen") or [])
+    treffer = None
+    for teil in teile:
+        treffer = next((k for k in knoten_liste if isinstance(k, dict) and k.get("id") == teil), None)
+        if treffer is None:
+            return None
+        knoten_liste = [x for key in ("fakten", "dimensionen", "kennzahlen", "entitaeten", "produkte")
+                        for x in (treffer.get(key) or [])]
+    return {k: treffer.get(k) for k in ("id", "titel", "status", "luecke", "quelle") if treffer.get(k) is not None}
 
 
 def datenstand(dashboard_id: str, dash: Optional[dict] = None) -> Optional[str]:
@@ -381,7 +458,7 @@ def catalog() -> dict:
     return _resolve_sources(_load_yaml(path), variables())
 
 
-def object_status(refs: list[str]) -> dict:
+def object_status(refs: list[str], zaehlen: bool = True) -> dict:
     """Je 'DB.OBJEKT': {objekt, existiert, art, zeilen | zugriff=False | fehler}.
     Nicht auflösbare Verweise → fehler."""
     values = variables()
@@ -411,16 +488,24 @@ def object_status(refs: list[str]) -> dict:
             daten = td_readonly.connection("daten") if td_readonly.hat_eigene_datenverbindung() else None
             try:
                 for ref, (db, obj) in targets.items():
-                    res[ref] = _status_eines(conn, db, obj, kinds.get((db, obj)), daten)
+                    res[ref] = (_status_eines(conn, db, obj, kinds.get((db, obj)), daten) if zaehlen
+                            else _ohne_zaehlung(db, obj, kinds.get((db, obj))))
             finally:
                 if daten is not None:
                     daten.close()
         return res
 
-    key = "dashboards::status::" + json.dumps(sorted(targets.items()))
+    key = f"dashboards::status::{int(zaehlen)}::" + json.dumps(sorted(targets.items()))
     found, _ = td_readonly.cached(key, _load)
     out.update(found)
     return out
+
+
+def _ohne_zaehlung(db: str, obj: str, kind: Optional[str]) -> dict:
+    entry = {"objekt": f"{db}.{obj}", "existiert": kind is not None}
+    if kind is not None:
+        entry["art"] = {"T": "Tabelle", "O": "Tabelle", "V": "View"}.get(kind, kind)
+    return entry
 
 
 def _status_eines(conn, db: str, obj: str, kind: Optional[str], daten=None) -> dict:

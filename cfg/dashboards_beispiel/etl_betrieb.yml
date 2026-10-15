@@ -19,6 +19,7 @@ widgets:
   - id: kpi_laeufe
     typ: kpi
     titel: Läufe
+    erlaeuterung: "Anzahl der ETL-Läufe mit Startdatum im gewählten Zeitraum."
     sql: sql/etl_kpi.sql
     filter: [tage]
     pos: {x: 0, y: 0, b: 3, h: 1}
@@ -27,6 +28,7 @@ widgets:
   - id: kpi_erfolg
     typ: kpi
     titel: Erfolgsquote
+    erlaeuterung: "Erfolgreiche Läufe / (erfolgreiche + fehlgeschlagene Läufe) in Prozent; laufende Jobs zählen nicht mit."
     sql: sql/etl_kpi.sql
     filter: [tage]
     pos: {x: 3, y: 0, b: 3, h: 1}
@@ -35,6 +37,7 @@ widgets:
   - id: kpi_fehler
     typ: kpi
     titel: Fehlgeschlagen
+    erlaeuterung: "Anzahl fehlgeschlagener Läufe im Zeitraum; ab einem Fehler als kritisch markiert."
     sql: sql/etl_kpi.sql
     filter: [tage]
     pos: {x: 6, y: 0, b: 3, h: 1}
@@ -43,6 +46,7 @@ widgets:
   - id: kpi_dauer
     typ: kpi
     titel: Ø Laufzeit
+    erlaeuterung: "Mittlere Laufzeit aller Läufe im Zeitraum."
     sql: sql/etl_kpi.sql
     filter: [tage]
     pos: {x: 9, y: 0, b: 3, h: 1}
@@ -51,6 +55,7 @@ widgets:
   - id: laeufe_je_tag
     typ: bar
     titel: Läufe je Tag nach Status
+    erlaeuterung: "Läufe je Starttag, gestapelt nach Status."
     sql: sql/etl_laeufe_je_tag.sql
     filter: [tage]
     pos: {x: 0, y: 1, b: 7, h: 3}
@@ -67,6 +72,7 @@ widgets:
   - id: dauer_je_job
     typ: bar
     titel: Ø Laufzeit je Job (Top 15, Sekunden)
+    erlaeuterung: "Die 15 Jobs mit der längsten mittleren Laufzeit (nur erfolgreiche Läufe)."
     sql: sql/etl_dauer_je_job.sql
     filter: [tage]
     pos: {x: 7, y: 1, b: 5, h: 3}
@@ -75,6 +81,7 @@ widgets:
   - id: laufzeit_verlauf
     typ: line
     titel: Ø Laufzeit je Tag (Sekunden)
+    erlaeuterung: "Mittlere Laufzeit der erfolgreichen Läufe je Starttag."
     sql: sql/etl_laufzeit_verlauf.sql
     filter: [tage]
     pos: {x: 0, y: 4, b: 6, h: 3}
@@ -83,6 +90,7 @@ widgets:
   - id: letzte_fehler
     typ: table
     titel: Letzte fehlgeschlagene Läufe
+    erlaeuterung: "Die letzten 20 fehlgeschlagenen Läufe mit Job und Fehlermeldung."
     sql: sql/etl_letzte_fehler.sql
     filter: [tage]
     pos: {x: 6, y: 4, b: 6, h: 3}

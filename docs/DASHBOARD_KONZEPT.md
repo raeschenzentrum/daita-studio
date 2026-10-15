@@ -89,6 +89,7 @@ Die Übersichtsseite (Abschnitt 5) nutzt ECharts nicht: Kästen mit Attributlist
 | `GET /api/dashboards/catalog/status` | Viewer | je `quelle` im Katalog: existiert, Art, Zeilenzahl |
 | `GET /api/dashboards/{id}` | Viewer | Definition ohne SQL: Layout, Widgets, Filter |
 | `GET /api/dashboards/{id}/widgets/{wid}/data` | Viewer | `{columns, rows, meta: {datenstand, zeilen, cache}}`; Filterwerte als Query-Parameter |
+| `GET /api/dashboards/{id}/widgets/{wid}/info` | Viewer | Info-Panel: Erläuterung, Hinweise, Fakten/Dimensionen mit Joins, Herkunft bis zu den Tabellen, SQL (Abschnitt 5a); `_zeilen=0` ohne Zeilenzahlen |
 | `GET /api/dashboards/geo/{name}` | Viewer | GeoJSON für Karten-Widgets aus `dashboards/geo/` |
 | `GET /api/dashboards/{id}/status` | Viewer | je referenziertem DB-Objekt: existiert, Zeilenzahl, Datenstand |
 | `POST /api/dashboards/{id}/refresh` | Editor | Cache dieses Dashboards leeren |
@@ -305,12 +306,43 @@ widgets:
 - Klick auf ein Element öffnet ein Side-Panel mit Status, Quelle, Ist-Stand, Lücke und Attributen.
 - Unter 1100 px Breite stapeln sich die Spalten, die Verbindungslinien entfallen.
 
+## 5a. Info-Panel je Widget
+
+Jede Widget-Kachel hat ein Info-Symbol (ⓘ). Es öffnet rechts ein Seitenpanel (kein Modal; `frontend/components/dashboard-info.js`, Schließen mit × oder Escape):
+
+| Abschnitt | Inhalt | Quelle |
+|---|---|---|
+| Erläuterung | was das Widget zeigt, Definition der Kennzahl | `erlaeuterung:` am Widget; sonst der Kommentarblock (`--`) am Anfang der SQL-Datei |
+| Hinweise | Vorbehalte, farbig hervorgehoben | `hinweise:` (Liste); sonst die `luecke` des Katalog-Elements aus `katalog:` |
+| Im Katalog | Titel und Plan-Status des verknüpften Elements | `katalog:` als Punktpfad aus IDs, z. B. `bereich.fakt.kennzahl` |
+| Datenmodell | gelesene Objekte als Fakt/Dimension/Objekt mit Zeilenzahl, Join-Spalten | Analyse des gerenderten SQL (`backend/app/services/sql_analyse.py`): Objekte nach `FROM`/`JOIN`, Art nach Namenskonvention (`V_FACT_*`/`FACT_*`, `V_DIM_*`/`DIM_*`), Joins aus `alias.SPALTE = alias.SPALTE` |
+| Herkunft | Baum von der gelesenen View bis zu den Tabellen; mehrfach erreichte Objekte einmal aufgelöst („siehe oben“) | View-Definitionen aus `DBC.TablesV.RequestText` (lange Texte: `DBC.TableTextV`), über die Verbindung der Umgebung, nicht über `dashboards_db`; Cache 30 min |
+| SQL | umschaltbar: mit eingesetzten Filterwerten / Vorlage mit Platzhaltern; Kopieren | gerendertes SQL; die Werte sind nur zur Anzeige eingesetzt, ausgeführt wird weiter mit Bind-Parametern |
+| Letzter Lauf | Datenstand, Zeilen, Laufzeit, Cache | Rückgabedaten des Widgets |
+
+- Das SQL ist für alle Rollen sichtbar. Der Client kann weiterhin kein SQL senden.
+- Zeilenzahlen großer Views können Sekunden dauern: Das Panel lädt erst ohne (`_zeilen=0`) und setzt die Zahlen nach.
+- Die Analyse ist bewusst einfach (reguläre Ausdrücke): `FROM` in Funktionen (`EXTRACT(YEAR FROM …)`) wird übersprungen; Teradata-View-Texte trennen Zeilen mit `\r`.
+- Übersichts-Widgets (`daten: katalog`) haben kein SQL; das Panel nennt dann den Katalog als Quelle (die Übersichtsseiten blenden den Kartenkopf und damit das Symbol aus).
+
+```yaml
+  - id: quoten
+    typ: line
+    titel: Quote je Jahr
+    erlaeuterung: "Quote = A / (A + B + C), je Jahr in Prozent."
+    hinweise:
+      - "Gruppen sind ein Vorschlag, fachlich zu bestätigen."
+    katalog: bereich_a.fakt_a.quote
+    sql: sql/quoten.sql
+```
+
 ## 6. Umsetzungsschritte
 
 1. ✅ Read-only-Helfer, Router, Service, Platzhalter und Cache.
 2. ✅ ECharts als Vendor-Datei, Shell, Registry, Widgets `kpi`, `table`, `bar`, `line`; Test mit dem neutralen Beispiel „ETL-Betrieb“. Weitere Diagrammtypen (`pie`, `heatmap`, `sankey`, `map`) nach Bedarf; `boxplot` ist mit den Pilot-Dashboards dazugekommen.
 3. ✅ Übersichtsseite: `area-map`, `star-map`, `subject-map` (`frontend/components/widgets/widget-katalog.js` als gemeinsame Basis).
 4. ✅ Kundendashboards im Kunden-Workspace (erste: Pilot-Dashboards eines Einsatzes).
+5. ✅ Info-Panel je Widget (Abschnitt 5a).
 
 ## 7. Offene Punkte
 

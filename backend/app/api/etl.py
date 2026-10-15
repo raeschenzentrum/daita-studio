@@ -558,6 +558,69 @@ async def get_load_ids(refresh: bool = False, etl_service: ETLService = Depends(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class SimulationStartRequest(BaseModel):
+    """Tagessimulation: Kette bis zu dieser Lade-ID laden."""
+    bis_lade_id: int
+    tag_fuer_tag: bool = True   # jede Lade-ID ein eigener Tag; False = ein Lauf bis bis_lade_id
+
+
+@router.get("/simulation")
+async def get_simulation(etl_service: ETLService = Depends(get_etl_service)):
+    """
+    Tagessimulation: beteiligte Jobs in Reihenfolge, Ladestand der Kette
+    (kleinster Ladestand der Jobs mit Obergrenze), Lade-IDs, nächster Tag, Zustand.
+    """
+    from ..services import simulation_service as sim
+    try:
+        folge = sim.plan(etl_service)
+        daten = etl_service.get_load_ids()
+        staende = {j['job_id']: j for j in daten['jobs']}
+        for j in folge:
+            j['ladestand'] = staende.get(j['job_id'], {}).get('ladestand')
+        werte = [j['ladestand'] for j in folge if j['obergrenze']]
+        ladestand = None if not werte or any(w is None for w in werte) else min(werte)
+        ids = [l['lade_id'] for l in daten['lade_ids']]
+        naechster = next((i for i in ids if ladestand is None or i > ladestand), None)
+        return {
+            'jobs': folge,
+            'ladestand': ladestand,
+            'naechster_tag': naechster,
+            'lade_ids': daten['lade_ids'],
+            'quellen': daten['quellen'],
+            'status': sim.status(),
+        }
+    except Exception as e:
+        logger.error(f"Error reading simulation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/simulation/status")
+async def get_simulation_status():
+    """Nur der Zustand der laufenden/letzten Simulation (für das Polling)."""
+    from ..services import simulation_service as sim
+    return sim.status()
+
+
+@router.post("/simulation/start")
+async def start_simulation(request: SimulationStartRequest):
+    """Startet die Tagessimulation im Hintergrund (je Umgebung höchstens eine)."""
+    from ..services import simulation_service as sim
+    try:
+        return sim.start(ETLService, request.bis_lade_id, request.tag_fuer_tag)
+    except (RuntimeError, ValueError) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error starting simulation: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/simulation/stop")
+async def stop_simulation():
+    """Hält die Simulation nach dem laufenden Job an."""
+    from ..services import simulation_service as sim
+    return sim.stop()
+
+
 # =============================================================================
 # Job Runs Endpoints
 # =============================================================================

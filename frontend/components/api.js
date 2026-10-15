@@ -124,6 +124,13 @@
         databases:  ()                  => get('/etl/databases'),
         /** Lade-IDs der Quellen und Ladestand je Job (Laden bis Lade-ID) */
         loadIds:    (params)            => get('/etl/load-ids', params),
+        /** Tagessimulation: Kette Tag für Tag bis zu einer Lade-ID laden */
+        simulation: {
+            get:    ()                  => get('/etl/simulation'),
+            status: ()                  => get('/etl/simulation/status'),
+            start:  (body)              => post('/etl/simulation/start', body),
+            stop:   ()                  => post('/etl/simulation/stop', {}),
+        },
         /** Tabellen einer Datenbank */
         dbTables:   (dbId)              => get(`/etl/databases/${dbId}/tables`),
 

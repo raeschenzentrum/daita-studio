@@ -7,10 +7,11 @@
     <link rel="stylesheet" href="style.css?v=20261015d">
     <script src="config.js"></script>
     <script src="components/auth.js"></script>
-    <script src="components/api.js?v=20261015f"></script>
+    <script src="components/api.js?v=20261015g"></script>
     <script src="components/nav-header.js?v=20261015b"></script>
     <script src="components/job-list.js"></script>
     <script src="components/job-detail.js?v=8"></script>
+    <script src="components/load-simulation.js?v=1"></script>
     <script src="components/column-selector.js?v=9"></script>
     <script src="components/etl-wizard.js?v=14"></script>
     <style>
@@ -267,6 +268,7 @@
             <button class="page-tab active" data-tab="tab-jobs">⚙ Jobs</button>
             <button class="page-tab"        data-tab="tab-templates">📋 Templates</button>
             <button class="page-tab"        data-tab="tab-history">🕒 History</button>
+            <button class="page-tab"        data-tab="tab-simulation">📅 Tagessimulation</button>
         </div>
 
         <!-- ── Tab: Jobs ─────────────────────────────────────────── -->
@@ -313,6 +315,9 @@
                 </div>
             </div>
         </div>
+
+        <!-- ── Tab: Tagessimulation ──────────────────────────────── -->
+        <div class="tab-pane" id="tab-simulation"></div>
 
         <!-- ── Tab: History ──────────────────────────────────────── -->
         <div class="tab-pane" id="tab-history">
@@ -383,6 +388,7 @@ document.querySelectorAll('.page-tab[data-tab]').forEach(btn => {
         // Lazy-Load
         if (btn.dataset.tab === 'tab-templates') loadTemplates();
         if (btn.dataset.tab === 'tab-history')   loadHistory();
+        if (btn.dataset.tab === 'tab-simulation') new LoadSimulation(document.getElementById('tab-simulation')).load();
     });
 });
 

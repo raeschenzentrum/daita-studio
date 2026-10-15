@@ -24,8 +24,12 @@
         return v || fallback;
     }
 
+    // Ersatzwerte = Palette aus style.css (falls das Stylesheet veraltet im Cache liegt,
+    // bleiben die Serien trotzdem unterscheidbar)
+    const PALETTE_ERSATZ = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948'];
+
     function palette() {
-        return [1, 2, 3, 4, 5, 6, 7, 8].map(i => cssVar(`--viz-series-${i}`, '#2a78d6'));
+        return PALETTE_ERSATZ.map((f, i) => cssVar(`--viz-series-${i + 1}`, f));
     }
 
     function tokens() {
@@ -137,9 +141,16 @@
         return [...out, ...nachName.values()];
     }
 
+    const FARB_ERSATZ = {
+        'viz-muted': '#898781', 'viz-axis': '#c3c2b7',
+        'status-good': '#0ca30c', 'status-warning': '#fab219', 'status-serious': '#ec835a', 'status-critical': '#d03b3b',
+    };
+
     function farbe(f) {
         if (!f) return undefined;
-        return f.startsWith('#') ? f : cssVar(`--${f}`, undefined);
+        if (f.startsWith('#')) return f;
+        const m = /^viz-series-(\d)$/.exec(f);
+        return cssVar(`--${f}`, m ? PALETTE_ERSATZ[Number(m[1]) - 1] : FARB_ERSATZ[f]);
     }
 
     function baseOption(mehrereSerien) {

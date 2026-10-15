@@ -15,7 +15,7 @@ Pfade sind relativ zum Workspace-Root (das Verzeichnis, das `daita-studio/`, `da
 | Thema | Stand | Folge für das Konzept |
 |---|---|---|
 | Arbeitsweise | Entwicklung auf einer lokalen Teradata, Übertragung per Datei (ZIP), Einspielen auf dem Ziel | Export hier, Einspielen dort; Ziel ist nicht erreichbar |
-| Datenbanknamen | hier und dort gleich (z. B. `SEM_DEV_*` → `SEM_DEV_*`), später auch für TST und PRD | **keine Namensumsetzung**; der Exporter prüft nur, dass Quelle und Ziel denselben Präfix haben |
+| Datenbanknamen | hier und dort gleich (z. B. `SEM_DEV_*` → `SEM_DEV_*`) | **keine Namensumsetzung**; der Exporter prüft nur, dass Quelle und Ziel denselben Präfix haben |
 | Konfiguration | `cfg/environments.yml`, `cfg/config.yml`, `cfg/database.yml` werden auf dem Ziel einmal angelegt | nie im Paket; der Einspieler liest sie nur |
 | Master der Strukturen | die Entwicklungsdatenbank selbst (Tabellen aus Templates erzeugt, Views per Skript); keine vollständige DDL-Ablage in Git | Export per `SHOW TABLE` / `SHOW VIEW` aus der Entwicklungs-DB |
 | Master der Jobs | Meta-Schema (`META_*`) plus Step-Parameter-Dateien `etl/jobs/<env_id>/<job_id>/<step_id>.json` | beide Teile gehören in dasselbe Paket |
@@ -266,12 +266,12 @@ Geklärt (2026-10-15):
 | Rolle des Ziels | vorerst nur einspielen | IDs 1:1, Abbruch bei Kollision (Abschnitt 6) |
 | Umgebungs-ID | Ziel hat eine eigene `env_id` (z. B. `int_sem_dev`), Entwicklung `sem_dev`; beide stehen in derselben Umgebungsliste | Manifest trägt Quell- und Ziel-`env_id`; Step-Dateien landen in `etl/jobs/<ziel-env_id>/`; Variablen der Dashboards (`umgebungen.yml`) brauchen einen Eintrag je Ziel-`env_id`, die Abnahme prüft das |
 | Rückkanal | Abnahmebericht (Text, keine Daten) darf zurück | Bericht bestätigt den eingespielten Stand; die Lieferliste der Entwicklung führt „geliefert“ und „bestätigt“ getrennt |
+| Datenbanken auf dem Ziel | vorhanden; fehlende der Soll-Hierarchie legt ein eigenes Skript an, das vor dem ersten Einspielen auf dem Ziel läuft (Plan, dann Ausführen; ändert vorhandene Datenbanken nie) | Vorprüfung des Einspielers prüft nur die Existenz |
 
 Offen:
 
-1. **Datenbanken anlegen:** Wer legt die Datenbanken des Einsatzes auf dem Ziel an (Space, Eltern)? Das Konzept prüft nur ihre Existenz.
-2. **`META_ETL_LOAD_STATE`:** prüfen, ob ein Job die Zeile beim ersten Lauf selbst anlegt; sonst Startzeile im Paket `jobs`.
-3. **Ablage der Step-Parameter:** `etl/jobs/` ist kundenspezifisch und liegt heute im daita-studio-Repo (bekannter offener Punkt in `daita-studio/CLAUDE.md`). Für das Paket unerheblich (Pfad aus `paths.etl_jobs`), für die Neutralität Handlungsbedarf.
+1. **`META_ETL_LOAD_STATE`:** prüfen, ob ein Job die Zeile beim ersten Lauf selbst anlegt; sonst Startzeile im Paket `jobs`.
+2. **Ablage der Step-Parameter:** `etl/jobs/` ist kundenspezifisch und liegt heute im daita-studio-Repo (bekannter offener Punkt in `daita-studio/CLAUDE.md`). Für das Paket unerheblich (Pfad aus `paths.etl_jobs`), für die Neutralität Handlungsbedarf.
 
 ---
 
@@ -287,6 +287,7 @@ Offen:
 | | `abnahme.py` | Abschnitt 10; auch einzeln aufrufbar |
 | `daita-lakehouse-db/tools/` | `export_struktur.py` | Paketart `strukturen` (aus `clone_layer_struktur.py`, ohne Namensumsetzung, plus Startdaten) |
 | | `rechte_sem.py` | zusätzlicher Modus „SQL-Datei schreiben“ für Paketart `rechte` |
+| | `datenbanken_sem.py` | vorhanden (2026-10-15): fehlende Datenbanken der Soll-Hierarchie auf dem Ziel anlegen, Dry-Run, Protokoll, Prüfung |
 | `<kunde>-lakehouse/deploy/` | `paket_<kunde>.py` | Aufrufskript mit DEF-Block: Umgebungen DEV/INT/PRD je Präfix, Meta-Schema, Quell- und Ziel-`env_id`, Pfade; Umfang je Art; Startdaten-Regeln; Paketablage |
 | | `migrationen/` | freigegebene Migrationen befüllter Tabellen |
 | | `lieferungen.md` | gelieferte und per Abnahmebericht bestätigte Pakete je Ziel |

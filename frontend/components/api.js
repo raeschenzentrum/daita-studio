@@ -351,6 +351,8 @@
         /** Star-Explorer: Werte eines Attributs (Filterliste) und gruppierte Abfrage (nur Auswahl, nie SQL) */
         sternWerte:     (id, widgetId, params) =>
             get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/stern/werte`, params),
+        sternR:         (id, widgetId, params) =>
+            get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/stern/r`, params),
         sternAbfrage:   (id, widgetId, params) =>
             get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/stern/abfrage`, params),
         /** Info-Panel: Erläuterung, Objekte, Herkunft, SQL (nur Anzeige) */

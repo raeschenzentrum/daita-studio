@@ -92,6 +92,16 @@ def get_stern_abfrage(dashboard_id: str, widget_id: str, fakt: str, q: str = "{}
     return _call(star_service.abfrage, dashboard_id, widget_id, fakt, auswahl, offset, limit, ausfuehren)
 
 
+@router.get("/{dashboard_id}/widgets/{widget_id}/stern/r")
+def get_stern_r(dashboard_id: str, widget_id: str, fakt: str, q: str = "{}"):
+    """Star-Explorer: R-Gerüst zur Auswahl (Vorlage widget.R, Excel-Export)."""
+    try:
+        auswahl = json.loads(q)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="q ist kein gültiges JSON")
+    return _call(star_service.r_code, dashboard_id, widget_id, fakt, auswahl)
+
+
 @router.get("/{dashboard_id}/status")
 def get_status(dashboard_id: str):
     """Je Objekt aus 'objekte' der Definition: existiert, Art, Zeilenzahl."""

@@ -91,10 +91,12 @@ def _definition() -> dict:
     for did, d in (roh.get("dimensionen") or {}).items():
         if not _ID.match(str(d.get("schluessel", ""))):
             raise StarError(500, f"{DATEI}: Dimension {did}: ungültiger Schlüssel {d.get('schluessel')!r}")
-        dims[did] = {**d, "id": did, "view": aufloesen(d["view"]), "attribute": _attribute(d, did)}
+        dims[did] = {**d, "id": did, "view": aufloesen(d["view"]), "view_roh": str(d["view"]),
+                     "attribute": _attribute(d, did)}
     fakten = {}
     for fid, f in (roh.get("fakten") or {}).items():
-        fakten[fid] = {**f, "id": fid, "view": aufloesen(f["view"]), "attribute": _attribute(f, fid),
+        fakten[fid] = {**f, "id": fid, "view": aufloesen(f["view"]), "view_roh": str(f["view"]),
+                       "attribute": _attribute(f, fid),
                        "kennzahlen": f.get("kennzahlen") or [], "dimensionen": f.get("dimensionen") or []}
         for r in fakten[fid]["dimensionen"]:
             if r.get("dim") not in dims:
@@ -224,9 +226,13 @@ def _wert(a: dict, v: Any) -> Any:
     return str(v)
 
 
-def baue(defi: dict, fakt: dict, auswahl: dict) -> dict:
+def baue(defi: dict, fakt: dict, auswahl: dict, r_vorlage: bool = False) -> dict:
     """SQL mit Bind-Parametern aus der Auswahl:
-    {gruppen: [{rolle, attr}], filter: [{rolle, attr, op, werte}], kennzahlen: [{id, agg}]}."""
+    {gruppen: [{rolle, attr}], filter: [{rolle, attr, op, werte}], kennzahlen: [{id, agg}]}.
+    r_vorlage: Views mit Platzhaltern (${CON_ACCESS}) und Filterwerte als ${FILTER:<id>}
+    statt ?, für das R-Gerüst; die Werte stehen dann in r_filter."""
+    r_filter: list = []
+    view = (lambda node: node["view_roh"]) if r_vorlage else (lambda node: node["view"])
     rollen = _rollen(defi, fakt)
     mehrfach = {r["dim"]["id"] for r in rollen if sum(x["dim"]["id"] == r["dim"]["id"] for x in rollen) > 1}
     genutzt: dict = {}           # rolle -> Rolle (nur JOINs, die gebraucht werden)
@@ -287,37 +293,44 @@ def baue(defi: dict, fakt: dict, auswahl: dict) -> dict:
         expr = _ausdruck(a, alias)
         werte = fl.get("werte")
         werte = werte if isinstance(werte, list) else ([] if werte is None else [werte])
+        basis = f"{fl.get('rolle') or 'fakt'}_{a['id']}".lower()
+
+        def ph(wert, nr=None):
+            """Platzhalter für einen Filterwert: ? (Bind-Parameter) oder ${FILTER:id} (R)."""
+            if not r_vorlage:
+                params.append(wert)
+                return "?"
+            fid = basis if nr is None else f"{basis}_{nr}"
+            r_filter.append({"id": fid, "titel": f"{rtitel}: {a.get('titel') or a['id']}", "typ": a.get("typ", "text"),
+                             "wert": wert})
+            return "${FILTER:" + fid + "}"
         if op == "null":
             where.append(f"{expr} IS NULL")
         elif op == "notnull":
             where.append(f"{expr} IS NOT NULL")
         elif op in ("in", "eq") and len(werte) > 1:
             werte = werte[:200]
-            where.append(f"{expr} IN ({', '.join('?' for _ in werte)})")
-            params += [_wert(a, w) for w in werte]
+            where.append(f"{expr} IN ({', '.join(ph(_wert(a, w), i + 1) for i, w in enumerate(werte))})")
         elif op == "between":
             if len(werte) != 2:
                 raise StarError(400, f"Filter {a['id']}: von–bis braucht zwei Werte")
-            where.append(f"{expr} BETWEEN ? AND ?")
-            params += [_wert(a, w) for w in werte]
+            where.append(f"{expr} BETWEEN {ph(_wert(a, werte[0]), 'von')} AND {ph(_wert(a, werte[1]), 'bis')}")
         elif op == "like":
-            where.append(f"UPPER({expr}) LIKE UPPER(?)")
-            params.append(f"%{_wert({**a, 'typ': 'text'}, werte[0] if werte else '')}%")
+            where.append(f"UPPER({expr}) LIKE UPPER({ph('%' + str(_wert({**a, 'typ': 'text'}, werte[0] if werte else '')) + '%')})")
         else:
             sym = {"eq": "=", "in": "=", "ne": "<>", "ge": ">=", "le": "<="}[op]
-            where.append(f"{expr} {sym} ?")
-            params.append(_wert(a, werte[0] if werte else None))
+            where.append(f"{expr} {sym} {ph(_wert(a, werte[0] if werte else None))}")
         where_kommentar.append(rtitel)
 
     # Lesbares SQL mit Kommentaren (so wird es auch ausgeführt)
     z = [f"-- Fakt: {fakt.get('titel', fakt['id'])}"]
     z.append("SELECT")
     z += [f"    {s}," for s in select[:-1]] + [f"    {select[-1]}"]
-    z.append(f"FROM {fakt['view']} f")
+    z.append(f"FROM {view(fakt)} f")
     for r in rollen:
         if r["rolle"] in genutzt:
             z.append(f"-- Dimension {r['titel']}")
-            z.append(f"LEFT JOIN {r['dim']['view']} {r['alias']}")
+            z.append(f"LEFT JOIN {view(r['dim'])} {r['alias']}")
             z.append(f"    ON {r['alias']}.{r['dim']['schluessel']} = f.{r['spalte']}")
     if where:
         z.append("WHERE " + "\n  AND ".join(f"{w}  -- {k}" for w, k in zip(where, where_kommentar)))
@@ -325,7 +338,7 @@ def baue(defi: dict, fakt: dict, auswahl: dict) -> dict:
         z.append("GROUP BY " + ", ".join(group))
         z.append("ORDER BY " + ", ".join(str(i + 1) for i in range(len(group))))
     sql = "\n".join(z)
-    return {"sql": sql, "params": params, "spalten": spalten, "kontrolle": kontrolle,
+    return {"sql": sql, "params": params, "spalten": spalten, "kontrolle": kontrolle, "r_filter": r_filter,
             "joins": [r["rolle"] for r in rollen if r["rolle"] in genutzt]}
 
 
@@ -381,6 +394,34 @@ def abfrage(dashboard_id: str, widget_id: str, fakt_id: str, auswahl: dict,
         "cache": cache, "laufzeit_ms": res.get("laufzeit_ms"),
     })
     return out
+
+
+def r_code(dashboard_id: str, widget_id: str, fakt_id: str, auswahl: dict) -> dict:
+    """R-Gerüst zur aktuellen Auswahl: dieselbe Vorlage wie bei den übrigen Widgets
+    (widget.R: DEF-Block mit Umgebungen DEV/INT/PRD, Excel-Export wie QL1).
+    Datenbanknamen als ${VAR}, Filterwerte als ${FILTER:id} – das Skript setzt sie
+    aus dem DEF-Block ein."""
+    from app.services import r_skelett
+    dash, defi, ids = _widget_fakten(dashboard_id, widget_id)
+    if fakt_id not in ids:
+        raise StarError(400, f"Fakt '{fakt_id}' gehört nicht zu diesem Widget")
+    fakt = defi["fakten"][fakt_id]
+    q = baue(defi, fakt, auswahl or {}, r_vorlage=True)
+    grenze = ds._min_zelle(dash)
+    widget = {
+        "id": f"{widget_id}_{fakt_id}", "typ": "table",   # Excel: <dashboard>_<widget>_<fakt>_<Datum>…
+        "titel": f"Star-Explorer {fakt.get('titel', fakt_id)}",
+        "erlaeuterung": (f"Abfrage aus dem Star-Explorer auf dem Fakt {fakt.get('titel', fakt_id)}. "
+                         + (fakt.get("beschreibung") or "")),
+        "hinweise": [f"Im Dashboard werden Gruppen unter {grenze} Faktzeilen maskiert; dieses Skript "
+                     f"liefert die ungekürzten Werte. Vor der Weitergabe kleine Gruppen ausblenden."] if grenze else [],
+    }
+    umg = ds._root() / "umgebungen.yml"
+    r_umg = (ds._load_yaml(umg).get("r_umgebungen") or {}) if umg.exists() else {}
+    fdefs = {f["id"]: {"id": f["id"], "titel": f["titel"], "typ": f["typ"]} for f in q["r_filter"]}
+    werte_ = {f["id"]: f["wert"] for f in q["r_filter"]}
+    code = r_skelett.erzeuge(dash, widget, q["sql"], werte_, fdefs, r_umg, ds.variables, ds._root(), "")
+    return {"r_code": code, "dateiname": f"{dashboard_id}_{fakt_id}.R"}
 
 
 def voller_stern_sql(dashboard_id: str, widget_id: str) -> str:

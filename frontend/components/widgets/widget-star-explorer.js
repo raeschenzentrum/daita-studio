@@ -7,6 +7,8 @@
  * Darunter das erzeugte SQL (live, nur die gebrauchten JOINs) und das Ergebnis
  * als Tabelle; beim Scrollen werden weitere Zeilen nachgeladen.
  *
+ * „R-Gerüst“: R-Skript zur aktuellen Auswahl (Vorlage widget.R, Excel-Export).
+ *
  * Daten: Widget-Daten enthalten `stern` (Definition aus sterne.yml, ohne Ausdrücke);
  * Abfragen über /api/dashboards/<id>/widgets/<wid>/stern/abfrage (nur Auswahl, nie SQL).
  * optionen: fakten (im Backend ausgewertet), seite (Zeilen je Nachladen, Default 100)
@@ -59,7 +61,10 @@
                   overflow-x: auto; max-height: 360px; }
     .sx-sql .k { color: #8fb4ff; font-weight: 600; } .sx-sql .c { color: #8a8fa3; font-style: italic; } .sx-sql .s { color: #ffd38a; }
     .sx-sql .j { background: rgba(143,180,255,.12); display: inline-block; width: 100%; }
-    .sx-copy { position: absolute; top: 8px; right: 8px; font-size: .8em; }
+    .sx-copy { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; }
+    .sx-copy .sx-btn { font-size: .8em; padding: 5px 10px; }
+    .sx-r pre { margin: 8px 0 0; background: #f7f8fb; border: 1px solid var(--border-color, #e3e4ea); border-radius: 8px; padding: 12px 14px;
+                font-size: .8em; line-height: 1.45; overflow: auto; max-height: 420px; }
     .sx-res { border: 1px solid var(--border-color, #e3e4ea); border-radius: 8px; max-height: 480px; overflow: auto; }
     .sx-res table { border-collapse: collapse; width: 100%; font-size: .86em; }
     .sx-res th, .sx-res td { padding: 5px 10px; border-bottom: 1px solid #f0f1f5; white-space: nowrap; text-align: left; }
@@ -221,7 +226,18 @@
                         <button class="sx-btn sx-btn--s" data-act="reset">Auswahl leeren</button>
                         <span class="sx-msg" data-info></span>
                     </div>
-                    <div class="sx-sql"><pre data-sql></pre><button class="sx-btn sx-btn--s sx-copy" data-act="copy">SQL kopieren</button></div>
+                    <div class="sx-sql"><pre data-sql></pre><div class="sx-copy">
+                        <button class="sx-btn sx-btn--s" data-act="copy">SQL kopieren</button>
+                        <button class="sx-btn sx-btn--s" data-act="r" title="R-Skript zu dieser Abfrage: DEF-Block mit Umgebungen, Excel-Export wie QL1">R-Gerüst</button></div></div>
+                    <div class="sx-r" data-r hidden>
+                        <div class="sx-bar"><b>R-Gerüst zur aktuellen Abfrage</b>
+                            <span class="sx-hint">Zugangsdaten im DEF-Block statt „TODO“ eintragen; Filterwerte stehen in DEF$filter.</span>
+                            <span style="flex:1"></span>
+                            <button class="sx-btn sx-btn--s" data-act="r-copy">Kopieren</button>
+                            <button class="sx-btn sx-btn--s" data-act="r-save">Als .R speichern</button>
+                            <button class="sx-btn sx-btn--s" data-act="r-zu">Schließen</button></div>
+                        <pre data-r-code></pre>
+                    </div>
                     <div class="sx-res" data-res><div class="sx-hint" style="padding:10px">Noch keine Abfrage ausgeführt.</div></div>
                 </div>`;
                 linien();
@@ -238,6 +254,8 @@
                 cols[2].innerHTML = dims.filter((_, i) => i % 2 === 1).map(dimBox).join('');
                 linien();
                 sqlVorschau();
+                const rBox = el.querySelector('[data-r]');
+                if (rBox && !rBox.hidden) rGeruest();   // offenes R-Gerüst folgt der Auswahl
             }
 
             function linien() {
@@ -330,6 +348,18 @@
                 } catch (e) {
                     el.querySelector('[data-info]').textContent = e.message;
                 } finally { r.laedt = false; }
+            }
+
+            async function rGeruest() {
+                const box = el.querySelector('[data-r]'), pre = el.querySelector('[data-r-code]');
+                box.hidden = false;
+                pre.textContent = 'Erzeuge R-Gerüst …';
+                try {
+                    const r = await api.sternR(dashId, widgetId, { fakt: fakt.id, q: JSON.stringify(auswahlApi()) });
+                    pre.textContent = r.r_code;
+                    box._datei = r.dateiname;
+                    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                } catch (e) { pre.textContent = `# ${e.message}`; }
             }
 
             // ---------------- Filter-Popover ----------------
@@ -428,6 +458,20 @@
                 const act = t.closest('[data-act]')?.dataset.act;
                 if (act === 'run') ausfuehren();
                 if (act === 'reset') { auswahl = neueAuswahl(fakt); ergebnis = null; aufbauen(); }
+                if (act === 'r') rGeruest();
+                if (act === 'r-zu') el.querySelector('[data-r]').hidden = true;
+                if (act === 'r-copy') {
+                    navigator.clipboard?.writeText(el.querySelector('[data-r-code]').textContent)
+                        .then(() => { t.textContent = 'Kopiert'; setTimeout(() => { t.textContent = 'Kopieren'; }, 1500); });
+                }
+                if (act === 'r-save') {
+                    const box = el.querySelector('[data-r]');
+                    const blob = new Blob([el.querySelector('[data-r-code]').textContent], { type: 'text/plain;charset=utf-8' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob); a.download = box._datei || 'star_explorer.R';
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+                }
                 if (act === 'copy') {
                     const sql = el.querySelector('[data-sql]')._sql || '';
                     navigator.clipboard?.writeText(sql).then(() => { t.textContent = 'Kopiert'; setTimeout(() => { t.textContent = 'SQL kopieren'; }, 1500); });

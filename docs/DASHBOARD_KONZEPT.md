@@ -93,6 +93,7 @@ Die Übersichtsseite (Abschnitt 5) nutzt ECharts nicht: Kästen mit Attributlist
 | `GET /api/dashboards/{id}/widgets/{wid}/stern` | Viewer | Star-Explorer: Fakten, Kennzahlen, Dimensionen (Rollen, Alias, Join-Spalte), freigegebene Attribute (Abschnitt 5b) |
 | `GET /api/dashboards/{id}/widgets/{wid}/stern/werte` | Viewer | Werte eines Attributs mit `auswahl: true` (`fakt`, `rolle`, `attr`) |
 | `GET /api/dashboards/{id}/widgets/{wid}/stern/abfrage` | Viewer | Auswahl als JSON (`q` = Gruppen, Filter, Kennzahlen), `offset`/`limit`; liefert erzeugtes SQL und eine Seite des gruppierten Ergebnisses; `ausfuehren=false` nur SQL |
+| `GET /api/dashboards/{id}/widgets/{wid}/stern/r` | Viewer | R-Gerüst zur Auswahl (`fakt`, `q`): Vorlage `widget.R`, Views mit `${VAR}`, Filterwerte als `${FILTER:id}` im DEF-Block |
 | `GET /api/dashboards/geo/{name}` | Viewer | GeoJSON für Karten-Widgets aus `dashboards/geo/` |
 | `GET /api/dashboards/{id}/status` | Viewer | je referenziertem DB-Objekt: existiert, Zeilenzahl, Datenstand |
 | `POST /api/dashboards/{id}/refresh` | Editor | Cache dieses Dashboards leeren |
@@ -342,6 +343,7 @@ Regeln:
 - Ergebnis immer gruppiert, höchstens 10 000 Gruppen; es wird 10 Minuten zwischengespeichert, geblättert wird im Cache.
 - Gruppen mit weniger als `min_zelle` Faktzeilen (Dashboard oder `katalog.yml`) werden maskiert, ebenso zählende Kennzahlen unter dieser Grenze.
 - Info-Panel: Objekte, Joins und Herkunft aus dem vollständigen Stern je Fakt.
+- **R-Gerüst** zur aktuellen Auswahl (Knopf neben „SQL kopieren“; folgt der Auswahl, solange es offen ist): dieselbe Vorlage `widget.R` wie im Info-Panel (DEF-Block mit Umgebungen, Excel-Export). Views stehen mit Platzhaltern (`${CON_ACCESS}`) im SQL, Filterwerte als `${FILTER:<rolle>_<attribut>[_n|_von|_bis]}` mit ihren Werten in `DEF$filter`. Das Skript maskiert nicht; ein Hinweis im Kopf weist darauf hin.
 - Ein Bereich im Katalog mit `explorer: <dashboard-id>` verlinkt in der Übersicht auf den Star-Explorer.
 
 ## 5a. Info-Panel je Widget

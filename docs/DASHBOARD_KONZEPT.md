@@ -90,6 +90,9 @@ Die Übersichtsseite (Abschnitt 5) nutzt ECharts nicht: Kästen mit Attributlist
 | `GET /api/dashboards/{id}` | Viewer | Definition ohne SQL: Layout, Widgets, Filter |
 | `GET /api/dashboards/{id}/widgets/{wid}/data` | Viewer | `{columns, rows, meta: {datenstand, zeilen, cache}}`; Filterwerte als Query-Parameter |
 | `GET /api/dashboards/{id}/widgets/{wid}/info` | Viewer | Info-Panel: Erläuterung, Hinweise, Fakten/Dimensionen mit Joins, Herkunft bis zu den Tabellen, SQL (Abschnitt 5a); `_zeilen=0` ohne Zeilenzahlen |
+| `GET /api/dashboards/{id}/widgets/{wid}/stern` | Viewer | Star-Explorer: Fakten, Kennzahlen, Dimensionen (Rollen, Alias, Join-Spalte), freigegebene Attribute (Abschnitt 5b) |
+| `GET /api/dashboards/{id}/widgets/{wid}/stern/werte` | Viewer | Werte eines Attributs mit `auswahl: true` (`fakt`, `rolle`, `attr`) |
+| `GET /api/dashboards/{id}/widgets/{wid}/stern/abfrage` | Viewer | Auswahl als JSON (`q` = Gruppen, Filter, Kennzahlen), `offset`/`limit`; liefert erzeugtes SQL und eine Seite des gruppierten Ergebnisses; `ausfuehren=false` nur SQL |
 | `GET /api/dashboards/geo/{name}` | Viewer | GeoJSON für Karten-Widgets aus `dashboards/geo/` |
 | `GET /api/dashboards/{id}/status` | Viewer | je referenziertem DB-Objekt: existiert, Zeilenzahl, Datenstand |
 | `POST /api/dashboards/{id}/refresh` | Editor | Cache dieses Dashboards leeren |
@@ -305,6 +308,41 @@ widgets:
 - Der gewählte Bereich steht im URL-Hash (`bereich=`); ein Produkt mit `dashboard:` verlinkt auf dieses Dashboard, sobald es existiert.
 - Klick auf ein Element öffnet ein Side-Panel mit Status, Quelle, Ist-Stand, Lücke und Attributen.
 - Unter 1100 px Breite stapeln sich die Spalten, die Verbindungslinien entfallen.
+
+## 5b. Star-Explorer (Widget-Typ `star-explorer`)
+
+Zeigt ein Sternschema und lässt es abfragen – zum Verstehen der Datenstruktur
+und des SQL: Fakt in der Mitte (Kennzahlen, eigene Attribute), Dimensionen
+links und rechts mit Alias, View und Join-Bedingung, Linien vom Fakt zu jeder
+Dimension. Je Attribut **▦ gruppieren** (GROUP BY) und **Filter** (WHERE: Auswahlliste
+bei `auswahl: true`, sonst =, ≠, enthält, ≥, ≤, von–bis, leer). Darunter das
+erzeugte SQL (live; nur gebrauchte Dimensionen werden gejoint und sind
+hervorgehoben) und das Ergebnis als Tabelle, die beim Scrollen nachlädt.
+
+Definition `sterne.yml` in der Dashboard-Ablage (Format im Kopf von
+`backend/app/services/star_service.py`): Dimensionen mit View, Schlüssel und
+freigegebenen Attributen (`spalte` oder `ausdruck` mit `{a}` = Alias, `typ`,
+`auswahl`); Fakten mit View, Kennzahlen (`agg`: count, count_distinct, sum,
+avg, min, max) und Dimensionsrollen (`rolle`, `dim`, `spalte`, `alias`).
+Hängt eine Dimension mehrfach am Fakt (Rollen, z. B. zwei Datumsrollen), wird
+sie je Rolle mit eigenem Alias gejoint.
+
+```yaml
+widgets:
+  - id: stern
+    typ: star-explorer
+    pos: {x: 0, y: 0, b: 12, h: auto}
+    optionen:
+      fakten: [geschaeft_status, erledigung]   # nur diese sind abfragbar
+      seite: 100                               # Zeilen je Nachladen
+```
+
+Regeln:
+- Wählbar ist nur, was in `sterne.yml` steht; Rolle, Attribut, Operator und Kennzahl werden gegen die Definition geprüft, Werte gehen als Bind-Parameter in die Abfrage.
+- Ergebnis immer gruppiert, höchstens 10 000 Gruppen; es wird 10 Minuten zwischengespeichert, geblättert wird im Cache.
+- Gruppen mit weniger als `min_zelle` Faktzeilen (Dashboard oder `katalog.yml`) werden maskiert, ebenso zählende Kennzahlen unter dieser Grenze.
+- Info-Panel: Objekte, Joins und Herkunft aus dem vollständigen Stern je Fakt.
+- Ein Bereich im Katalog mit `explorer: <dashboard-id>` verlinkt in der Übersicht auf den Star-Explorer.
 
 ## 5a. Info-Panel je Widget
 

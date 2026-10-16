@@ -8,7 +8,10 @@ Der Client erhält nie SQL; Filterwerte kommen als Query-Parameter.
 
 from fastapi import APIRouter, HTTPException, Request
 
+import json
+
 from app.services import dashboard_service as svc
+from app.services import star_service
 
 router = APIRouter(prefix="/api/dashboards", tags=["dashboards"])
 
@@ -63,6 +66,30 @@ def get_widget_info(dashboard_id: str, widget_id: str, request: Request):
     filter = dict(request.query_params)
     zeilen = filter.pop("_zeilen", "1") != "0"   # _zeilen=0: ohne Zeilenzahlen (schnell)
     return _call(svc.widget_info, dashboard_id, widget_id, filter, zeilen)
+
+
+@router.get("/{dashboard_id}/widgets/{widget_id}/stern")
+def get_stern(dashboard_id: str, widget_id: str):
+    """Star-Explorer: Fakten, Kennzahlen, Dimensionen (Rollen) und freigegebene Attribute."""
+    return _call(star_service.definition, dashboard_id, widget_id)
+
+
+@router.get("/{dashboard_id}/widgets/{widget_id}/stern/werte")
+def get_stern_werte(dashboard_id: str, widget_id: str, fakt: str, rolle: str, attr: str):
+    """Werte eines Attributs für die Filter-Auswahlliste."""
+    return _call(star_service.werte, dashboard_id, widget_id, fakt, rolle, attr)
+
+
+@router.get("/{dashboard_id}/widgets/{widget_id}/stern/abfrage")
+def get_stern_abfrage(dashboard_id: str, widget_id: str, fakt: str, q: str = "{}",
+                      offset: int = 0, limit: int = 100, ausfuehren: bool = True):
+    """Star-Explorer: Auswahl als JSON (q = {gruppen, filter, kennzahlen}); liefert das
+    erzeugte SQL und eine Seite des gruppierten Ergebnisses. ausfuehren=false: nur SQL."""
+    try:
+        auswahl = json.loads(q)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="q ist kein gültiges JSON")
+    return _call(star_service.abfrage, dashboard_id, widget_id, fakt, auswahl, offset, limit, ausfuehren)
 
 
 @router.get("/{dashboard_id}/status")

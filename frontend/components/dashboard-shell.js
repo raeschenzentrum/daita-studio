@@ -330,6 +330,7 @@
 
         fuss(card, meta = {}) {
             const teile = [];
+            if (card._widget.typ === 'star-explorer') { card.querySelector('.dsh-card__foot').textContent = ''; return; }
             if (meta.zeilen !== undefined && card._widget.typ !== 'kpi' && card._widget.daten !== 'katalog') teile.push(`${W().fmt.zahl(meta.zeilen)} Zeilen`);
             if (meta.abgeschnitten) teile.push('gekürzt');
             if (meta.unterdrueckt) teile.push(`${W().fmt.zahl(meta.unterdrueckt)} kleine Werte ausgeblendet`);

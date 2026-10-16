@@ -348,6 +348,11 @@
         catalogStatus:  ()                  => get('/dashboards/catalog/status'),
         geo:            (name)              => get(`/dashboards/geo/${encodeURIComponent(name)}`),
         refresh:        (id)                => post(`/dashboards/${encodeURIComponent(id)}/refresh`),
+        /** Star-Explorer: Werte eines Attributs (Filterliste) und gruppierte Abfrage (nur Auswahl, nie SQL) */
+        sternWerte:     (id, widgetId, params) =>
+            get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/stern/werte`, params),
+        sternAbfrage:   (id, widgetId, params) =>
+            get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/stern/abfrage`, params),
         /** Info-Panel: Erläuterung, Objekte, Herkunft, SQL (nur Anzeige) */
         info:           (id, widgetId, filter) =>
             get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/info`, filter),

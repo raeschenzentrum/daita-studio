@@ -38,7 +38,7 @@ from app.services import r_skelett, sql_analyse, td_readonly
 
 logger = logging.getLogger(__name__)
 
-RESERVED_FILES = {"umgebungen", "katalog"}
+RESERVED_FILES = {"umgebungen", "katalog", "sterne"}
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _IDENT_RE = re.compile(r"^[A-Za-z0-9_$#]+$")
 _PH_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z0-9_-]+))?\}")
@@ -286,6 +286,10 @@ def widget_data(dashboard_id: str, widget_id: str, raw_filters: dict) -> dict:
     widget = _widget(dash, widget_id)
     if widget.get("daten") == "katalog":
         return _katalog_daten()
+    if widget.get("typ") == "star-explorer":
+        from app.services import star_service   # Definition statt Daten; Abfragen über /stern/abfrage
+        return {"columns": [], "rows": [], "stern": star_service.definition(dashboard_id, widget_id),
+                "meta": {"zeilen": 0, "abgeschnitten": False, "cache": False, "unterdrueckt": 0}}
     if not widget.get("sql"):
         raise DashboardError(400, f"Widget '{widget_id}' hat keine SQL-Datei")
     sql, params, used = _render_sql(dash, widget, widget["sql"], raw_filters)
@@ -358,6 +362,8 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
 
     if widget.get("daten") == "katalog":
         return _katalog_info(dash, widget, info, zeilen)
+    if widget.get("typ") == "star-explorer":
+        return _stern_info(dashboard_id, widget_id, info, zeilen)
     if not widget.get("sql"):
         return info
 
@@ -398,6 +404,33 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
     except Exception as e:
         logger.warning("R-Gerüst %s/%s: %s", dashboard_id, widget_id, e)
         info["r_code_fehler"] = str(e)[:200]
+    return info
+
+
+def _stern_info(dashboard_id: str, widget_id: str, info: dict, zeilen: bool) -> dict:
+    """Info-Panel des Star-Explorers: Objekte, Joins und Herkunft aus dem vollständigen Stern."""
+    from app.services import star_service
+    sql = star_service.voller_stern_sql(dashboard_id, widget_id)
+    objs = sql_analyse.objekte(sql)
+    status = object_status([o["objekt"] for o in objs], zaehlen=zeilen) if objs else {}
+    for o in objs:
+        st = status.get(o["objekt"], {})
+        o.update({k: st.get(k) for k in ("existiert", "zeilen", "zugriff", "fehler") if k in st})
+    info["objekte"] = objs
+    # Joins je Fakt: alle Fakten heißen im SQL „f“, die Aliasse dürfen sich nicht mischen
+    joins, gesehen = [], set()
+    for teil in sql.split(";\n\n"):
+        for j in sql_analyse.joins(teil, sql_analyse.objekte(teil)):
+            k = (j["links"], j["links_spalte"], j["rechts"], j["rechts_spalte"])
+            if k not in gesehen:
+                gesehen.add(k)
+                joins.append(j)
+    info["joins"] = joins
+    try:
+        info["herkunft"] = sql_analyse.herkunft([o["objekt"] for o in objs])
+    except Exception as e:
+        info["herkunft_fehler"] = str(e).splitlines()[0][:200]
+    info["sql"] = {"datei": star_service.DATEI, "vorlage": sql, "gerendert": sql, "mit_werten": sql, "parameter": {}}
     return info
 
 

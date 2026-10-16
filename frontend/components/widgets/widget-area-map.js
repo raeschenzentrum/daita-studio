@@ -12,6 +12,7 @@
  *   bereich: ID des zuerst gewählten Bereichs (Default: erster)
  *
  * Klick auf ein Element öffnet ein Detail-Panel (Status, Quelle, Ist-Stand, Lücke).
+ * Bereich mit `explorer: <dashboard-id>` im Katalog: Link zum Star-Explorer.
  * Gewählter Bereich steht im URL-Hash als `bereich=<id>`.
  *
  * Abhängigkeiten: dashboard-widgets.js, widget-katalog.js
@@ -168,6 +169,7 @@
                 <div class="kat-star">
                     <h3>Data Mart ${W.esc(m.nr ?? '')}: ${W.esc(m.titel)} <span class="kat-box__sub">(Star Schema)</span></h3>
                     <div class="kat-box__sub">Abdeckung ${K().badge(ab)} – ${ab.erfuellt} von ${ab.gesamt} Kennzahlen vorhanden oder ableitbar</div>
+                    ${m.explorer && c.dashboards.has(m.explorer) ? `<div class="kat-box__sub" style="margin-top:4px">Heutigen Stern abfragen: <a href="#d=${encodeURIComponent(m.explorer)}" style="color:var(--primary-color,#667eea)">Star-Explorer öffnen</a></div>` : ''}
                     <div class="kat-star__grid">
                         <div class="kat-star__fakten">${fakten || '<div class="dsh-msg">Kein Fakt definiert</div>'}</div>
                         <div class="kat-star__dims">${dims || '<div class="kat-box__sub">Keine bereichseigenen Dimensionen</div>'}</div>

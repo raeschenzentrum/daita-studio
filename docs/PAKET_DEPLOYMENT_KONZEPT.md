@@ -246,12 +246,12 @@ Ein Delta wird nur eingespielt, wenn `META_DEPLOY` des Ziels die `basis` nennt; 
 | Prüfung | Wie |
 |---|---|
 | Objekte vorhanden | jedes Objekt aus `inhalt` existiert im Ziel, Art stimmt, normalisiertes DDL gleich |
-| Views abfragbar | `SELECT * FROM <view> SAMPLE 0` je View; mit dem Lese-User für die ACCESS-Schicht |
+| Views abfragbar | `EXPLAIN SELECT * FROM <view>` je View (Gültigkeit und Leserecht, ohne die View zu rechnen – `SAMPLE 0` würde sie vollständig ausführen); mit dem Lese-User für die ACCESS-Schicht |
 | RAW-Voraussetzungen | gelesene RAW-Tabellen vorhanden, Spalten und Typen wie in der Entwicklung (Abweichung = Hinweis an die Entwicklung, deren RAW-Kopie nachzuziehen) |
 | Rechte | Soll-Rechte aus dem Paket in `dbc.AllRoleRightsV` / `dbc.RoleMembersV` |
 | Jobs vollständig | je Job: Steps wie im Paket; jede Step-Datei vorhanden; jede `sql_template_path` vorhanden; `source_table_id`/`target_table_id` in `META_TABLE` und physisch vorhanden; Pflichtparameter der Step-Templates gesetzt; jeder Step lässt sich rendern (Template-Engine, ohne Ausführung) |
 | Tagessimulation lauffähig | Layer-Zuordnung aller aktiven Jobs auflösbar, Abhängigkeitsgraph ohne Zyklus, Quell-Lade-IDs lesbar |
-| Dashboards | alle Platzhalter der Widget-SQL für die Ziel-`env_id` auflösbar; jede Widget-SQL mit `SAMPLE 0` lauffähig |
+| Dashboards | alle Platzhalter der Widget-SQL für die Ziel-`env_id` auflösbar (die Widget-SQL selbst wird nicht ausgeführt) |
 | Software | `import` der Kernpakete, Backend-Health, Frontend ohne externe URLs |
 
 Ergebnis als Bericht im Protokollordner und in `META_DEPLOY`; Exit-Code ungleich 0 bei Fehlern. Der Bericht ist reiner Text ohne Fachdaten (Objektnamen, Zählungen, Prüfergebnisse, Paket-Hash) und geht als Rückmeldung an die Entwicklung.

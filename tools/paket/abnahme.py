@@ -7,7 +7,7 @@ Läuft am Ende von einspielen.py --ausfuehren und lässt sich einzeln aufrufen:
 
 Prüft (Konzept daita-studio/docs/PAKET_DEPLOYMENT_KONZEPT.md, Abschnitt 10):
   - Objekte der Strukturen vorhanden, Struktur wie im Paket
-  - Views abfragbar (SAMPLE 0)
+  - Views abfragbar (EXPLAIN: Gültigkeit und Leserecht, ohne die View zu rechnen)
   - Voraussetzungen (z. B. RAW-Tabellen) vorhanden
   - Rollen und Lese-User vorhanden
   - Jobs vollständig: Steps, Step-Dateien, SQL-Templates, Quell-/Zieltabellen
@@ -53,9 +53,11 @@ class Bericht:
 
 
 def _view_lesen(cur, db, name):
-    """None = abfragbar, sonst Fehlertext; 'RECHT' = dem User fehlt das Leserecht (Error 3523)."""
+    """None = abfragbar, sonst Fehlertext; 'RECHT' = dem User fehlt das Leserecht (Error 3523).
+    EXPLAIN statt SELECT … SAMPLE 0: SAMPLE wirkt erst auf das fertige Ergebnis, die View
+    würde vollständig gerechnet (auf INT mit echten Daten Minuten je View)."""
     try:
-        cur.execute('SELECT * FROM {}."{}" SAMPLE 0'.format(db, name))
+        cur.execute('EXPLAIN SELECT * FROM {}."{}"'.format(db, name))
         cur.fetchall()
         return None
     except Exception as e:  # noqa: BLE001

@@ -15,7 +15,7 @@ Pakete bringen daita-studio und die Inhalte eines Einsatzes auf einen Zielserver
 
 | Teil | Inhalt | Einspielen |
 |---|---|---|
-| `software` | versionierte Dateien von daita-studio ohne Standort-Konfiguration (`cfg/*.yml`, `frontend/config.js`), ohne `etl/jobs`, `etl/sql_templates`; gepinnte Abhängigkeiten, Wheels (cp311, manylinux) | Dateien abgleichen; Wheels per `uv pip install --no-index` in die venv, mit der der Einspieler läuft, wenn sich die Abhängigkeiten geändert haben |
+| `software` | versionierte Dateien von daita-studio ohne Standort-Konfiguration (`cfg/*.yml`, `frontend/config.js`, `bin/start.sh`), ohne `etl/jobs`, `etl/sql_templates`; gepinnte Abhängigkeiten, Wheels (cp311, manylinux) | Dateien abgleichen; Wheels per `uv pip install --no-index` in die venv, mit der der Einspieler läuft, wenn sich die Abhängigkeiten geändert haben |
 | `metaschema` | `SHOW TABLE/VIEW` des Meta-Schemas | fehlende Tabellen anlegen, neue Spalten per `ALTER`, Views ersetzen |
 | `rechte` | Rollen, GRANTs, Rollen an User, Lese-User | `CREATE ROLE` falls fehlend, GRANTs (wiederholbar), Lese-User mit Passwort, das auf dem Ziel entsteht |
 | `strukturen` | `SHOW TABLE/VIEW` der Datenbanken des Einsatzes; Voraussetzungen (z. B. RAW-Tabellen nur geprüft); Startdaten | wie `metaschema`; befüllte Tabellen werden nie geleert |

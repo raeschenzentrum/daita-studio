@@ -236,10 +236,11 @@ def export_rechte(schreiber, rollen, grants, user_grants, lese_user=()):
 # Software (daita-studio selbst)
 # ---------------------------------------------------------------------------
 # Nicht im Software-Teil: Standort-Konfiguration (legt der Betreiber einmal an)
-# und Inhalte, die mit anderen Teilen kommen.
+# und Inhalte, die mit anderen Teilen kommen. bin/start.sh ist standortbezogen
+# (Pfad der venv, Ports) und wird auf dem Ziel angepasst – nie überschreiben.
 SOFTWARE_AUSSCHLUSS = [
     "cfg/config.yml", "cfg/environments.yml", "cfg/database.yml", "cfg/connections.json",
-    "frontend/config.js", "etl/jobs/", "etl/sql_templates/", "tools/meta_transfer/meta_export/",
+    "frontend/config.js", "bin/start.sh", "etl/jobs/", "etl/sql_templates/", "tools/meta_transfer/meta_export/",
 ]
 # Zielplattform der Wheels (docs/AIRGAP_DEPLOYMENT_PROMPT.md: SLES 15 SP6, Python 3.11)
 WHEEL_PYTHON = "3.11"

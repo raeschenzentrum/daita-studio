@@ -67,7 +67,9 @@
                     width: 18px; height: 18px; line-height: 15px; padding: 0; font-size: 0.72em; font-weight: 600;
                     color: var(--viz-muted, #898781); font-family: Georgia, serif; flex: none; }
         .dsh-card__info:hover { color: var(--primary-color, #667eea); border-color: var(--primary-color, #667eea); }
-        .dsh-card { position: relative; }
+        .dsh-card { position: relative; min-width: 0; }
+        /* Tabellen in Karten mit h: auto: breite Tabellen scrollen waagrecht, lange senkrecht */
+        .dsh-card[data-auto] .dsh-table { max-height: 560px; max-width: 100%; }
         .dsh-card__info--frei { position: absolute; top: 12px; right: 14px; z-index: 2; background: var(--card-bg, #fff); }
         .dsh-card__body { flex: 1; min-height: 0; position: relative; margin-top: 4px; }
         .dsh-card[data-auto] .dsh-card__body { position: static; }

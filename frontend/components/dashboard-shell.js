@@ -29,13 +29,19 @@
         studio-dashboard-shell { display: block; }
         .dsh-root { max-width: 1600px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
 
-        .dsh-tabs { display: flex; gap: 4px; flex-wrap: wrap; background: var(--card-bg, #fff);
-                    border-radius: 10px; padding: 6px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
-        .dsh-tab { border: none; background: transparent; padding: 7px 14px; border-radius: 7px; cursor: pointer;
-                   font-size: 0.9em; color: var(--text-secondary, #666); }
-        .dsh-tab:hover { background: var(--bg-color, #f5f5f5); }
-        .dsh-tab[aria-selected="true"] { background: var(--primary-color, #667eea); color: #fff; }
-        .dsh-tab__gruppe { font-size: 0.75em; opacity: 0.75; margin-right: 6px; }
+        /* Navigation zweistufig: oben die Gruppen, darunter die Dashboards der gewählten Gruppe */
+        .dsh-nav { background: var(--card-bg, #fff); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+        .dsh-gruppen { display: flex; gap: 4px; flex-wrap: wrap; padding: 6px; }
+        .dsh-gruppe { border: none; background: transparent; padding: 7px 14px; border-radius: 7px; cursor: pointer;
+                   font-size: 0.92em; font-weight: 600; color: var(--text-secondary, #666); }
+        .dsh-gruppe:hover { background: var(--bg-color, #f5f5f5); }
+        .dsh-gruppe[aria-selected="true"] { background: var(--primary-color, #667eea); color: #fff; }
+        .dsh-gruppe__anzahl { font-weight: 400; opacity: 0.75; margin-left: 4px; font-size: 0.85em; }
+        .dsh-tabs { display: flex; gap: 2px; flex-wrap: wrap; padding: 2px 10px 0; border-top: 1px solid var(--border-color, #eceef3); }
+        .dsh-tab { border: none; background: transparent; padding: 8px 12px 7px; cursor: pointer; font-size: 0.88em;
+                   color: var(--text-secondary, #666); border-bottom: 2px solid transparent; }
+        .dsh-tab:hover { color: var(--primary-color, #667eea); }
+        .dsh-tab[aria-selected="true"] { color: var(--primary-color, #667eea); border-bottom-color: var(--primary-color, #667eea); font-weight: 600; }
 
         .dsh-head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
         .dsh-head__titel { flex: 1; min-width: 220px; }
@@ -188,10 +194,25 @@
         renderRahmen() {
             const esc = W().esc;
             const d = this.def;
-            const tabs = this.liste.map(x => `
-                <button class="dsh-tab" role="tab" data-id="${esc(x.id)}" aria-selected="${x.id === d.id}" title="${esc(x.beschreibung || '')}">
-                    ${x.gruppe ? `<span class="dsh-tab__gruppe">${esc(x.gruppe)}</span>` : ''}${esc(x.titel)}
-                </button>`).join('');
+            // Gruppen in der Reihenfolge ihres ersten Dashboards; ohne Gruppe: „Weitere“
+            const gruppeVon = x => x.gruppe || 'Weitere';
+            const gruppen = [...new Set(this.liste.map(gruppeVon))];
+            const aktiv = gruppeVon(this.liste.find(x => x.id === d.id) || d);
+            this.letzte = { ...(this.letzte || {}), [aktiv]: d.id };
+            // Gruppenname vorn im Titel („Star-Explorer: …“) in der Leiste weglassen
+            const kurz = x => {
+                const g = gruppeVon(x);
+                const t = String(x.titel || x.id);
+                // nur als ganzes Wort: „Asylstatistik“ in der Gruppe „Asyl“ bleibt
+                const rest = t.toLowerCase().startsWith(g.toLowerCase()) ? t.slice(g.length) : null;
+                return rest && /^[\s:–-]/.test(rest) ? (rest.replace(/^[\s:–-]+/, '') || t) : t;
+            };
+            const gruppenHtml = gruppen.length > 1 ? `<div class="dsh-gruppen" role="tablist" aria-label="Gruppen">${gruppen.map(g => {
+                const n = this.liste.filter(x => gruppeVon(x) === g).length;
+                return `<button class="dsh-gruppe" role="tab" data-gruppe="${esc(g)}" aria-selected="${g === aktiv}">${esc(g)}<span class="dsh-gruppe__anzahl">${n}</span></button>`;
+            }).join('')}</div>` : '';
+            const tabs = this.liste.filter(x => gruppeVon(x) === aktiv).map(x => `
+                <button class="dsh-tab" role="tab" data-id="${esc(x.id)}" aria-selected="${x.id === d.id}" title="${esc(x.titel)}${x.beschreibung ? ' – ' + esc(x.beschreibung) : ''}">${esc(kurz(x))}</button>`).join('');
             const filter = d.filter.map(f => `<label>${esc(f.titel || f.id)}${this.filterControl(f)}</label>`).join('');
             const darfRefresh = !window.studioAuth || window.studioAuth.hasRole('Editor');
             const cards = d.widgets.map(w => {
@@ -215,7 +236,7 @@
 
             this.root.innerHTML = `
                 <div class="dsh-root">
-                    <nav class="dsh-tabs" role="tablist">${tabs}</nav>
+                    <nav class="dsh-nav">${gruppenHtml}<div class="dsh-tabs" role="tablist" aria-label="Dashboards">${tabs}</div></nav>
                     <div class="dsh-head">
                         <div class="dsh-head__titel"><h1>${esc(d.titel)}</h1>${d.beschreibung ? `<p>${esc(d.beschreibung)}</p>` : ''}</div>
                         <div class="dsh-filter">${filter}</div>
@@ -229,6 +250,13 @@
 
             this.root.querySelectorAll('.dsh-tab').forEach(b =>
                 b.addEventListener('click', () => this.oeffne(b.dataset.id)));
+            // Gruppe wählen: zuletzt geöffnetes Dashboard der Gruppe, sonst das erste
+            this.root.querySelectorAll('.dsh-gruppe').forEach(b =>
+                b.addEventListener('click', () => {
+                    const g = b.dataset.gruppe;
+                    const id = this.letzte?.[g] || this.liste.find(x => gruppeVon(x) === g)?.id;
+                    if (id && id !== this.def.id) this.oeffne(id);
+                }));
             this.root.querySelectorAll('[data-filter]').forEach(inp =>
                 inp.addEventListener('change', () => {
                     this.filter[inp.dataset.filter] = inp.value;

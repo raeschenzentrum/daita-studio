@@ -101,7 +101,39 @@
         .dsh-table .num { text-align: right; font-variant-numeric: tabular-nums; }
         .dsh-table__mehr { color: var(--viz-muted, #898781); padding: 4px 8px; }
 
+        /* Katalog-Navigation (Gruppe mit navigation im Katalog): Baum Bereich › Produkt › Ansicht */
+        .dsh-katnav { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; align-items: start; }
+        .dsh-baum { background: var(--card-bg, #fff); border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+                    padding: 8px 6px 10px; position: sticky; top: 8px; max-height: calc(100vh - 24px); overflow: auto; font-size: 0.88em; }
+        .dsh-baum > summary { display: none; }
+        .dsh-baum input[type=search] { width: 100%; box-sizing: border-box; padding: 5px 8px; margin: 0 0 6px;
+                    border: 1px solid var(--border-color, #ddd); border-radius: 6px; font: inherit; }
+        .dsh-baum ul { list-style: none; margin: 0; padding: 0; }
+        .dsh-baum ul ul { padding-left: 14px; }
+        .dsh-baum__b { width: 100%; text-align: left; border: none; background: none; cursor: pointer; padding: 5px 6px; border-radius: 6px;
+                    font: inherit; font-weight: 600; color: var(--text-primary, #333); display: flex; gap: 6px; align-items: baseline; }
+        .dsh-baum__b:hover { background: var(--bg-color, #f5f5f5); }
+        .dsh-baum__pfeil { display: inline-block; width: 10px; color: var(--viz-muted, #898781); transition: transform .15s; }
+        .dsh-baum li[aria-expanded="true"] > .dsh-baum__b .dsh-baum__pfeil { transform: rotate(90deg); }
+        .dsh-baum li[aria-expanded="false"] > ul { display: none; }
+        .dsh-baum__anz { margin-left: auto; font-weight: 400; font-size: 0.85em; color: var(--viz-muted, #898781); }
+        .dsh-baum__p { padding: 4px 6px 1px; color: var(--text-primary, #333); }
+        .dsh-baum__p.leer { color: var(--viz-muted, #9a9994); cursor: help; }
+        .dsh-baum__st { font-size: 0.78em; border-radius: 6px; padding: 0 5px; background: #f1f1f1; color: #6b6a66; margin-left: 4px; }
+        .dsh-baum__a { display: block; padding: 3px 8px; border-radius: 6px; color: var(--text-secondary, #555); text-decoration: none;
+                    border-left: 2px solid transparent; }
+        .dsh-baum__a:hover { background: var(--bg-color, #f5f5f5); color: var(--primary-color, #667eea); }
+        .dsh-baum__a[aria-current="page"] { color: var(--primary-color, #667eea); font-weight: 600; border-left-color: var(--primary-color, #667eea);
+                    background: #f0eef8; }
+        .dsh-krumen { font-size: 0.82em; color: var(--viz-muted, #898781); margin-bottom: -6px; }
+        .dsh-krumen span + span::before { content: " › "; }
+        .dsh-katnav__inhalt { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+        .dsh-katnav .dsh-head__titel { flex: 1 1 100%; }
+
         @media (max-width: 900px) {
+            .dsh-katnav { grid-template-columns: 1fr; }
+            .dsh-baum { position: static; max-height: none; }
+            .dsh-baum > summary { display: block; cursor: pointer; font-weight: 600; padding: 4px 6px; }
             .dsh-grid { grid-template-columns: 1fr; grid-auto-rows: auto; }
             .dsh-card { grid-column: 1 / -1 !important; grid-row: auto !important; height: var(--dsh-h); }
             .dsh-card[data-auto] { height: auto; }
@@ -167,6 +199,9 @@
                 this.root.innerHTML = '<div class="dsh-root"><div class="dsh-msg">Keine Dashboards definiert (cfg/config.yml → paths.dashboards).</div></div>';
                 return;
             }
+            // Katalog für die Baum-Navigation (navigation.gruppe im Katalog); ohne Katalog nur Reiter
+            try { this.katalog = await window.api.dashboards.catalog(); } catch (_) { this.katalog = null; }
+            this.offen = new Set();
             const h = readHash();
             const id = this.liste.some(d => d.id === h.id) ? h.id : this.liste[0].id;
             await this.oeffne(id, h.filter);
@@ -189,6 +224,84 @@
             this.renderRahmen();
             fire('studio:dashboard-loaded', { dashboard: this.def });
             await this.ladeWidgets();
+        }
+
+        /** Baum-Navigation aus dem Katalog: Bereich › Produkt › Ansicht. Nur für die Gruppe,
+         *  die der Katalog unter navigation.gruppe nennt; sonst null (Reiter wie bisher). */
+        katalogNavigation(aktiv) {
+            const kat = this.katalog, esc = W().esc;
+            const navGruppe = kat?.navigation?.gruppe;
+            if (!navGruppe || aktiv !== navGruppe) return null;
+            const vorhanden = new Map(this.liste.map(x => [x.id, x]));
+            const natuerlich = (a, b) => String(a.id).localeCompare(String(b.id), 'de', { numeric: true });
+            const ansichtenVon = p => (p.ansichten || (p.dashboard ? [{ dashboard: p.dashboard }] : []))
+                .filter(a => vorhanden.has(a.dashboard))
+                .map(a => ({ id: a.dashboard, titel: a.titel || vorhanden.get(a.dashboard).titel }));
+            const bereiche = (kat.bereiche || []).filter(b => b.art === 'mart')
+                .sort((a, b) => (a.nr ?? 99) - (b.nr ?? 99))
+                .map(b => ({ id: b.id, titel: `${b.nr ?? ''} ${b.titel}`.trim(), geplant: b.produkte_anzahl,
+                    produkte: [...(b.produkte || [])].sort(natuerlich).map(p => ({ ...p, ansichten: ansichtenVon(p) })) }));
+            // Dashboards der Gruppe, die kein Produkt nennt
+            const verlinkt = new Set(bereiche.flatMap(b => b.produkte.flatMap(p => p.ansichten.map(a => a.id))));
+            const rest = this.liste.filter(x => (x.gruppe || 'Weitere') === navGruppe && !verlinkt.has(x.id));
+            if (rest.length) bereiche.push({ id: '_weitere', titel: 'Weitere', produkte: [{ id: '', titel: 'ohne Katalogeintrag',
+                ansichten: rest.map(x => ({ id: x.id, titel: x.titel })) }] });
+            // aktueller Pfad
+            let pfad = null;
+            for (const b of bereiche) for (const p of b.produkte) for (const a of p.ansichten)
+                if (a.id === this.def.id) pfad = { b, p, a };
+            if (pfad) this.offen.add(pfad.b.id);
+            if (!this.offenGesetzt) { bereiche.forEach(b => { if (b.produkte.some(p => p.ansichten.length)) this.offen.add(b.id); }); this.offenGesetzt = true; }
+
+            const html = bereiche.map(b => {
+                const mit = b.produkte.filter(p => p.ansichten.length).length;
+                const anz = b.id === '_weitere' ? '' : `${mit} von ${b.geplant ?? b.produkte.length}`;
+                const produkte = b.produkte.map(p => {
+                    const name = `${p.id ? esc(p.id) + ' ' : ''}${esc(p.titel)}`;
+                    if (!p.ansichten.length) {
+                        const tip = [p.status, p.luecke].filter(Boolean).join(' – ');
+                        return `<li data-such="${esc((p.id + ' ' + p.titel).toLowerCase())}"><div class="dsh-baum__p leer" title="${esc(tip)}">${name}`
+                            + `${p.status ? `<span class="dsh-baum__st">${esc(p.status)}</span>` : ''}</div></li>`;
+                    }
+                    const ans = p.ansichten.map(a => `<li data-such="${esc((p.id + ' ' + p.titel + ' ' + a.titel).toLowerCase())}">
+                        <a class="dsh-baum__a" href="#d=${encodeURIComponent(a.id)}" ${a.id === this.def.id ? 'aria-current="page"' : ''}>${esc(a.titel)}</a></li>`).join('');
+                    return `<li data-such="${esc((p.id + ' ' + p.titel).toLowerCase())}"><div class="dsh-baum__p">${name}</div><ul>${ans}</ul></li>`;
+                }).join('') || '<li><div class="dsh-baum__p leer">keine Produkte benannt</div></li>';
+                return `<li data-bereich="${esc(b.id)}" aria-expanded="${this.offen.has(b.id)}">
+                    <button class="dsh-baum__b" data-auf="${esc(b.id)}"><span class="dsh-baum__pfeil">▸</span>${esc(b.titel)}<span class="dsh-baum__anz">${esc(anz)}</span></button>
+                    <ul>${produkte}</ul></li>`;
+            }).join('');
+            const baum = `<details class="dsh-baum" open><summary>Navigation: ${esc(navGruppe)}</summary>
+                <input type="search" placeholder="Produkt oder Ansicht suchen …" aria-label="Datenprodukte durchsuchen">
+                <ul role="tree" aria-label="${esc(navGruppe)}">${html}</ul></details>`;
+            const krumen = pfad ? `<div class="dsh-krumen"><span>${esc(navGruppe)}</span><span>${esc(pfad.b.titel)}</span>`
+                + `<span>${esc(`${pfad.p.id ? pfad.p.id + ' ' : ''}${pfad.p.titel}`)}</span><span>${esc(pfad.a.titel)}</span></div>` : '';
+            return { baum, krumen };
+        }
+
+        baumEreignisse() {
+            const baum = this.root.querySelector('.dsh-baum');
+            baum.querySelectorAll('[data-auf]').forEach(b => b.addEventListener('click', () => {
+                const li = b.closest('li'), id = b.dataset.auf;
+                const auf = li.getAttribute('aria-expanded') !== 'true';
+                li.setAttribute('aria-expanded', String(auf));
+                if (auf) this.offen.add(id); else this.offen.delete(id);
+            }));
+            const suche = baum.querySelector('input[type=search]');
+            suche.addEventListener('input', () => {
+                const t = suche.value.trim().toLowerCase();
+                baum.querySelectorAll('li[data-bereich]').forEach(b => {
+                    let treffer = false;
+                    b.querySelectorAll('li[data-such]').forEach(li => {
+                        const ok = !t || li.dataset.such.includes(t) || [...li.querySelectorAll('li[data-such]')].some(k => k.dataset.such.includes(t));
+                        li.hidden = !ok;
+                        treffer = treffer || ok;
+                    });
+                    b.hidden = !!t && !treffer;
+                    b.setAttribute('aria-expanded', String(t ? treffer : this.offen.has(b.dataset.bereich)));
+                });
+            });
+            if (window.matchMedia?.('(max-width: 900px)').matches) baum.open = false;
         }
 
         renderRahmen() {
@@ -234,9 +347,8 @@
                 </section>`;
             }).join('');
 
-            this.root.innerHTML = `
-                <div class="dsh-root">
-                    <nav class="dsh-nav">${gruppenHtml}<div class="dsh-tabs" role="tablist" aria-label="Dashboards">${tabs}</div></nav>
+            const katnav = this.katalogNavigation(aktiv);
+            const kopf = `
                     <div class="dsh-head">
                         <div class="dsh-head__titel"><h1>${esc(d.titel)}</h1>${d.beschreibung ? `<p>${esc(d.beschreibung)}</p>` : ''}</div>
                         <div class="dsh-filter">${filter}</div>
@@ -245,8 +357,17 @@
                             ${darfRefresh ? '<button class="dsh-btn dsh-refresh" title="Cache leeren und neu laden">Aktualisieren</button>' : ''}
                         </div>
                     </div>
-                    <div class="dsh-grid">${cards}</div>
-                </div>`;
+                    <div class="dsh-grid">${cards}</div>`;
+            this.root.innerHTML = katnav
+                ? `<div class="dsh-root">
+                    <nav class="dsh-nav">${gruppenHtml}</nav>
+                    <div class="dsh-katnav">${katnav.baum}<div class="dsh-katnav__inhalt">${katnav.krumen}${kopf}</div></div>
+                  </div>`
+                : `<div class="dsh-root">
+                    <nav class="dsh-nav">${gruppenHtml}<div class="dsh-tabs" role="tablist" aria-label="Dashboards">${tabs}</div></nav>
+                    ${kopf}
+                  </div>`;
+            if (katnav) this.baumEreignisse();
 
             this.root.querySelectorAll('.dsh-tab').forEach(b =>
                 b.addEventListener('click', () => this.oeffne(b.dataset.id)));

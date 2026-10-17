@@ -13,6 +13,7 @@
  *
  * Klick auf ein Element öffnet ein Detail-Panel (Status, Quelle, Ist-Stand, Lücke).
  * Bereich mit `explorer: <dashboard-id>` im Katalog: Link zum Star-Explorer.
+ * Produkte verlinken ihre Ansichten (ansichten: [{dashboard, titel}], älteres Format: dashboard).
  * Gewählter Bereich steht im URL-Hash als `bereich=<id>`.
  *
  * Abhängigkeiten: dashboard-widgets.js, widget-katalog.js
@@ -158,9 +159,13 @@
                 const key = `prod:${m.id}:${p.id}`;
                 const st = reg.get(key).st;
                 const titel = `${W.esc(p.id)} ${W.esc(p.titel)}`;
-                const link = p.dashboard && c.dashboards.has(p.dashboard)
-                    ? `<a href="#d=${encodeURIComponent(p.dashboard)}">${titel}</a>` : `<span>${titel}</span>`;
-                return `<li data-key="${W.esc(key)}" style="cursor:pointer">${K().badge(st, true)} ${link}${p.pilot ? '<span class="kat-pilot">Pilot</span>' : ''}</li>`;
+                // Ansichten des Produkts (ansichten: [{dashboard, titel}]; älteres Format: dashboard)
+                const ans = (p.ansichten || (p.dashboard ? [{ dashboard: p.dashboard }] : [])).filter(x => c.dashboards.has(x.dashboard));
+                const link = ans.length === 1
+                    ? `<a href="#d=${encodeURIComponent(ans[0].dashboard)}">${titel}</a>` : `<span>${titel}</span>`;
+                const mehr = ans.length > 1
+                    ? ` <span class="kat-box__sub">(${ans.map(x => `<a href="#d=${encodeURIComponent(x.dashboard)}">${W.esc(x.titel || x.dashboard)}</a>`).join(' · ')})</span>` : '';
+                return `<li data-key="${W.esc(key)}" style="cursor:pointer">${K().badge(st, true)} ${link}${mehr}${p.pilot ? '<span class="kat-pilot">Pilot</span>' : ''}</li>`;
             }).join('');
             const anz = m.produkte_anzahl && m.produkte_anzahl > (m.produkte || []).length
                 ? `<div class="kat-box__sub">${(m.produkte || []).length} von ${m.produkte_anzahl} Produkten im Katalog benannt</div>` : '';

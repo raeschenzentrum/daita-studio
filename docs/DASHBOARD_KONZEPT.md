@@ -313,6 +313,38 @@ widgets:
 - Klick auf ein Element öffnet ein Side-Panel mit Status, Quelle, Ist-Stand, Lücke und Attributen.
 - Unter 1100 px Breite stapeln sich die Spalten, die Verbindungslinien entfallen.
 
+## 5d. Navigation
+
+Die Dashboards erscheinen nach `gruppe` (obere Zeile, Reihenfolge nach dem ersten
+Dashboard der Gruppe) und darunter als Reiter; ein Klick auf eine Gruppe öffnet das
+dort zuletzt geöffnete Dashboard.
+
+Für viele Datenprodukte reichen Reiter nicht. Nennt der Katalog eine Gruppe unter
+`navigation.gruppe`, erscheint für diese Gruppe statt der Reiter links ein **Baum
+Bereich › Produkt › Ansicht** aus den Bereichen (`art: mart`) und Produkten des
+Katalogs, mit Brotkrumen über dem Titel und Suchfeld:
+
+```yaml
+navigation:
+  gruppe: Datenprodukte
+bereiche:
+  - id: m1
+    nr: 1
+    titel: Öffentliche Statistiken
+    produkte_anzahl: 9            # „1 von 9“ im Baum
+    produkte:
+      - id: "1.3"
+        titel: Asylstatistik
+        status: teilweise
+        ansichten:                # je Ansicht ein Dashboard (älteres Format: dashboard: <id>)
+          - {dashboard: asylstatistik, titel: "Pilot: …"}
+          - {dashboard: sem_7_20, titel: "Tabelle 7-20: …"}
+```
+
+Produkte ohne Ansicht stehen ausgegraut mit Plan-Status und Lücke (Tooltip). Dashboards
+der Gruppe ohne Katalogeintrag stehen unter „Weitere“. Auf schmalen Bildschirmen ist der
+Baum eingeklappt.
+
 ## 5b. Star-Explorer (Widget-Typ `star-explorer`)
 
 Zeigt ein Sternschema und lässt es abfragen – zum Verstehen der Datenstruktur

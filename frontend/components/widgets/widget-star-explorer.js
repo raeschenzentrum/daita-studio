@@ -116,10 +116,13 @@
             const m = z.match(/^(.*?)(--.*)?$/);
             let code = esc(m[1] || '').replace(/'[^']*'/g, s => `<span class="s">${s}</span>`).replace(KW, '<span class="k">$1</span>');
             const kom = m[2] ? `<span class="c">${esc(m[2])}</span>` : '';
-            const join = /^\s*(LEFT JOIN|ON)\b/.test(z) || /^-- Dimension/.test(z);
+            const join = /^\s*(LEFT JOIN|ON)\b/.test(z) || /^-- (Dimension|.*n:1|.*1:n)/.test(z);
             return join ? `<span class="j">${code}${kom}</span>` : code + kom;
         }).join('\n');
     }
+
+    // Gemeinsame Bausteine für weitere Explorer (widget-bom-explorer.js)
+    window.studioExplorer = { injectStyle, esc, filterText, sqlHtml, OPS_TEXT, OPS_ZAHL };
 
     W.register('star-explorer', {
         tabelle: false,

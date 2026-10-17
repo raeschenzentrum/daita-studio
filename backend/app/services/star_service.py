@@ -226,6 +226,39 @@ def _wert(a: dict, v: Any) -> Any:
     return str(v)
 
 
+def bedingung(expr: str, a: dict, op: str, werte: list, ph) -> str:
+    """WHERE-Bedingung für ein freigegebenes Attribut. ph(wert, nr=None) liefert den
+    Platzhalter (? oder ${FILTER:id}) und merkt sich den Wert. Auch vom BOM-Explorer genutzt."""
+    if op not in OPS:
+        raise StarError(400, f"Unbekannter Operator {op!r}")
+    if op == "null":
+        return f"{expr} IS NULL"
+    if op == "notnull":
+        return f"{expr} IS NOT NULL"
+    if op in ("in", "eq") and len(werte) > 1:
+        return f"{expr} IN ({', '.join(ph(_wert(a, w), i + 1) for i, w in enumerate(werte[:200]))})"
+    if op == "between":
+        if len(werte) != 2:
+            raise StarError(400, f"Filter {a['id']}: von–bis braucht zwei Werte")
+        return f"{expr} BETWEEN {ph(_wert(a, werte[0]), 'von')} AND {ph(_wert(a, werte[1]), 'bis')}"
+    if op == "like":
+        return f"UPPER({expr}) LIKE UPPER({ph('%' + str(_wert({**a, 'typ': 'text'}, werte[0] if werte else '')) + '%')})"
+    sym = {"eq": "=", "in": "=", "ne": "<>", "ge": ">=", "le": "<="}[op]
+    return f"{expr} {sym} {ph(_wert(a, werte[0] if werte else None))}"
+
+
+def platzhalter(params: list, r_filter: list, r_vorlage: bool, basis: str, titel: str, typ: str):
+    """Erzeugt ph(wert, nr=None) für bedingung(): Bind-Parameter oder R-Platzhalter."""
+    def ph(wert, nr=None):
+        if not r_vorlage:
+            params.append(wert)
+            return "?"
+        fid = basis if nr is None else f"{basis}_{nr}"
+        r_filter.append({"id": fid, "titel": titel, "typ": typ, "wert": wert})
+        return "${FILTER:" + fid + "}"
+    return ph
+
+
 def baue(defi: dict, fakt: dict, auswahl: dict, r_vorlage: bool = False) -> dict:
     """SQL mit Bind-Parametern aus der Auswahl:
     {gruppen: [{rolle, attr}], filter: [{rolle, attr, op, werte}], kennzahlen: [{id, agg}]}.
@@ -287,39 +320,11 @@ def baue(defi: dict, fakt: dict, auswahl: dict, r_vorlage: bool = False) -> dict
         a, alias, rtitel, r = _finde(fakt, rollen, fl.get("rolle"), fl.get("attr"))
         if r:
             genutzt[r["rolle"]] = r
-        op = fl.get("op", "eq")
-        if op not in OPS:
-            raise StarError(400, f"Unbekannter Operator {op!r}")
-        expr = _ausdruck(a, alias)
         werte = fl.get("werte")
         werte = werte if isinstance(werte, list) else ([] if werte is None else [werte])
-        basis = f"{fl.get('rolle') or 'fakt'}_{a['id']}".lower()
-
-        def ph(wert, nr=None):
-            """Platzhalter für einen Filterwert: ? (Bind-Parameter) oder ${FILTER:id} (R)."""
-            if not r_vorlage:
-                params.append(wert)
-                return "?"
-            fid = basis if nr is None else f"{basis}_{nr}"
-            r_filter.append({"id": fid, "titel": f"{rtitel}: {a.get('titel') or a['id']}", "typ": a.get("typ", "text"),
-                             "wert": wert})
-            return "${FILTER:" + fid + "}"
-        if op == "null":
-            where.append(f"{expr} IS NULL")
-        elif op == "notnull":
-            where.append(f"{expr} IS NOT NULL")
-        elif op in ("in", "eq") and len(werte) > 1:
-            werte = werte[:200]
-            where.append(f"{expr} IN ({', '.join(ph(_wert(a, w), i + 1) for i, w in enumerate(werte))})")
-        elif op == "between":
-            if len(werte) != 2:
-                raise StarError(400, f"Filter {a['id']}: von–bis braucht zwei Werte")
-            where.append(f"{expr} BETWEEN {ph(_wert(a, werte[0]), 'von')} AND {ph(_wert(a, werte[1]), 'bis')}")
-        elif op == "like":
-            where.append(f"UPPER({expr}) LIKE UPPER({ph('%' + str(_wert({**a, 'typ': 'text'}, werte[0] if werte else '')) + '%')})")
-        else:
-            sym = {"eq": "=", "in": "=", "ne": "<>", "ge": ">=", "le": "<="}[op]
-            where.append(f"{expr} {sym} {ph(_wert(a, werte[0] if werte else None))}")
+        ph = platzhalter(params, r_filter, r_vorlage, f"{fl.get('rolle') or 'fakt'}_{a['id']}".lower(),
+                         f"{rtitel}: {a.get('titel') or a['id']}", a.get("typ", "text"))
+        where.append(bedingung(_ausdruck(a, alias), a, fl.get("op", "eq"), werte, ph))
         where_kommentar.append(rtitel)
 
     # Lesbares SQL mit Kommentaren (so wird es auch ausgeführt)
@@ -354,8 +359,15 @@ def abfrage(dashboard_id: str, widget_id: str, fakt_id: str, auswahl: dict,
     if not ausfuehren:
         return out
 
+    out.update(seite(dash, dashboard_id, "stern", q, offset, limit))
+    return out
+
+
+def seite(dash: dict, dashboard_id: str, art: str, q: dict, offset: int, limit: int) -> dict:
+    """Führt q (sql, params, spalten, kontrolle) aus (zwischengespeichert, höchstens
+    MAX_GRUPPEN Zeilen) und liefert eine Seite mit Maskierung kleiner Gruppen."""
     digest = hashlib.sha1(f"{q['sql']}|{json.dumps(q['params'], default=str)}".encode()).hexdigest()
-    key = f"dash::{dashboard_id}::stern::{digest}"
+    key = f"dash::{dashboard_id}::{art}::{digest}"
     def _laden():
         t0 = time.monotonic()
         res = td_readonly.query(q["sql"], q["params"], MAX_GRUPPEN, art="daten")
@@ -366,7 +378,7 @@ def abfrage(dashboard_id: str, widget_id: str, fakt_id: str, auswahl: dict,
     except td_readonly.ReadOnlyViolation as e:
         raise StarError(500, str(e))
     except Exception as e:
-        logger.warning("Star-Explorer %s/%s: %s", dashboard_id, widget_id, str(e).splitlines()[0])
+        logger.warning("Explorer %s (%s): %s", dashboard_id, art, str(e).splitlines()[0])
         raise StarError(502, f"Abfrage fehlgeschlagen: {str(e).splitlines()[0]}")
 
     limit = max(1, min(int(limit), MAX_SEITE))
@@ -388,12 +400,11 @@ def abfrage(dashboard_id: str, widget_id: str, fakt_id: str, auswahl: dict,
                     maskiert += 1
             neu.append(r)
         zeilen = neu
-    out.update({
+    return {
         "zeilen": zeilen, "offset": offset, "gesamt": len(res["rows"]),
         "abgeschnitten": res["truncated"], "maskiert": maskiert, "min_zelle": grenze,
         "cache": cache, "laufzeit_ms": res.get("laufzeit_ms"),
-    })
-    return out
+    }
 
 
 def r_code(dashboard_id: str, widget_id: str, fakt_id: str, auswahl: dict) -> dict:
@@ -416,12 +427,17 @@ def r_code(dashboard_id: str, widget_id: str, fakt_id: str, auswahl: dict) -> di
         "hinweise": [f"Im Dashboard werden Gruppen unter {grenze} Faktzeilen maskiert; dieses Skript "
                      f"liefert die ungekürzten Werte. Vor der Weitergabe kleine Gruppen ausblenden."] if grenze else [],
     }
+    return {"r_code": r_skript(dash, widget, q), "dateiname": f"{dashboard_id}_{fakt_id}.R"}
+
+
+def r_skript(dash: dict, widget: dict, q: dict) -> str:
+    """R-Skript (Vorlage widget.R) aus einer Abfrage mit R-Platzhaltern (q: sql, r_filter)."""
+    from app.services import r_skelett
     umg = ds._root() / "umgebungen.yml"
     r_umg = (ds._load_yaml(umg).get("r_umgebungen") or {}) if umg.exists() else {}
     fdefs = {f["id"]: {"id": f["id"], "titel": f["titel"], "typ": f["typ"]} for f in q["r_filter"]}
     werte_ = {f["id"]: f["wert"] for f in q["r_filter"]}
-    code = r_skelett.erzeuge(dash, widget, q["sql"], werte_, fdefs, r_umg, ds.variables, ds._root(), "")
-    return {"r_code": code, "dateiname": f"{dashboard_id}_{fakt_id}.R"}
+    return r_skelett.erzeuge(dash, widget, q["sql"], werte_, fdefs, r_umg, ds.variables, ds._root(), "")
 
 
 def voller_stern_sql(dashboard_id: str, widget_id: str) -> str:

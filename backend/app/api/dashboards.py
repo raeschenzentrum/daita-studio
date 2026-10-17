@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 import json
 
 from app.services import dashboard_service as svc
-from app.services import star_service
+from app.services import bom_service, star_service
 
 router = APIRouter(prefix="/api/dashboards", tags=["dashboards"])
 
@@ -100,6 +100,33 @@ def get_stern_r(dashboard_id: str, widget_id: str, fakt: str, q: str = "{}"):
     except ValueError:
         raise HTTPException(status_code=400, detail="q ist kein gültiges JSON")
     return _call(star_service.r_code, dashboard_id, widget_id, fakt, auswahl)
+
+
+def _auswahl(q: str) -> dict:
+    try:
+        return json.loads(q)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="q ist kein gültiges JSON")
+
+
+@router.get("/{dashboard_id}/widgets/{widget_id}/bom/werte")
+def get_bom_werte(dashboard_id: str, widget_id: str, entitaet: str, attr: str):
+    """BOM-Explorer: Werte eines Attributs für die Filter-Auswahlliste."""
+    return _call(bom_service.werte, dashboard_id, widget_id, entitaet, attr)
+
+
+@router.get("/{dashboard_id}/widgets/{widget_id}/bom/abfrage")
+def get_bom_abfrage(dashboard_id: str, widget_id: str, basis: str, q: str = "{}",
+                    offset: int = 0, limit: int = 100, ausfuehren: bool = True):
+    """BOM-Explorer: Auswahl als JSON (q = {zeit, gruppen, filter, kennzahlen}) ab der
+    Ausgangsentität basis; liefert SQL und eine Seite des Ergebnisses. ausfuehren=false: nur SQL."""
+    return _call(bom_service.abfrage, dashboard_id, widget_id, basis, _auswahl(q), offset, limit, ausfuehren)
+
+
+@router.get("/{dashboard_id}/widgets/{widget_id}/bom/r")
+def get_bom_r(dashboard_id: str, widget_id: str, basis: str, q: str = "{}"):
+    """BOM-Explorer: R-Gerüst zur Auswahl (Vorlage widget.R)."""
+    return _call(bom_service.r_code, dashboard_id, widget_id, basis, _auswahl(q))
 
 
 @router.get("/{dashboard_id}/status")

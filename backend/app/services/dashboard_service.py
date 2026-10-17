@@ -38,7 +38,7 @@ from app.services import r_skelett, sql_analyse, td_readonly
 
 logger = logging.getLogger(__name__)
 
-RESERVED_FILES = {"umgebungen", "katalog", "sterne"}
+RESERVED_FILES = {"umgebungen", "katalog", "sterne", "bom"}
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _IDENT_RE = re.compile(r"^[A-Za-z0-9_$#]+$")
 _PH_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::([A-Za-z0-9_-]+))?\}")
@@ -286,6 +286,10 @@ def widget_data(dashboard_id: str, widget_id: str, raw_filters: dict) -> dict:
     widget = _widget(dash, widget_id)
     if widget.get("daten") == "katalog":
         return _katalog_daten()
+    if widget.get("typ") == "bom-explorer":
+        from app.services import bom_service    # Definition statt Daten; Abfragen über /bom/abfrage
+        return {"columns": [], "rows": [], "bom": bom_service.definition(dashboard_id, widget_id),
+                "meta": {"zeilen": 0, "abgeschnitten": False, "cache": False, "unterdrueckt": 0}}
     if widget.get("typ") == "star-explorer":
         from app.services import star_service   # Definition statt Daten; Abfragen über /stern/abfrage
         return {"columns": [], "rows": [], "stern": star_service.definition(dashboard_id, widget_id),
@@ -364,6 +368,9 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
         return _katalog_info(dash, widget, info, zeilen)
     if widget.get("typ") == "star-explorer":
         return _stern_info(dashboard_id, widget_id, info, zeilen)
+    if widget.get("typ") == "bom-explorer":
+        from app.services import bom_service
+        return _stern_info(dashboard_id, widget_id, info, zeilen, bom_service.modell_sql(dashboard_id, widget_id), "bom.yml")
     if not widget.get("sql"):
         return info
 
@@ -407,10 +414,13 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
     return info
 
 
-def _stern_info(dashboard_id: str, widget_id: str, info: dict, zeilen: bool) -> dict:
-    """Info-Panel des Star-Explorers: Objekte, Joins und Herkunft aus dem vollständigen Stern."""
+def _stern_info(dashboard_id: str, widget_id: str, info: dict, zeilen: bool,
+                sql: Optional[str] = None, datei: Optional[str] = None) -> dict:
+    """Info-Panel des Star-/BOM-Explorers: Objekte, Joins und Herkunft aus dem vollständigen
+    Modell (je Teil-SELECT ausgewertet, damit sich die Aliasse nicht mischen)."""
     from app.services import star_service
-    sql = star_service.voller_stern_sql(dashboard_id, widget_id)
+    sql = sql or star_service.voller_stern_sql(dashboard_id, widget_id)
+    datei = datei or star_service.DATEI
     objs = sql_analyse.objekte(sql)
     status = object_status([o["objekt"] for o in objs], zaehlen=zeilen) if objs else {}
     for o in objs:
@@ -430,7 +440,7 @@ def _stern_info(dashboard_id: str, widget_id: str, info: dict, zeilen: bool) -> 
         info["herkunft"] = sql_analyse.herkunft([o["objekt"] for o in objs])
     except Exception as e:
         info["herkunft_fehler"] = str(e).splitlines()[0][:200]
-    info["sql"] = {"datei": star_service.DATEI, "vorlage": sql, "gerendert": sql, "mit_werten": sql, "parameter": {}}
+    info["sql"] = {"datei": datei, "vorlage": sql, "gerendert": sql, "mit_werten": sql, "parameter": {}}
     return info
 
 

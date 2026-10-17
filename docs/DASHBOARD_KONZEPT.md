@@ -94,6 +94,9 @@ Die Übersichtsseite (Abschnitt 5) nutzt ECharts nicht: Kästen mit Attributlist
 | `GET /api/dashboards/{id}/widgets/{wid}/stern/werte` | Viewer | Werte eines Attributs mit `auswahl: true` (`fakt`, `rolle`, `attr`) |
 | `GET /api/dashboards/{id}/widgets/{wid}/stern/abfrage` | Viewer | Auswahl als JSON (`q` = Gruppen, Filter, Kennzahlen), `offset`/`limit`; liefert erzeugtes SQL und eine Seite des gruppierten Ergebnisses; `ausfuehren=false` nur SQL |
 | `GET /api/dashboards/{id}/widgets/{wid}/stern/r` | Viewer | R-Gerüst zur Auswahl (`fakt`, `q`): Vorlage `widget.R`, Views mit `${VAR}`, Filterwerte als `${FILTER:id}` im DEF-Block |
+| `GET /api/dashboards/{id}/widgets/{wid}/bom/werte` | Viewer | BOM-Explorer: Werte eines Attributs (`entitaet`, `attr`; Code-Attribute: Texte) |
+| `GET /api/dashboards/{id}/widgets/{wid}/bom/abfrage` | Viewer | BOM-Explorer: Ausgangsentität `basis`, Auswahl `q` = {zeit, gruppen, filter, kennzahlen}; SQL und eine Seite des Ergebnisses (Abschnitt 5c) |
+| `GET /api/dashboards/{id}/widgets/{wid}/bom/r` | Viewer | BOM-Explorer: R-Gerüst zur Auswahl |
 | `GET /api/dashboards/geo/{name}` | Viewer | GeoJSON für Karten-Widgets aus `dashboards/geo/` |
 | `GET /api/dashboards/{id}/status` | Viewer | je referenziertem DB-Objekt: existiert, Zeilenzahl, Datenstand |
 | `POST /api/dashboards/{id}/refresh` | Editor | Cache dieses Dashboards leeren |
@@ -345,6 +348,40 @@ Regeln:
 - Info-Panel: Objekte, Joins und Herkunft aus dem vollständigen Stern je Fakt.
 - **R-Gerüst** zur aktuellen Auswahl (Knopf neben „SQL kopieren“; folgt der Auswahl, solange es offen ist): dieselbe Vorlage `widget.R` wie im Info-Panel (DEF-Block mit Umgebungen, Excel-Export). Views stehen mit Platzhaltern (`${CON_ACCESS}`) im SQL, Filterwerte als `${FILTER:<rolle>_<attribut>[_n|_von|_bis]}` mit ihren Werten in `DEF$filter`. Das Skript maskiert nicht; ein Hinweis im Kopf weist darauf hin.
 - Ein Bereich im Katalog mit `explorer: <dashboard-id>` verlinkt in der Übersicht auf den Star-Explorer.
+
+## 5c. BOM-Explorer (Widget-Typ `bom-explorer`)
+
+Gegenstück zum Star-Explorer für ein normalisiertes Modell (3NF, Entitäten mit
+Historie, z. B. die Reusable-Schicht). Zeigt, was eine Abfrage dort zusätzlich
+entscheiden muss und was der Stern dem Anwender abnimmt.
+
+- **Ausgangsentität** wählen: eine Ergebniszeile je Satz dieser Entität.
+- Das Modell erscheint als Baum in Ebenen relativ zur Ausgangsentität:
+  **oben** Vorfahren (n:1, LEFT JOIN: gruppieren, filtern, verschiedene zählen),
+  **unten** Nachfahren (1:n: würden Zeilen vervielfachen – nur als Anzahl, vorab je
+  Basis-Satz gezählt, oder als Bedingung `EXISTS`), **daneben** über einen Vorfahren
+  erreichbar (nur Bedingung). Bedingungen an einem Kind gelten auch für dessen Zählung.
+- **Zeitbezug** in jeder Tabelle: aktueller Stand (Kennzeichen) oder Stand am
+  Stichtag (Gültig-von ≤ Stichtag < Gültig-bis, Tagesebene). Unbekannt-Zeilen zählen nicht.
+- **Codes**: Attribute mit `code:` zeigen den Text aus der Texttabelle (Sprache aus der Definition).
+- SQL live, Ergebnis mit Nachladen, Maskierung, R-Gerüst und Info-Panel wie beim Star-Explorer
+  (gemeinsame Bausteine in `star_service.py`: `bedingung`, `seite`, `r_skript`).
+
+Definition `bom.yml` in der Dashboard-Ablage (Format im Kopf von
+`backend/app/services/bom_service.py`): `zeitbezug` (Spaltennamen der Historie,
+Kennzeichen, Schlüssel der Unbekannt-Zeile), `texte` (Sprachspalte, Sprache,
+Textspalte), `codes` (Texttabelle und Schlüssel je Code), `entitaeten` (Tabelle,
+Schlüssel, Alias, freigegebene Attribute) und `beziehungen` (Kind → Eltern über
+Fremdschlüssel; je Entität höchstens ein Elternteil). Kurze Teradata-Schlüsselwörter
+(`GE`, `IN`, …) sind als Alias nicht erlaubt.
+
+```yaml
+widgets:
+  - id: bom
+    typ: bom-explorer
+    pos: {x: 0, y: 0, b: 12, h: auto}
+    optionen: {basis: geschaeft}   # zuerst gewählte Ausgangsentität
+```
 
 ## 5a. Info-Panel je Widget
 

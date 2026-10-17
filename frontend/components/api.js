@@ -353,6 +353,13 @@
             get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/stern/werte`, params),
         sternR:         (id, widgetId, params) =>
             get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/stern/r`, params),
+        /** BOM-Explorer: Werte, Abfrage ab einer Ausgangsentität, R-Gerüst */
+        bomWerte:       (id, widgetId, params) =>
+            get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/bom/werte`, params),
+        bomAbfrage:     (id, widgetId, params) =>
+            get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/bom/abfrage`, params),
+        bomR:           (id, widgetId, params) =>
+            get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/bom/r`, params),
         sternAbfrage:   (id, widgetId, params) =>
             get(`/dashboards/${encodeURIComponent(id)}/widgets/${encodeURIComponent(widgetId)}/stern/abfrage`, params),
         /** Info-Panel: Erläuterung, Objekte, Herkunft, SQL (nur Anzeige) */

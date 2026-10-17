@@ -3,7 +3,8 @@ BOM-Explorer – ein normalisiertes Modell (3NF, Entitäten mit Historie) intera
 abfragen (Widget-Typ „bom-explorer“). Gegenstück zum Star-Explorer: zeigt, was
 eine Abfrage im Reusable gegenüber dem Stern zusätzlich entscheiden muss.
 
-Definition: <Dashboard-Ablage>/bom.yml
+Definition: <Dashboard-Ablage>/bom.yml, oder die Datei aus optionen.modell (z. B.
+disc.yml für ein zweites Modell mit demselben Widget)
 
     zeitbezug:                       # technische Spalten der gelesenen Views
       von: DWH_GUELTIG_VON
@@ -68,10 +69,15 @@ class BomError(ds.DashboardError):
 # Definition
 # ---------------------------------------------------------------------------
 
-def _definition() -> dict:
-    path = ds._root() / DATEI
+_DATEI_RE = re.compile(r"^[a-z0-9_]+\.yml$")
+
+
+def _definition(datei: str = DATEI) -> dict:
+    if not _DATEI_RE.match(datei):
+        raise BomError(500, f"Ungültiger Modellname {datei!r} (optionen.modell)")
+    path = ds._root() / datei
     if not path.exists():
-        raise BomError(404, f"{DATEI} fehlt in der Dashboard-Ablage")
+        raise BomError(404, f"{datei} fehlt in der Dashboard-Ablage")
     roh = ds._load_yaml(path)
     werte = ds.variables()
 
@@ -170,7 +176,7 @@ def _widget(dashboard_id: str, widget_id: str) -> tuple[dict, dict, dict]:
     widget = ds._widget(dash, widget_id)
     if widget.get("typ") != "bom-explorer":
         raise BomError(400, f"Widget '{widget_id}' ist kein BOM-Explorer")
-    return dash, widget, _definition()
+    return dash, widget, _definition((widget.get("optionen") or {}).get("modell") or DATEI)
 
 
 def definition(dashboard_id: str, widget_id: str) -> dict:
@@ -217,9 +223,9 @@ _MARKE = re.compile(r"§W(\d+)§")
 
 
 def _kurz(a: dict) -> str:
-    """Attribut-ID ohne _SK (Code-Attribute zeigen den Text, nicht den Schlüssel)."""
+    """Attribut-ID ohne _SK/_CD (Code-Attribute zeigen den Text, nicht Schlüssel oder Code)."""
     i = a["id"]
-    return (i[:-3] if a.get("code") and i.endswith("_SK") else i).lower()[:24]
+    return (i[:-3] if a.get("code") and i.endswith(("_SK", "_CD")) else i).lower()[:24]
 
 
 class _Werte:

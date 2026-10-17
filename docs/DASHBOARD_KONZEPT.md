@@ -412,8 +412,13 @@ widgets:
   - id: bom
     typ: bom-explorer
     pos: {x: 0, y: 0, b: 12, h: auto}
-    optionen: {basis: geschaeft}   # zuerst gewählte Ausgangsentität
+    optionen:
+      basis: geschaeft     # zuerst gewählte Ausgangsentität
+      modell: disc.yml     # optional, Standard bom.yml: weiteres Modell mit demselben Widget
 ```
+
+YAML-Dateien ohne `widgets` (Katalog, Modelle wie `sterne.yml`, `bom.yml`, `disc.yml`)
+erscheinen nicht als Dashboard und lassen sich nicht als Dashboard öffnen.
 
 ## 5a. Info-Panel je Widget
 

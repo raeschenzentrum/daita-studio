@@ -92,6 +92,8 @@ def _load_dashboard(dashboard_id: str) -> dict:
     if not path.exists():
         raise DashboardError(404, f"Dashboard '{dashboard_id}' nicht gefunden")
     data = _load_yaml(path)
+    if "widgets" not in data:   # Modell- oder Konfigurationsdatei, kein Dashboard
+        raise DashboardError(404, f"Dashboard '{dashboard_id}' nicht gefunden")
     data["id"] = dashboard_id
     return data
 
@@ -246,6 +248,8 @@ def list_dashboards() -> list[dict]:
         except DashboardError as e:
             logger.warning(e.message)
             continue
+        if "widgets" not in d:   # Katalog, Modelle (sterne.yml, bom.yml …): keine Dashboards
+            continue
         out.append({
             "id": path.stem,
             "titel": d.get("titel", path.stem),
@@ -370,7 +374,8 @@ def widget_info(dashboard_id: str, widget_id: str, raw_filters: dict, zeilen: bo
         return _stern_info(dashboard_id, widget_id, info, zeilen)
     if widget.get("typ") == "bom-explorer":
         from app.services import bom_service
-        return _stern_info(dashboard_id, widget_id, info, zeilen, bom_service.modell_sql(dashboard_id, widget_id), "bom.yml")
+        return _stern_info(dashboard_id, widget_id, info, zeilen, bom_service.modell_sql(dashboard_id, widget_id),
+                           (widget.get("optionen") or {}).get("modell") or bom_service.DATEI)
     if not widget.get("sql"):
         return info
 
